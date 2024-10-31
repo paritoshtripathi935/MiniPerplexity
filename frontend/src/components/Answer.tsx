@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ExternalLink, Loader2 } from 'lucide-react';
 import type { Answer as AnswerType } from '../types';
@@ -8,6 +8,26 @@ interface AnswerProps {
 }
 
 export function Answer({ answer }: AnswerProps) {
+  const [displayedText, setDisplayedText] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (answer.loading) {
+      setDisplayedText('');
+      setCurrentIndex(0);
+      return;
+    }
+
+    if (currentIndex < answer.text.length) {
+      const timer = setTimeout(() => {
+        setDisplayedText(prev => prev + answer.text[currentIndex]);
+        setCurrentIndex(prev => prev + 1);
+      }, 20); // Adjust speed by changing timeout value
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentIndex, answer.loading, answer.text]);
+
   if (answer.loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -20,7 +40,7 @@ export function Answer({ answer }: AnswerProps) {
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="p-6">
         <ReactMarkdown className="prose max-w-none">
-          {answer.text}
+          {displayedText}
         </ReactMarkdown>
       </div>
       {answer.search_results && answer.search_results.length > 0 && (

@@ -8,28 +8,49 @@ import type { Answer as AnswerType } from './types';
 function App() {
   const [answer, setAnswer] = useState<AnswerType | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingState, setLoadingState] = useState<string | null>(null);
+  const [loadingTimeout, setLoadingTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearch = async (query: string) => {
     setError(null);
     setAnswer({
       text: '',
-      sources: [], // Initially set to an empty array
+      sources: [],
       loading: true,
       search_results: []
     });
+
+    // Set up loading state timeout
+    const timeout = setTimeout(() => {
+      setLoadingState('Searching the web...');
+      
+      // Sequence of loading messages
+      setTimeout(() => {
+        setLoadingState('Processing search results...');
+      }, 2000);
+      
+      setTimeout(() => {
+        setLoadingState('Generating AI response...');
+      }, 4000);
+    }, 500);
+
+    setLoadingTimeout(timeout);
   
     try {
       const response = await fetchAnswer(query);
-      console.log("API Response:", response); // Log the response for debugging
+      console.log("API Response:", response);
+      
+      // Clear loading state and timeout
+      setLoadingState(null);
+      if (loadingTimeout) clearTimeout(loadingTimeout);
   
-      // Check if the response contains the expected properties
       if (response && response.answer && Array.isArray(response.citations)) {
         setAnswer({
           text: response.answer,
           sources: response.citations.map((citation: string) => ({
-            title: '', // You might want to get the title from the citation if available
+            title: '',
             url: citation,
-            snippet: '' // Set to empty or modify based on your requirements
+            snippet: ''
           })),
           loading: false,
           search_results: response.search_results.map((result: any) => ({
@@ -45,6 +66,8 @@ function App() {
       console.error(err);
       setError(`Failed to fetch answer: ${err}`);
       setAnswer(null);
+      setLoadingState(null);
+      if (loadingTimeout) clearTimeout(loadingTimeout);
     }
   };
   
@@ -66,6 +89,15 @@ function App() {
             onSearch={handleSearch}
             loading={answer?.loading || false}
           />
+
+          {loadingState && (
+            <div className="w-full max-w-3xl p-4 bg-blue-50 border border-blue-100 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-blue-600">{loadingState}</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="w-full max-w-3xl p-4 bg-red-50 border border-red-100 rounded-lg text-red-600">
