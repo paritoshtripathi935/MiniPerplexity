@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 
 interface SearchBarProps {
@@ -8,6 +8,44 @@ interface SearchBarProps {
 
 export function SearchBar({ onSearch, loading }: SearchBarProps) {
   const [query, setQuery] = useState('');
+  const placeholders = [
+    "How is the weather in Paris?",
+    "What are the benefits of meditation?", 
+    "Explain quantum computing",
+    "What's the history of pizza?",
+    "How do electric cars work?",
+    "What causes northern lights?"
+  ];
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [currentPlaceholder, setCurrentPlaceholder] = useState('');
+  const [isTyping, setIsTyping] = useState(true);
+  useEffect(() => {
+    let typingTimer: ReturnType<typeof setTimeout>;
+    let currentIndex = 0;
+    let currentText = '';
+
+    const typeCharacter = () => {
+      if (currentIndex < placeholders[placeholderIndex].length && isTyping) {
+        currentText = placeholders[placeholderIndex].slice(0, currentIndex + 1);
+        setCurrentPlaceholder(currentText);
+        currentIndex++;
+        typingTimer = setTimeout(typeCharacter, 100);
+      } else {
+        setIsTyping(false);
+        setTimeout(() => {
+          setIsTyping(true);
+          currentIndex = 0;
+          setPlaceholderIndex((prev) => (prev + 1) % placeholders.length);
+        }, 2000);
+      }
+    };
+
+    typeCharacter();
+
+    return () => {
+      clearTimeout(typingTimer);
+    };
+  }, [placeholderIndex, isTyping]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +60,7 @@ export function SearchBar({ onSearch, loading }: SearchBarProps) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask anything..."
+          placeholder={currentPlaceholder}
           className="w-full px-4 py-3 pl-12 pr-16 text-gray-900 placeholder-gray-500 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           disabled={loading}
         />
