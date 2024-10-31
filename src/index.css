@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-gray-900;
+  }
+}
+
+.prose {
+  @apply max-w-none;
+}
+
+.prose p {
+  @apply mb-4 leading-relaxed;
+}
+
+.prose p:last-child {
+  @apply mb-0;
+}
