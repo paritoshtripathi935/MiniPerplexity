@@ -13,27 +13,41 @@ function App() {
     setError(null);
     setAnswer({
       text: '',
-      sources: [],
-      loading: true
+      sources: [], // Initially set to an empty array
+      loading: true,
+      search_results: []
     });
-
+  
     try {
       const response = await fetchAnswer(query);
-      setAnswer({
-        text: response.answer,
-        sources: response.sources.map((source: any) => ({
-          title: source.title,
-          url: source.url,
-          snippet: source.snippet
-        })),
-        loading: false
-      });
+      console.log("API Response:", response); // Log the response for debugging
+  
+      // Check if the response contains the expected properties
+      if (response && response.answer && Array.isArray(response.citations)) {
+        setAnswer({
+          text: response.answer,
+          sources: response.citations.map((citation: string) => ({
+            title: '', // You might want to get the title from the citation if available
+            url: citation,
+            snippet: '' // Set to empty or modify based on your requirements
+          })),
+          loading: false,
+          search_results: response.search_results.map((result: any) => ({
+            source: result.url,
+            type: result.type,
+            title: result.title
+          }))
+        });
+      } else {
+        throw new Error("Invalid response format");
+      }
     } catch (err) {
-      setError('Failed to get answer. Please try again.');
+      console.error(err);
+      setError(`Failed to fetch answer: ${err}`);
       setAnswer(null);
     }
   };
-
+  
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <div className="max-w-7xl mx-auto px-4 py-8">

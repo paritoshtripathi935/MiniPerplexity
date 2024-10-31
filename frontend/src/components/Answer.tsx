@@ -23,6 +23,30 @@ export function Answer({ answer }: AnswerProps) {
           {answer.text}
         </ReactMarkdown>
       </div>
+      {answer.search_results && answer.search_results.length > 0 && (
+        <div className="border-t border-gray-100 bg-gray-50 p-4">
+          <h3 className="text-sm font-medium text-gray-900 mb-3">Search Results</h3>
+          <div className="space-y-4">
+            {answer.search_results.map((result, index) => {
+              return (
+                <div key={index} className="text-sm">
+                  <div className="font-medium text-gray-900">
+                    {result.title}
+                  </div>
+                  <a
+                    href={result.source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    {result.type}
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {answer.sources.length > 0 && (
         <div className="border-t border-gray-100 bg-gray-50 p-4">
           <h3 className="text-sm font-medium text-gray-900 mb-3">Sources</h3>
@@ -36,7 +60,7 @@ export function Answer({ answer }: AnswerProps) {
                 className="flex items-start gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
               >
                 <ExternalLink className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>{source.title}</span>
+                <span>{source.url}</span>
               </a>
             ))}
           </div>

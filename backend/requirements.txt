@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pydantic
+requests  # For making HTTP requests to external APIs (e.g., search API)
+python-decouple
+pydantic-settings
