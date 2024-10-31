@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: fastapi-app
+    runtime: python3.9
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT 
