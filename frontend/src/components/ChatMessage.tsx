@@ -20,7 +20,7 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
       const timer = setTimeout(() => {
         setDisplayedText(prev => prev + message.content[currentIndex]);
         setCurrentIndex(prev => prev + 1);
-      }, 100); // Adjust typing speed here
+      }, 200); // Adjust typing speed here
 
       return () => clearTimeout(timer);
     } else if (currentIndex >= message.content.length) {
