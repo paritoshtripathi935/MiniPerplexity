@@ -6,6 +6,8 @@ import { Message } from './types';
 import { fetchAnswer } from './services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { SignIn, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
+import LoginPage from './components/LoginPage';
+import DeveloperInfo from './components/DeveloperInfo';
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -15,10 +17,11 @@ function App() {
   const [sessionId] = useState<string>(uuidv4());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [devInfoOpen, setDevInfoOpen] = useState<boolean>(false);
+  const developerInfo = "Your developer info text goes here";
   const [typedText, setTypedText] = useState<string>('');
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const loadingTimersRef = useRef<number[]>([]);
-  const developerInfo = " Developed by Paritosh Tripathi";
+  const [showDevInfo, setShowDevInfo] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -133,125 +136,94 @@ function App() {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col transition-colors duration-200 ${
-      darkMode 
-        ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' 
-        : 'bg-gradient-to-b from-gray-50 to-white text-gray-900'
-    }`}>
-      <header className={`p-4 border-b shadow-sm fixed w-full top-0 z-10 backdrop-blur-lg bg-opacity-80 ${
-        darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'
-      }`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Brain className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-          </div>
-          <h1 className="text-xl font-bold text-center flex-grow">Mini Perplexity AI</h1>
-          <div className="flex items-center gap-4">
-            <UserButton />
-            <button
-              onClick={toggleDarkMode}
-              className={`p-2 rounded-lg ${
-                darkMode 
-                  ? 'bg-gray-700 hover:bg-gray-600' 
-                  : 'bg-gray-200 hover:bg-gray-300'
-              }`}
-            >
-              {darkMode ? '🌞' : '🌙'}
-            </button>
-            <button
-              onClick={() => setDevInfoOpen(!devInfoOpen)}
-              className={`p-2 rounded-lg ${
-                darkMode 
-                  ? 'bg-gray-700 hover:bg-gray-600' 
-                  : 'bg-gray-200 hover:bg-gray-300'
-              }`}
-            >
-              {devInfoOpen ? '🔒' : 'ℹ️'}
-            </button>
-            {devInfoOpen && (
-              <div 
-                className={`fixed inset-0 z-30 flex items-center justify-center backdrop-blur-md`}
-                onClick={() => setDevInfoOpen(false)}
-              >
-                <div 
-                  className={`p-4 rounded-lg shadow-lg ${
-                    darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'
-                  } w-[400px] h-[400px] flex flex-col items-center justify-center`}
+    <>
+      <SignedOut>
+        <LoginPage />
+      </SignedOut>
+      <SignedIn>
+        <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-2">
+                <Brain className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'} brain-icon`} />
+                <h1 className="text-2xl font-bold">Mini Perplexity</h1>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowDevInfo(!showDevInfo)}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    darkMode
+                      ? 'bg-gray-800 hover:bg-gray-700 text-gray-100'
+                      : 'bg-white hover:bg-gray-100 text-gray-800'
+                  }`}
                 >
-                  <p className="text-center">{typedText}</p>
-                  <div className="flex justify-center gap-4 mt-2">
-                    <a href="https://www.linkedin.com/in/a-paritoshtripathi/" target="_blank" rel="noopener noreferrer">
-                      <img src="Linkedin logo.svg" alt="LinkedIn" className="w-8 h-8" />
-                    </a>
-                    <a href="https://github.com/paritoshtripathi935" target="_blank" rel="noopener noreferrer">
-                      <img src="/path/to/github-icon.svg" alt="GitHub" className="w-8 h-8" />
-                    </a>
+                  Developer Info
+                </button>
+                <UserButton />
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className={`p-2 rounded-lg ${
+                    darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-100'
+                  }`}
+                >
+                  {darkMode ? '🌞' : '🌙'}
+                </button>
+              </div>
+            </div>
+
+            {showDevInfo ? (
+              <DeveloperInfo darkMode={darkMode} />
+            ) : (
+              <div className="space-y-6">
+                {messages.map((message) => (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    darkMode={darkMode}
+                  />
+                ))}
+                
+                {loadingState && (
+                  <div className={`p-4 rounded-lg ${
+                    darkMode 
+                      ? 'bg-gray-800 text-gray-300' 
+                      : 'bg-white text-gray-600'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"></div>
+                      <p>{loadingState}</p>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {error && (
+                  <div className={`p-4 rounded-lg ${
+                    darkMode 
+                      ? 'bg-red-900/30 text-red-300' 
+                      : 'bg-red-50 text-red-600'
+                  }`}>
+                    {error}
+                  </div>
+                )}
+                
+                <div ref={messagesEndRef} />
               </div>
             )}
+
+            <footer className={`fixed bottom-0 left-0 right-0 p-4 border-t ${
+              darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+            }`}>
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <SearchBar 
+                  onSearch={handleSearch}
+                  loading={!!loadingState}
+                />
+              </div>
+            </footer>
           </div>
         </div>
-      </header>
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 pt-24 pb-32">
-        <SignedIn>
-          <div className="space-y-6">
-            {messages.map((message) => (
-              <ChatMessage
-                key={message.id}
-                message={message}
-                darkMode={darkMode}
-              />
-            ))}
-            
-            {loadingState && (
-              <div className={`p-4 rounded-lg ${
-                darkMode 
-                  ? 'bg-gray-800 text-gray-300' 
-                  : 'bg-white text-gray-600'
-              }`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"></div>
-                  <p>{loadingState}</p>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className={`p-4 rounded-lg ${
-                darkMode 
-                  ? 'bg-red-900/30 text-red-300' 
-                  : 'bg-red-50 text-red-600'
-              }`}>
-                {error}
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
-          </div>
-        </SignedIn>
-
-        <SignedOut>
-          <div className={`w-full max-w-md mx-auto p-6 rounded-lg ${
-            darkMode ? 'bg-gray-800' : 'bg-white'
-          } shadow-lg`}>
-            <SignIn />
-          </div>
-        </SignedOut>
-      </main>
-
-      <footer className={`fixed bottom-0 left-0 right-0 p-4 border-t ${
-        darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <div className="max-w-7xl mx-auto">
-          <SearchBar 
-            onSearch={handleSearch}
-            loading={!!loadingState}
-          />
-        </div>
-      </footer>
-    </div>
+      </SignedIn>
+    </>
   );
 }
 

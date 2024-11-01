@@ -13,7 +13,6 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
   const [displayedText, setDisplayedText] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isTyping, setIsTyping] = useState(true);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (isTyping && currentIndex < message.content.length) {
@@ -27,16 +26,6 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
       setIsTyping(false); // Stop typing when done
     }
   }, [currentIndex, isTyping, message.content]);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 100);
-    } catch (err) {
-      console.error('Failed to copy text:', err);
-    }
-  };
 
   const handleStopTyping = () => {
     setIsTyping(false);
@@ -66,28 +55,33 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
           }`}>
             {displayedText}
           </ReactMarkdown>
-          <div className="flex justify-end mt-2 space-x-2">
-            <button
-              onClick={handleCopy}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors duration-200 ${
-                darkMode
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-            <button
-              onClick={handleStopTyping}
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors duration-200 ${
-                darkMode
-                  ? 'bg-red-600 text-white hover:bg-red-500'
-                  : 'bg-red-200 text-gray-700 hover:bg-red-300'
-              }`}
-            >
-              Stop Typing
-            </button>
-          </div>
+          {isAssistant && (
+            <div className="absolute bottom-4 right-4">
+              {isTyping ? (
+                <button
+                  onClick={handleStopTyping}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                    darkMode
+                      ? 'bg-red-600 text-white hover:bg-red-500'
+                      : 'bg-red-200 text-red-700 hover:bg-red-300'
+                  }`}
+                >
+                  Stop Typing
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md ${
+                    darkMode
+                      ? 'bg-gray-700 text-gray-500'
+                      : 'bg-gray-200 text-gray-400'
+                  }`}
+                >
+                  Completed
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {isAssistant && message.sources && message.sources.length > 0 && (
