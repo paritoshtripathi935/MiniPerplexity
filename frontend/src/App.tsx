@@ -145,7 +145,7 @@ function App() {
           <div className="flex items-center gap-3">
             <Brain className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
           </div>
-          <h1 className="text-xl font-bold text-center flex-grow">AI Chat Assistant</h1>
+          <h1 className="text-xl font-bold text-center flex-grow">Mini Perplexity AI</h1>
           <div className="flex items-center gap-4">
             <UserButton />
             <button
