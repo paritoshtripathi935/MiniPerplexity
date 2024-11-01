@@ -18,3 +18,21 @@ export interface Answer {
     title?: string;
   }>;
 }
+
+export interface Message {
+  id: string;
+  type: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  sources?: {
+    url: string;
+    title: string;
+    type: string;
+  }[];
+  search_results?: {
+    source: string;
+    type: string;
+    title: string;
+  }[];
+}
+

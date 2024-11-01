@@ -18,3 +18,12 @@ export interface ApiResponse {
     snippet: string;
   }[];
 }
+
+export interface Message {
+  id: string;
+  type: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  sources?: { title: string; url: string; type: string }[];
+  search_results?: { title: string; source: string; type: string }[];
+}

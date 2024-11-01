@@ -19,3 +19,21 @@
 .prose p:last-child {
   @apply mb-0;
 }
+
+/* Centering and Hello Animation */
+.animate-hello {
+  animation: helloAnimation 0.6s ease forwards;
+  transform: scale(0.8);
+  opacity: 0;
+}
+
+@keyframes helloAnimation {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

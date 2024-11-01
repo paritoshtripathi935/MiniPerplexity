@@ -1,8 +1,9 @@
-export async function fetchAnswer(query: string) {
+export async function fetchAnswer(query: string, sessionId: string) {
   try {
-    const response = await fetch('https://miniperplexity.onrender.com/api/v1/answer', {
+    const response = await fetch(`https://miniperplexity.onrender.com/api/v1/answer/${sessionId}`, {
       method: 'POST',
       headers: {
+        'accept': 'application/json',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query }),
@@ -11,12 +12,11 @@ export async function fetchAnswer(query: string) {
     if (!response.ok) {
       throw new Error(`Failed to fetch answer: ${response.status} ${response.statusText}`);
     }
-    
-    console.log(`Response status: ${response.status}`);
 
-    return await response.json();
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error('Error fetching answer:', error);
+    console.error(error);
     throw error;
   }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import type { Answer as AnswerType } from '../types';
 
 interface AnswerProps {
@@ -12,23 +12,27 @@ export function Answer({ answer, darkMode }: AnswerProps) {
   const [displayedText, setDisplayedText] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [isTyping, setIsTyping] = useState(true);
 
   useEffect(() => {
     if (answer.loading) {
       setDisplayedText('');
       setCurrentIndex(0);
+      setIsTyping(true);
       return;
     }
 
-    if (currentIndex < answer.text.length) {
+    if (isTyping && currentIndex < answer.text.length) {
       const timer = setTimeout(() => {
         setDisplayedText(prev => prev + answer.text[currentIndex]);
         setCurrentIndex(prev => prev + 1);
-      }, 20);
+      }, 50); // Adjust typing speed here
 
       return () => clearTimeout(timer);
+    } else if (currentIndex >= answer.text.length) {
+      setIsTyping(false); // Stop typing when done
     }
-  }, [currentIndex, answer.loading, answer.text]);
+  }, [currentIndex, answer.loading, answer.text, isTyping]);
 
   const handleCopy = async () => {
     try {
@@ -40,13 +44,10 @@ export function Answer({ answer, darkMode }: AnswerProps) {
     }
   };
 
-  if (answer.loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
+  const handleStopTyping = () => {
+    setIsTyping(false);
+    setDisplayedText(answer.text); // Show the full text immediately
+  };
 
   return (
     <div className={`rounded-xl shadow-lg border overflow-hidden transition-all duration-200 hover:shadow-xl ${
@@ -84,6 +85,16 @@ export function Answer({ answer, darkMode }: AnswerProps) {
         }`}>
           {displayedText}
         </ReactMarkdown>
+        <button
+          onClick={handleStopTyping}
+          className={`absolute bottom-4 right-4 px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 flex items-center gap-2 ${
+            darkMode
+              ? 'text-gray-300 bg-red-700 hover:bg-red-600'
+              : 'text-gray-700 bg-red-100 hover:bg-red-200'
+          }`}
+        >
+          Stop
+        </button>
       </div>
       {answer.search_results && answer.search_results.length > 0 && (
         <div className={`border-t p-6 ${
