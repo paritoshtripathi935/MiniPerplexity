@@ -56,65 +56,76 @@ class CloudflareChat:
     def _get_headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}"}
 
-    def _call_for_prompt(self, prompt: Optional[List]) -> dict:
+    def _format_context(self, search_results: dict) -> str:
+        """Format search results into a context string."""
+        context = "This is search results from search engine:\n"
+        
+        for search_result in search_results:
+            if search_result['search_content'] is not None:
+                context += f"\n{search_result['search_content']}\n"
+        
+        return context
+
+    def _call_for_prompt(self, messages: List[dict]) -> dict:
         """
-        Call the Cloudflare API with the specified prompt and model.
-        It will return the response as a dictionary.
+        Call the Cloudflare API with the messages list.
+        Each message should have 'role' and 'content'.
         """
         headers = self._get_headers()
-        payload = { "messages": prompt }
+        payload = {"messages": messages}
         
         try:
             print(f"Sending request to {self.full_url} with payload: {payload}")
-
             response = requests.post(self.full_url, headers=headers, json=payload)
-            response.raise_for_status()  # Raises an HTTPError if the response was an error
+            response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            # logger.error(f"API request failed: {e}")
             return {"error": str(e)}
 
-    def invoke(self, search_results: dict) -> dict:
+    def invoke(self, search_results: dict, chat_history: List[dict] = None) -> dict:
         """
-        Invoke the Cloudflare API with the specified messages.
+        Invoke the Cloudflare API with context and chat history.
         
         Args:
-            messages (List[Message]): The messages to send to the model.
-
-        Returns:
-            List[Dict]: The response from the model for each message.
+            search_results (dict): Search results to provide context
+            chat_history (List[dict]): Previous conversation messages
         """
         if not search_results:
-            raise ValueError("No messages provided")
+            raise ValueError("No search results provided")
 
-        prompt = f"""
-This is search results from search engine:
-"""
+        messages = []
         
-        for search_result in search_results:
-            if search_result['search_content'] is None:
-                continue
-            prompt += f"""
-{search_result['search_content']}
-"""
+        # Add system message with context
+        context = self._format_context(search_results)
+        messages.append({
+            "role": "system",
+            "content": f"You are a helpful AI assistant. Use the following context to answer questions:\n\n{context}"
+        })
 
-        prompt += f"""
-Answer the following question:
-{search_results[0]['question']}
-"""
-        return self._call_for_prompt([{"role": "user", "content": prompt}])
+        # Add chat history if available
+        if chat_history:
+            messages.extend(chat_history)
 
-    def generate_answer(self, search_results: str) -> str:
+        # Add current question
+        messages.append({
+            "role": "user",
+            "content": search_results[0]['question']
+        })
+
+        return self._call_for_prompt(messages)
+
+    def generate_answer(self, search_results: dict, chat_history: List[dict] = None) -> str:
         """
-        Generates an answer for the given message using the model.
+        Generates an answer using context and chat history.
 
         Args:
-            message (str): The message to generate an answer for.
+            search_results (dict): Search results to provide context
+            chat_history (List[dict]): Previous conversation messages
 
         Returns:
-            str: The generated answer.
+            str: The generated answer
         """
-        response = self.invoke(search_results)
+        response = self.invoke(search_results, chat_history)
         if "error" in response:
             raise ValueError(response["error"])
         return response["result"]["response"]

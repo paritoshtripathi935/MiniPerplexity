@@ -5,3 +5,4 @@ requests  # For making HTTP requests to external APIs (e.g., search API)
 python-decouple
 pydantic-settings
 # Add any other dependencies your project needs
+gunicorn
