@@ -20,7 +20,7 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
       const timer = setTimeout(() => {
         setDisplayedText(prev => prev + message.content[currentIndex]);
         setCurrentIndex(prev => prev + 1);
-      }, 200); // Adjust typing speed here
+      }, 10); // Adjust typing speed here
 
       return () => clearTimeout(timer);
     } else if (currentIndex >= message.content.length) {
@@ -32,7 +32,7 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 100);
     } catch (err) {
       console.error('Failed to copy text:', err);
     }
