@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Youtube, Search, Link } from 'lucide-react';
 import type { Answer as AnswerType } from '../types';
 
 interface AnswerProps {
@@ -108,40 +108,119 @@ export function Answer({ answer, darkMode }: AnswerProps) {
           Stop
         </button>
       </div>
-      {answer.search_results && answer.search_results.length > 0 && (
+      {answer.search_results && answer.search_results.some(result => result.type === 'youtube') && (
         <div className={`border-t p-6 ${
           darkMode 
-            ? 'border-gray-700 bg-gray-900/50' 
+            ? 'border-gray-700 bg-gray-800/50' 
             : 'border-gray-200 bg-gray-50'
         }`}>
-          <h3 className={`text-sm font-semibold mb-4 ${
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${
             darkMode ? 'text-gray-100' : 'text-gray-900'
-          }`}>Search Results</h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            {answer.search_results.map((result, index) => (
-              <div key={index} className={`p-4 rounded-lg border transition-colors duration-200 ${
-                darkMode
-                  ? 'bg-gray-800 border-gray-700 hover:border-blue-500'
-                  : 'bg-white border-gray-100 hover:border-blue-300'
-              }`}>
-                <div className={`font-medium mb-1 ${
-                  darkMode ? 'text-gray-100' : 'text-gray-900'
-                }`}>
-                  {result.title}
-                </div>
-                <a
-                  href={result.source}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`hover:text-blue-400 text-sm flex items-center gap-1 ${
-                    darkMode ? 'text-blue-400' : 'text-blue-600'
-                  }`}
-                >
-                  <span>{result.type}</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            ))}
+          }`}>
+            <Youtube className="w-4 h-4 text-red-500" />
+            Related Videos
+          </h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {answer.search_results
+              .filter(result => result.type === 'youtube')
+              .map((result, index) => {
+                const videoId = new URL(result.source).searchParams.get('v');
+                return (
+                  <a
+                    key={index}
+                    href={result.source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group p-4 rounded-lg border transition-all duration-200 ${
+                      darkMode
+                        ? 'bg-gray-800 border-gray-700 hover:border-red-500'
+                        : 'bg-white border-gray-100 hover:border-red-300'
+                    }`}
+                  >
+                    <div className="aspect-video mb-3 rounded-lg overflow-hidden bg-black/10">
+                      <img 
+                        src={`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+                        alt={result.title}
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 
+                            `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                        }}
+                      />
+                    </div>
+                    <div className={`font-medium mb-1 line-clamp-2 ${
+                      darkMode ? 'text-gray-100' : 'text-gray-900'
+                    }`}>
+                      {result.title}
+                    </div>
+                    <div className={`text-sm flex items-center gap-1 ${
+                      darkMode ? 'text-red-400' : 'text-red-600'
+                    }`}>
+                      <Youtube className="w-3 h-3" />
+                      <span>Watch on YouTube</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </div>
+                  </a>
+                );
+              })}
+          </div>
+        </div>
+      )}
+      {answer.search_results && answer.search_results.some(result => result.type !== 'youtube') && (
+        <div className={`border-t p-6 ${
+          darkMode 
+            ? 'border-gray-700 bg-gray-800/50' 
+            : 'border-gray-200 bg-gray-50'
+        }`}>
+          <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${
+            darkMode ? 'text-gray-100' : 'text-gray-900'
+          }`}>
+            <Search className="w-4 h-4 text-blue-500" />
+            Search Results
+          </h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {answer.search_results
+              .filter(result => result.type !== 'youtube')
+              .map((result, index) => {
+                const videoId = new URL(result.source).searchParams.get('v');
+                return (
+                  <a
+                    key={index}
+                    href={result.source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group p-4 rounded-lg border transition-all duration-200 ${
+                      darkMode
+                        ? 'bg-gray-800 border-gray-700 hover:border-blue-500'
+                        : 'bg-white border-gray-100 hover:border-blue-300'
+                    }`}
+                  >
+                    <div className="aspect-video mb-3 rounded-lg overflow-hidden bg-black/10">
+                      <img 
+                        src={`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+                        alt={result.title}
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 
+                            `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                        }}
+                      />
+                    </div>
+                    <div className={`font-medium mb-1 line-clamp-2 ${
+                      darkMode ? 'text-gray-100' : 'text-gray-900'
+                    }`}>
+                      {result.title}
+                    </div>
+                    <div className={`text-sm flex items-center gap-1 ${
+                      darkMode ? 'text-blue-400' : 'text-blue-600'
+                    }`}>
+                      <Search className="w-3 h-3" />
+                      <span>Search on YouTube</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </div>
+                  </a>
+                );
+              })}
           </div>
         </div>
       )}

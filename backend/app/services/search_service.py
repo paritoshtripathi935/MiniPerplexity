@@ -9,6 +9,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from app.models.search_model import SearchResult
 from app.utils.rate_limter import rate_limit
+from app.services.youtube_service import YouTubeAPIError
 
 # Constants
 BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
@@ -183,8 +184,61 @@ def search_google(query: str) -> List[SearchResult]:
         logger.error(f"Google search error: {str(e)}")
         raise SearchAPIError(f"Google search failed: {str(e)}")
 
+@rate_limit(calls=CALLS_PER_MINUTE, period=60)
+def search_youtube(query: str) -> List[SearchResult]:
+    """Search YouTube for relevant videos.
+    
+    Args:
+        query: The search query
+        
+    Returns:
+        List of SearchResult objects containing video information
+        
+    Raises:
+        YouTubeAPIError: If the API request fails
+    """
+    api_key = os.getenv('YOUTUBE_API_KEY')
+    if not api_key:
+        raise YouTubeAPIError("YOUTUBE_API_KEY environment variable not set")
+
+    params = {
+        "key": api_key,
+        "q": query,
+        "part": "snippet",
+        "type": "video",
+        "maxResults": 3
+    }
+
+    try:
+        response = requests.get(
+            "https://www.googleapis.com/youtube/v3/search",
+            params=params,
+            timeout=5
+        )
+        response.raise_for_status()
+        
+        results = []
+        for item in response.json().get("items", []):
+            video_id = item["id"]["videoId"]
+            snippet = item["snippet"]
+            
+            result = SearchResult(
+                question=query,
+                title=snippet["title"],
+                url=f"https://www.youtube.com/watch?v={video_id}",
+                snippet=snippet["description"],
+                search_content=snippet["description"],
+                source="youtube"
+            )
+            results.append(result)
+            
+        return results
+        
+    except Exception as e:
+        raise YouTubeAPIError(f"YouTube search failed: {str(e)}")
+
 def perform_search(query: str) -> List[SearchResult]:
-    """Perform parallel searches on both Google and Bing APIs.
+    """Perform parallel searches on Google, Bing, and YouTube APIs.
     
     Args:
         query: The search query to run
@@ -193,17 +247,18 @@ def perform_search(query: str) -> List[SearchResult]:
         Combined list of unique SearchResult objects
     """
     try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             bing_future = executor.submit(search_bing, query)
             google_future = executor.submit(search_google, query)
+            youtube_future = executor.submit(search_youtube, query)
             
             results = []
             
             # Gather results, handling potential failures
-            for future in [bing_future, google_future]:
+            for future in [bing_future, google_future, youtube_future]:
                 try:
                     results.extend(future.result())
-                except SearchAPIError as e:
+                except (SearchAPIError, YouTubeAPIError) as e:
                     logger.error(f"Search engine error: {str(e)}")
                     continue
             

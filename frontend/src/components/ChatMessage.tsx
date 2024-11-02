@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ExternalLink, Bot } from 'lucide-react';
+import { ExternalLink, Bot, Youtube, Search } from 'lucide-react';
 import { useUser } from "@clerk/clerk-react";
 import type { Message } from '../types';
 
@@ -58,53 +58,110 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
             {message.content}
           </ReactMarkdown>
         </div>
-        {/* Search results and sources in a single section */}
+
+        {/* Search results and sources section */}
         {isAssistant && ((message.search_results && message.search_results.length > 0) || (message.sources && message.sources.length > 0)) && (
-          <div className={`mt-4 border-t ${
-            darkMode ? 'border-gray-700' : 'border-gray-200'
-          }`}>
+          <div className={`mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="pt-4 space-y-4">
-              {/* Search Results */}
-              {message.search_results && message.search_results.length > 0 && (
+              {/* Search Results First */}
+              {message.search_results && message.search_results.some(result => result.type !== 'youtube') && (
                 <div>
-                  <h3 className={`text-sm font-semibold mb-2 ${
+                  <h3 className={`text-sm font-semibold mb-4 flex items-center gap-2 ${
                     darkMode ? 'text-gray-300' : 'text-gray-700'
                   }`}>
+                    <Search className="w-4 h-4 text-blue-500" />
                     Search Results
                   </h3>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {message.search_results.map((result, index) => (
-                      <a
-                        key={index}
-                        href={result.source}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`p-2 rounded-lg border transition-colors ${
-                          darkMode
-                            ? 'bg-gray-700/50 border-gray-600 hover:border-blue-500'
-                            : 'bg-gray-50 border-gray-200 hover:border-blue-300'
-                        }`}
-                      >
-                        <div className={`font-medium text-sm ${
-                          darkMode ? 'text-gray-200' : 'text-gray-700'
-                        }`}>
-                          {result.title}
-                        </div>
-                        <div className="flex items-center gap-1 mt-1">
-                          <ExternalLink className="w-3 h-3" />
-                          <span className={`text-xs ${
-                            darkMode ? 'text-gray-400' : 'text-gray-500'
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {message.search_results
+                      .filter(result => result.type !== 'youtube')
+                      .map((result, index) => (
+                        <a
+                          key={index}
+                          href={result.source}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`p-3 rounded-lg border transition-colors ${
+                            darkMode
+                              ? 'bg-gray-700/50 border-gray-600 hover:border-blue-500'
+                              : 'bg-gray-50 border-gray-200 hover:border-blue-300'
+                          }`}
+                        >
+                          <div className={`font-medium text-sm mb-1 ${
+                            darkMode ? 'text-gray-200' : 'text-gray-700'
                           }`}>
-                            {result.type}
-                          </span>
-                        </div>
-                      </a>
-                    ))}
+                            {result.title}
+                          </div>
+                          <div className={`flex items-center gap-1 text-xs ${
+                            darkMode ? 'text-blue-400' : 'text-blue-600'
+                          }`}>
+                            <Search className="w-3 h-3" />
+                            <span>{result.type}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </div>
+                        </a>
+                      ))}
                   </div>
                 </div>
               )}
 
-              {/* Citations */}
+              {/* YouTube Results Second */}
+              {message.search_results && message.search_results.some(result => result.type === 'youtube') && (
+                <div>
+                  <h3 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${
+                    darkMode ? 'text-gray-300' : 'text-gray-700'
+                  }`}>
+                    <Youtube className="w-4 h-4 text-red-500" />
+                    Related Videos
+                  </h3>
+                  <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                    {message.search_results
+                      .filter(result => result.type === 'youtube')
+                      .map((result, index) => {
+                        const videoId = new URL(result.source).searchParams.get('v');
+                        return (
+                          <a
+                            key={index}
+                            href={result.source}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`group p-2 rounded-lg border transition-all duration-200 ${
+                              darkMode
+                                ? 'bg-gray-800 border-gray-700 hover:border-red-500'
+                                : 'bg-white border-gray-100 hover:border-red-300'
+                            }`}
+                          >
+                            <div className="aspect-video mb-2 rounded-lg overflow-hidden bg-black/10">
+                              <img 
+                                src={`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+                                alt={result.title}
+                                className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 
+                                    `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                                }}
+                              />
+                            </div>
+                            <div className={`text-sm font-medium mb-1 line-clamp-1 ${
+                              darkMode ? 'text-gray-100' : 'text-gray-900'
+                            }`}>
+                              {result.title}
+                            </div>
+                            <div className={`text-xs flex items-center gap-1 ${
+                              darkMode ? 'text-red-400' : 'text-red-600'
+                            }`}>
+                              <Youtube className="w-3 h-3" />
+                              <span>Watch</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </div>
+                          </a>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Sources Last */}
               {message.sources && message.sources.length > 0 && (
                 <div>
                   <h3 className={`text-sm font-semibold mb-2 ${
