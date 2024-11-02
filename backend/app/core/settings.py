@@ -13,13 +13,23 @@ class BackendBaseSettings(BaseSettings):
     DESCRIPTION: str | None = None
     DEBUG: bool = False
 
-    SERVER_HOST: str = os.getenv("BACKEND_SERVER_HOST", "localhost")  # type: ignore
-    SERVER_PORT: int = int(os.getenv("BACKEND_SERVER_PORT", 8000))  # type: ignore
-    SERVER_WORKERS: int = int(os.getenv("BACKEND_SERVER_WORKERS", 1))  # type: ignore
+    # Get environment from env variable, default to 'development'
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    
+    # Only show docs in development
+    @property
+    def DOCS_URL(self) -> str | None:
+        return "/docs" if self.ENVIRONMENT == "development" else None
+        
+    @property
+    def REDOC_URL(self) -> str | None:
+        return "/redoc" if self.ENVIRONMENT == "development" else None
+        
+    @property
+    def OPENAPI_URL(self) -> str | None:
+        return "/openapi.json" if self.ENVIRONMENT == "development" else None
+
     API_PREFIX: str = "/api"
-    DOCS_URL: str = "/docs"
-    OPENAPI_URL: str = "/openapi.json"
-    REDOC_URL: str = "/redoc"
     OPENAPI_PREFIX: str = ""
 
     class Config:
