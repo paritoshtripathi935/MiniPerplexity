@@ -125,6 +125,7 @@ const handleSearch = async (query: string) => {
   }
 };
 ```
+
 ## Technical Challenges & Solutions
 
 ### 1. Search Result Processing
