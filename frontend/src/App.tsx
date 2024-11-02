@@ -72,7 +72,7 @@ function App() {
     setError(null);
   };
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = async (query: string, customUrl?: string) => {
     resetSearch();
 
     const userMessage: Message = {
@@ -101,11 +101,12 @@ function App() {
         .filter(msg => msg.type === 'user')
         .map(msg => msg.content);
 
-      // First get search results with previous queries context
+      // Pass the customUrl to performSearch
       const searchResults = await performSearch(
         query,
         sessionId,
         previousQueries,
+        customUrl,
         (url: string) => {
           setMessages(prev => prev.map(msg => 
             msg.id === responseMessage.id 

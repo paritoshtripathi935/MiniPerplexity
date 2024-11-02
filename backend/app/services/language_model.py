@@ -76,18 +76,15 @@ class CloudflareChat:
         return {"Authorization": f"Bearer {self.api_key}"}
 
     def _format_context(self, search_results: List[Dict]) -> str:
-        """Format search results into a context string.
-        
-        Args:
-            search_results: List of search result dictionaries
-            
-        Returns:
-            Formatted context string
-        """
-        context_parts = ["This is search results from search engine:"]
+        """Format search results into a context string."""
+        context_parts = []
         
         for result in search_results:
-            if result.get('search_content'):
+            if result.get('source') == 'custom_url':
+                context_parts.append(
+                    f"Content from provided URL ({result['url']}):\n{result['search_content']}"
+                )
+            else:
                 context_parts.append(result['search_content'])
         
         return "\n\n".join(context_parts)

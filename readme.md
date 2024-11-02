@@ -21,6 +21,7 @@ Perfect for developers, researchers, and anyone seeking intelligent, sourced con
 
 - **AI-Powered Intelligence**: Harness Cloudflare's advanced AI models for human-like conversations
 - **Live Web Search**: Access real-time information through Google and Bing APIs
+- **Custom URL Analysis**: Extract and analyze content from specific webpages
 - **Secure Access**: Enterprise-grade authentication powered by Clerk
 - **Stunning UI/UX**: 
   - Dark/Light mode support
@@ -100,7 +101,6 @@ npm run dev
 Visit `http://localhost:5173` to see your application running.
 
 ## 🌟 Advanced Features
-
 ### Language Model Support
 - Powered by Meta's Llama 3.1 family
 - Currently using LLAMA_3_1_70B_INSTRUCT for optimal performance
@@ -121,6 +121,40 @@ def search_api():
 - Efficient state management
 - Real-time UI updates
 - Persistent conversation history
+
+### Custom URL Analysis
+Analyze specific web content by providing custom URLs:
+
+#### How It Works
+1. Click the link icon (🔗) in the search bar
+2. Paste your URL in the additional input field
+3. Enter your query about the content
+4. Get AI-powered insights specifically about that webpage
+
+#### Example Usage
+
+# Analyzing Documentation
+URL: https://reactjs.org/docs/hooks-intro.html
+Query: "Summarize the key concepts of React Hooks from this page"
+
+# Research Papers
+URL: https://arxiv.org/abs/2303.08774
+Query: "What are the main findings of this paper?"
+
+# News Articles
+URL: https://example.com/tech-news
+Query: "What are the key points discussed in this article?"
+
+#### Features
+- **Smart Content Extraction**: Intelligently parses webpage content
+- **Source Attribution**: Clear reference to the analyzed URL
+- **Rate Limited**: Protected against abuse with smart rate limiting
+- **Error Handling**: Graceful handling of invalid URLs or inaccessible content
+- **Context Awareness**: Maintains conversation context with the extracted content
+
+#### Technical Details
+- Content extraction using BeautifulSoup4
+- Config
 
 ## 🚀 Deployment
 

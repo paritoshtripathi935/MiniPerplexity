@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Link } from 'lucide-react';
 
 interface SearchBarProps {
-  onSearch: (query: string) => void;
+  onSearch: (query: string, customUrl?: string) => void;
   loading: boolean;
 }
 
@@ -31,8 +31,10 @@ const EXAMPLE_QUERIES = [
  */
 export function SearchBar({ onSearch, loading }: SearchBarProps) {
   const [query, setQuery] = useState('');
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [customUrl, setCustomUrl] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
   const [currentPlaceholder, setCurrentPlaceholder] = useState('');
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Handle typing animation for placeholder
@@ -72,35 +74,66 @@ export function SearchBar({ onSearch, loading }: SearchBarProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim() && !loading) {
-      onSearch(query.trim());
+      const validUrl = customUrl.trim() ? isValidUrl(customUrl.trim()) : undefined;
+      onSearch(query.trim(), validUrl ? customUrl.trim() : undefined);
       setQuery('');
+      setCustomUrl('');
+    }
+  };
+
+  // Add URL validation helper
+  const isValidUrl = (url: string): boolean => {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={currentPlaceholder || "Ask anything..."}
-        className="w-full p-4 pr-12 rounded-lg border bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-gray-500"
-        disabled={loading}
-      />
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-        {loading ? (
-          <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" />
-        ) : (
+    <form onSubmit={handleSubmit} className="relative space-y-2">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={currentPlaceholder || "Ask anything..."}
+          className="w-full p-4 pr-24 rounded-lg border bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+          disabled={loading}
+        />
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
           <button
-            type="submit"
-            disabled={loading || !query.trim()}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 transition-all"
+            type="button"
+            onClick={() => setShowUrlInput(!showUrlInput)}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
           >
-            <Send className="w-5 h-5" />
+            <Link className="w-5 h-5" />
           </button>
-        )}
+          {loading ? (
+            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 transition-all"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          )}
+        </div>
       </div>
+      
+      {showUrlInput && (
+        <input
+          type="url"
+          value={customUrl}
+          onChange={(e) => setCustomUrl(e.target.value)}
+          placeholder="Enter custom URL (optional)"
+          className="w-full p-3 rounded-lg border bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+        />
+      )}
     </form>
   );
 }

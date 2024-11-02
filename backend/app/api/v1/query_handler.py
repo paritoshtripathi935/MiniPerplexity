@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
 from app.models.search_model import SearchResult
-from app.services import perform_search, CloudflareChat
+from app.services import perform_search, CloudflareChat, fetch_content_from_custom_url
 from app.utils.citation_tracker import track_citations
 from app.constants.constants import CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID
 from typing import Dict, List, Optional
@@ -67,48 +67,38 @@ def get_or_create_session(session_id: str) -> SessionData:
         update_session_timestamp(session_id)
     return chat_sessions[session_id]
 
-@router.post("/search/{session_id}", response_model=List[SearchResult])
-async def get_search_results(session_id: str, search_request: SearchRequest) -> List[SearchResult]:
-    """Perform a search for the given query and return the results.
-    
-    Args:
-        session_id: Unique session identifier
-        search_request: Search request containing the query
-        
-    Returns:
-        List of search results
-        
-    Raises:
-        HTTPException: If search fails
+@router.post("/search/{session_id}")
+async def search(
+    session_id: str, 
+    search_request: SearchRequest,
+    custom_url: Optional[str] = None,
+):
+    """
+    Process search request, using either custom URL or search APIs.
     """
     try:
         cleanup_expired_sessions()
-        session = get_or_create_session(session_id)
         
-        session.queries.append(search_request.query)
+        # store query in session
+        if session_id not in chat_sessions:
+            chat_sessions[session_id] = SessionData.create_new()
+        chat_sessions[session_id].queries.append(search_request.query)
         
-        # Get last N queries for context
-        previous_queries = session.queries[-MAX_PREVIOUS_QUERIES:]
-        combined_query = " ".join([search_request.query] + previous_queries[:-1])
+        # If custom URL is provided and not empty
+        if custom_url and custom_url.strip():
+            try:
+                custom_result = fetch_content_from_custom_url(custom_url.strip())
+                return [custom_result]
+            except Exception as e:
+                # logger.error(f"Error processing custom URL: {e}")
+                raise HTTPException(status_code=400, detail=str(e))
         
-        search_results = perform_search(combined_query)
-        
-        # Convert SearchResult objects to list of dictionaries
-        return [
-            SearchResult(
-                question=result.question,
-                title=result.title,
-                url=result.url,
-                snippet=result.snippet,
-                search_content=result.search_content,
-                source=result.source
-            ) for result in search_results
-        ]
+        # Fallback to regular search if no custom URL
+        return await perform_search(search_request.query)
         
     except Exception as e:
-        logging.error(f"Search error: {str(e)}")
-        logging.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.post("/answer/{session_id}", response_model=QueryResponse)
 async def get_answer(session_id: str, query_request: QueryRequest):

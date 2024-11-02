@@ -7,6 +7,7 @@ const API_HOST = import.meta.env.VITE_API_HOST || 'http://127.0.0.1:8000';
  * @param query The search query to perform
  * @param sessionId The session ID to associate the search with
  * @param previousQueries Previous queries in the session
+ * @param customUrl Custom URL to include in the search
  * @param onProgress Function to call when a search result is found, with the URL as argument
  * @returns A JSON object containing the search results
  * @throws An error if the search fails
@@ -15,9 +16,11 @@ export async function performSearch(
   query: string,
   sessionId: string,
   previousQueries: string[] = [],
+  customUrl?: string,
   onProgress?: (url: string) => void
 ) {
-  const response = await fetch(`${API_HOST}/api/v1/search/${sessionId}`, {
+  const queryParams = new URLSearchParams({ custom_url: customUrl || '' }).toString();
+  const response = await fetch(`${API_HOST}/api/v1/search/${sessionId}?${queryParams}`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -25,7 +28,7 @@ export async function performSearch(
     },
     body: JSON.stringify({ 
       query,
-      previous_queries: previousQueries 
+      previous_queries: previousQueries
     }),
   });
 
@@ -35,7 +38,7 @@ export async function performSearch(
 
   const searchResults = await response.json();
   
-  if (onProgress) {
+  if (onProgress && searchResults) {
     for (const result of searchResults) {
       onProgress(result.url);
       await new Promise(resolve => setTimeout(resolve, 500));

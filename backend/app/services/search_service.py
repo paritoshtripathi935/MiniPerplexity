@@ -220,3 +220,47 @@ def perform_search(query: str) -> List[SearchResult]:
     except Exception as e:
         logger.error(f"Error in perform_search: {str(e)}")
         return []
+
+def fetch_content_from_custom_url(url: str) -> SearchResult:
+    """Fetch and extract content from a custom URL.
+    
+    Args:
+        url: The URL to fetch content from
+    
+    Returns:
+        SearchResult object containing the extracted content
+        
+    Raises:
+        ContentFetchError: If content cannot be fetched or parsed
+    """
+    headers = {"User-Agent": random.choice(USER_AGENTS)}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Extract title
+        title = soup.title.string if soup.title else url
+        
+        # Extract main content
+        paragraphs = [
+            p.get_text() for p in soup.find_all('p')[:MAX_PARAGRAPHS]
+            if p.get_text()
+        ]
+        
+        content = ' '.join(paragraphs)
+        
+        return SearchResult(
+            question="",  # Not needed for custom URL
+            title=title,
+            url=url,
+            snippet=content[:200] + "...",
+            search_content=content[:MAX_CONTENT_LENGTH],
+            source="custom_url"
+        )
+    
+    except Exception as e:
+        logger.error(f"Error extracting content from {url}: {str(e)}")
+        raise ContentFetchError(f"Failed to fetch content from {url}: {str(e)}")
