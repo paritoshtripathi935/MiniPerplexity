@@ -93,7 +93,7 @@ def search_bing(query: str) -> List[SearchResult]:
         raise SearchAPIError("BING_API_KEY environment variable not set")
 
     headers = {"Ocp-Apim-Subscription-Key": subscription_key}
-    params = {"q": query, "count": RESULTS_PER_ENGINE}
+    params = {"q": query, "count": RESULTS_PER_ENGINE, "safeSearch": "Strict"}
     
     try:
         response = requests.get(
@@ -102,6 +102,7 @@ def search_bing(query: str) -> List[SearchResult]:
             params=params,
             timeout=REQUEST_TIMEOUT
         )
+
         response.raise_for_status()
         
         results = []
@@ -150,7 +151,8 @@ def search_google(query: str) -> List[SearchResult]:
         "key": api_key,
         "cx": cx,
         "q": query,
-        "num": RESULTS_PER_ENGINE
+        "num": RESULTS_PER_ENGINE,
+        "safeSearch": "strict"
     }
     
     try:
@@ -206,7 +208,8 @@ def search_youtube(query: str) -> List[SearchResult]:
         "q": query,
         "part": "snippet",
         "type": "video",
-        "maxResults": 3
+        "maxResults": 2,
+        "safeSearch": "strict"
     }
 
     try:

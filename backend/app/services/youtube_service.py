@@ -26,12 +26,14 @@ def search_youtube(query: str) -> List[SearchResult]:
     if not api_key:
         raise YouTubeAPIError("YOUTUBE_API_KEY environment variable not set")
 
+    # add safe search parameter
     params = {
         "key": api_key,
         "q": query,
         "part": "snippet",
         "type": "video",
-        "maxResults": MAX_RESULTS
+        "maxResults": MAX_RESULTS,
+        "safe": "high"
     }
 
     try:
