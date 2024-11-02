@@ -122,6 +122,51 @@ def search_api():
 - Real-time UI updates
 - Persistent conversation history
 
+### Search Results and Media Display
+
+The application displays search results in a structured order:
+
+1. **Web Search Results**
+   - Displayed in a 2-column grid
+   - Shows title and source type
+   - Blue accent colors for web results
+   - Hover effects for better interactivity
+
+2. **YouTube Videos**
+   - Compact 4-column grid layout on large screens, 2-column on mobile
+   - Thumbnail previews with fallback images
+   - Video title with single-line truncation
+   - Red accent colors for YouTube branding
+   - Smooth hover animations
+   - Automatic quality adjustment for thumbnails (maxresdefault → hqdefault)
+
+3. **Citations/Sources**
+   - Displayed as compact chips
+   - Shows truncated URLs
+   - Includes external link indicators
+   - Grouped together at the bottom
+
+### Component Structure
+
+The search results are implemented in two main components:
+- `ChatMessage.tsx`: For in-conversation display
+- `Answer.tsx`: For standalone answer display
+
+Both components maintain consistent styling and behavior while adapting to their respective contexts.
+
+### Styling Guidelines
+
+- Dark mode support throughout all result types
+- Consistent spacing with `space-y-4` between sections
+- Responsive grid layouts
+- Accessible color contrasts
+- Interactive hover states
+- Truncation for long content
+- Consistent icon usage:
+  - 🔍 Search icon for web results
+  - 📺 YouTube icon for video results
+  - 🔗 External link icon for sources
+
 ### Custom URL Analysis
 Analyze specific web content by providing custom URLs:
 
