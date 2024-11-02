@@ -1,257 +1,180 @@
-# Mini Perplexity AI Chat Assistant
+# 🤖 Mini Perplexity - AI-Powered Chat Assistant with Real-Time Search
 
-Visit [Mini Perplexity](https://mini-perplexity.netlify.app/) to try the project!
+![Mini Perplexity Demo](https://mini-perplexity.netlify.app/demo.gif)
+
+Experience intelligent conversations powered by AI at [Mini Perplexity](https://mini-perplexity.netlify.app/)
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/48d8733e-bef8-4967-a416-73c53bdb1ecf/deploy-status)](https://app.netlify.com/sites/mini-perplexity/deploys)
 
-## Overview
+## 🚀 Why Mini Perplexity?
 
-Mini Perplexity is an AI-powered chat assistant that combines real-time web search capabilities with natural language processing. Built with modern web technologies, it offers an intuitive interface for users to ask questions and receive comprehensive, sourced answers.
+Mini Perplexity revolutionizes the way you interact with AI chat assistants by combining:
+- Real-time web search capabilities
+- State-of-the-art language models
+- Secure user authentication
+- Beautiful, responsive interface
+- Transparent source attribution
 
-### Key Features
+Perfect for developers, researchers, and anyone seeking intelligent, sourced conversations.
 
-- **AI-Powered Responses**: Leverages Cloudflare's AI models for intelligent answer generation
-- **Real-time Web Search**: Integrates Google and Bing search APIs for up-to-date information
-- **User Authentication**: Secure access with Clerk authentication
-- **Dark Mode Support**: Customizable interface for better usability
-- **Responsive Design**: Fully adaptive layout across devices
-- **Source Attribution**: Transparent citation of information sources
-- **Interactive UI**: Dynamic typing animations and loading states
-- **Session Management**: Maintains conversation context for better responses
-- **Rate Limiting**: Custom rate limiting implementation with token bucket algorithm
+### ✨ Key Features
 
-## Technology Stack
+- **AI-Powered Intelligence**: Harness Cloudflare's advanced AI models for human-like conversations
+- **Live Web Search**: Access real-time information through Google and Bing APIs
+- **Secure Access**: Enterprise-grade authentication powered by Clerk
+- **Stunning UI/UX**: 
+  - Dark/Light mode support
+  - Responsive design across all devices
+  - Dynamic typing animations
+  - Interactive message history
+- **Smart Context Management**: Maintains conversation flow for natural interactions
+- **Enterprise-Ready**: Built-in rate limiting and session management
 
-### Frontend
-- React 18 with TypeScript
-- Tailwind CSS for styling
-- Clerk for authentication
-- Lucide React for icons
-- React Markdown for content rendering
+## 🛠️ Technology Stack
 
-### Backend
-- FastAPI framework
-- Cloudflare AI integration
-- Pydantic for data validation
-- Multiple search API integrations
-- Custom rate limiting implementation
-- Token bucket algorithm for API calls
-
-## Installation
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/yourusername/mini-perplexity.git
-   cd mini-perplexity
-   ```
-
-2. Set up the frontend:
-
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-3. Set up the backend:
-
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-4. Configure environment variables:
-
-   Frontend `.env`:
-
-   ```plaintext
-   VITE_API_HOST=http://localhost:8000
-   VITE_CLERK_PUBLISHABLE_KEY=your_clerk_key
-   ```
-
-   Backend `.env`:
-
-   ```plaintext
-   CLOUDFLARE_API_KEY=your_cloudflare_key
-   CLOUDFLARE_ACCOUNT_ID=your_account_id
-   GOOGLE_API_KEY=your_google_key
-   GOOGLE_SEARCH_CX=your_search_cx
-   BING_API_KEY=your_bing_key
-   ```
-
-## Running the Application
-
-1. Start the backend server:
-
-   ```bash
-   cd backend
-   uvicorn app.main:app --reload
-   ```
-
-2. Start the frontend development server:
-
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-3. Access the application at `http://localhost:5173`
-
-## Deployment
-
-### Frontend Deployment (Netlify)
-
-1. Connect your repository to Netlify
-2. Configure build settings:
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-3. Add environment variables in Netlify dashboard
-
-### Backend Deployment (Render)
-
-1. Connect your repository to Render
-2. Configure the service:
-   - Type: Web Service
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-
-## Architecture and Design Decisions
-
-### Frontend Architecture
-- Component-based structure for maintainability
-- Custom hooks for state management
-- Responsive design with Tailwind CSS
-- Progressive loading states for better UX
-
-### Backend Architecture
-- RESTful API design with FastAPI
-- Parallel search execution for faster results
-- Session-based context management
-- Error handling and validation with Pydantic
-- Token bucket rate limiting for API stability
-- Efficient request throttling
-
-## Maintaining LLM Context
-
-### Backend Implementation
-The backend maintains conversation context through:
-- Unique session IDs for each user interaction
-- In-memory conversation history storage
-- Context-aware prompt engineering
-- Efficient state management with FastAPI
-
-### Frontend Implementation
-The frontend manages context through:
-- React state management for conversation flow
-- Real-time UI updates with loading states
-- Efficient message rendering and history display
-- Session persistence across page reloads
-
-## Challenges and Solutions
-
-1. **Search Result Integration**
-   - Challenge: Combining multiple search APIs
-   - Solution: Implemented parallel processing with ThreadPoolExecutor
-
-2. **Context Management**
-   - Challenge: Maintaining conversation context
-   - Solution: Session-based storage with unique IDs
-
-3. **Response Generation**
-   - Challenge: Coherent AI responses with citations
-   - Solution: Custom prompt engineering with source context
-
-## Future Improvements
-
-1. **Performance Optimization**
-   - Implement caching for frequent queries
-   - Add response streaming capabilities
-
-2. **Feature Enhancements**
-   - Multi-language support
-   - Voice input/output
-   - Custom knowledge base integration
-
-3. **Infrastructure**
-   - Add Redis for session management
-   - Implement rate limiting
-   - Add comprehensive monitoring
-
-## Language Model Support
-
-### Current Models
-
-CloudflareChat currently supports the large language models from Meta's Llama 3.1 family and other models from Meta, Google, Anthropic, and OpenAI. Some examples include:
-
-- `LLAMA_2_7B_CHAT_FP16`
-- `LLAMA_2_7B_CHAT_INT8`
-- `LLAMA_3_8B_INSTRUCT_AWQ`
-- `LLAMA_3_8B_INSTRUCT`
-- `LLAMA_3_1_70B_INSTRUCT`
-- `LLAMA_3_1_8B_INSTRUCT_AWQ`
-- `LLAMA_3_1_8B_INSTRUCT_FAST`
-- `LLAMA_3_1_8B_INSTRUCT_FP8`
-- `LLAMA_3_2_11B_VISION_INSTRUCT`
-
-Current Model in Production: `LLAMA_3_1_70B_INSTRUCT` because it is the most powerful and has the best performance.
-
-### Usage
-
-You can specify the model when initializing the CloudflareChat instance:
-
-```python
-from backend.app.services.language_model import CloudflareChat, CloudflareModel
-
-chat = CloudflareChat(
-    api_key="your-api-key",
-    account_id="your-account-id",
-    model=CloudflareModel.LLAMA_3_70B_INSTRUCT
-)
+### Modern Frontend
+```
+- React 18 + TypeScript
+- Tailwind CSS
+- Clerk Authentication
+- Lucide React Icons
+- React Markdown
 ```
 
-### Future Model Support
+### Powerful Backend
+```
+- FastAPI
+- Cloudflare AI
+- Pydantic
+- Multiple Search APIs
+- Custom Rate Limiting
+```
 
-The system is designed with multi-model support in mind. Future updates will include:
+## 📦 Quick Start Guide
 
-- Support for additional Cloudflare AI models as they become available
-- Integration with other LLM providers (e.g., OpenAI, Anthropic)
-- Custom model configuration options
-- Model fallback and load balancing capabilities
-- Performance metrics and cost optimization features
+### 1. Clone & Setup
 
-To maintain flexibility for future expansion, the system uses an enum-based model selection system that can be easily extended to support new models and providers.
+```bash
+# Clone repository
+git clone https://github.com/yourusername/mini-perplexity.git
+cd mini-perplexity
 
-## Rate Limiting Implementation
+# Frontend setup
+cd frontend
+npm install
 
-The system implements a custom rate limiter using the token bucket algorithm:
+# Backend setup
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-- Per-function rate limiting with configurable thresholds
-- Automatic cleanup of expired tokens
-- Graceful request throttling with wait times
-- Debug logging for rate limit events
-- Thread-safe implementation
-- Configurable calls per minute and period
+### 2. Environment Configuration
 
-Example configuration:
+```plaintext
+# Frontend (.env)
+VITE_API_HOST=http://localhost:8000
+VITE_CLERK_PUBLISHABLE_KEY=your_clerk_key
 
+# Backend (.env)
+CLOUDFLARE_API_KEY=your_cloudflare_key
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+GOOGLE_API_KEY=your_google_key
+GOOGLE_SEARCH_CX=your_search_cx
+BING_API_KEY=your_bing_key
+```
+
+### 3. Launch Application
+
+```bash
+# Start backend
+cd backend
+uvicorn app.main:app --reload
+
+# Start frontend
+cd frontend
+npm run dev
+```
+
+Visit `http://localhost:5173` to see your application running.
+
+## 🌟 Advanced Features
+
+### Language Model Support
+- Powered by Meta's Llama 3.1 family
+- Currently using LLAMA_3_1_70B_INSTRUCT for optimal performance
+- Supports multiple models including:
+  - LLAMA_3_8B_INSTRUCT
+  - LLAMA_3_1_70B_INSTRUCT
+  - LLAMA_3_2_11B_VISION_INSTRUCT
+
+### Intelligent Rate Limiting
 ```python
 @rate_limit(calls=30, period=60)
 def search_api():
-    # API call implementation
+    # Smart API call management
 ```
 
-## Contributing
+### Context Management
+- Session-based conversation tracking
+- Efficient state management
+- Real-time UI updates
+- Persistent conversation history
 
-Contributions are welcome! Please read our contributing guidelines and submit pull requests to our repository.
+## 🚀 Deployment
 
-## License
+### Netlify (Frontend)
+1. Connect GitHub repository
+2. Configure build:
+   - Command: `npm run build`
+   - Directory: `dist`
+3. Set environment variables
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Render (Backend)
+1. Link repository
+2. Configure service:
+   - Type: Web Service
+   - Build: `pip install -r requirements.txt`
+   - Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-## Acknowledgments
+## 🔮 Future Roadmap
 
-- Cloudflare for AI model access
+### Coming Soon
+1. **Performance Upgrades**
+   - Response streaming
+   - Query caching
+   - Redis integration
+
+2. **New Features**
+   - Multi-language support
+   - Voice interactions
+   - Custom knowledge bases
+
+3. **Infrastructure**
+   - Enhanced monitoring
+   - Distributed rate limiting
+   - Load balancing
+
+## 🤝 Contributing
+
+We welcome contributions! Check our [Contributing Guidelines](CONTRIBUTING.md) for details on:
+- Code style
+- Pull request process
+- Development workflow
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) for details
+
+## 🙏 Acknowledgments
+
+- Cloudflare AI team
 - Search API providers
-- Open source community for tools and libraries
+- Open source community
+
+---
+
+Built with ❤️ by [Your Name/Team]
+
+Tags: #AI #ChatAssistant #WebSearch #React #FastAPI #CloudflareAI #OpenSource
