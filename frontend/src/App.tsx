@@ -88,21 +88,31 @@ function App() {
       
       setMessages(prev => [...prev, responseMessage]);
 
-      // First get search results
-      const searchResults = await performSearch(query, (url: string, status: string) => {
-        setMessages(prev => prev.map(msg => 
-          msg.id === responseMessage.id 
-            ? {
-                ...msg,
-                content: msg.content + `\n🔍 Searching: ${url}\n`,
-                animation: 'animate-pulse'
-              }
-            : msg
-        ));
-      });
+      // Get previous queries from messages
+      const previousQueries = messages
+        .filter(msg => msg.type === 'user')
+        .map(msg => msg.content);
+
+      // First get search results with previous queries context
+      const searchResults = await performSearch(
+        query,
+        sessionId,
+        previousQueries,
+        (url: string) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === responseMessage.id 
+              ? {
+                  ...msg,
+                  content: msg.content + `\n🔍 Searching: ${url}\n`,
+                  animation: 'animate-pulse'
+                }
+              : msg
+          ));
+        }
+      );
 
       // Then get answer using search results
-      const answerResponse = await getAnswer(query, sessionId, searchResults);
+      const answerResponse = await getAnswer(query, sessionId, searchResults, previousQueries);
 
       // Update final message
       if (answerResponse && answerResponse.answer && Array.isArray(answerResponse.citations)) {
