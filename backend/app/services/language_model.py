@@ -5,12 +5,18 @@ from pydantic import Field
 
 
 class CloudflareModel(Enum):
-    LLAMA_3_8B_INSTRUCT = "@cf/meta/llama-3.1-70b-instruct"
+    LLAMA_3_70B_INSTRUCT = "@cf/meta/llama-3.1-70b-instruct"
 
     @classmethod
     def list_models(cls):
         return [model.name for model in cls]
     
+    
+    def list_models(cls):
+        """Returns a list of available models"""
+        return [model.name for model in cls]
+
+
 class CloudflareChat:
     """
     CloudflareChat class to interact with Cloudflare's AI workers.
@@ -34,6 +40,14 @@ class CloudflareChat:
     base_url: str = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
 
     def __init__(self, api_key: Optional[str], account_id: str, model: CloudflareModel = CloudflareModel.LLAMA_3_8B_INSTRUCT):
+        """
+        Initialize the CloudflareChat instance.
+        
+        Args:
+            api_key (str): Cloudflare API key
+            account_id (str): Cloudflare account ID
+            model (CloudflareModel): The model to use for generating answers
+        """
         self.api_key = api_key
         self.account_id = account_id
 
@@ -54,6 +68,7 @@ class CloudflareChat:
         return f"{self.base_url.format(account_id=self.account_id)}{self.model.value}"
 
     def _get_headers(self) -> dict:
+        """Returns the headers with the specified API key."""
         return {"Authorization": f"Bearer {self.api_key}"}
 
     def _format_context(self, search_results: dict) -> str:
@@ -82,13 +97,17 @@ class CloudflareChat:
         except requests.exceptions.RequestException as e:
             return {"error": str(e)}
 
-    def invoke(self, search_results: dict, chat_history: List[dict] = None) -> dict:
+    def invoke(self, search_results: dict, chat_history: List[dict] = None, query: str = None) -> dict:
         """
         Invoke the Cloudflare API with context and chat history.
         
         Args:
             search_results (dict): Search results to provide context
             chat_history (List[dict]): Previous conversation messages
+            query (str): The user's query
+        
+        Returns:
+            dict: The response from the Cloudflare API
         """
         if not search_results:
             raise ValueError("No search results provided")
@@ -109,12 +128,12 @@ class CloudflareChat:
         # Add current question
         messages.append({
             "role": "user",
-            "content": search_results[0]['question']
+            "content": query
         })
 
         return self._call_for_prompt(messages)
 
-    def generate_answer(self, search_results: dict, chat_history: List[dict] = None) -> str:
+    def generate_answer(self, search_results: List[dict], chat_history: List[dict] = None, query: str = None) -> str:
         """
         Generates an answer using context and chat history.
 
@@ -125,7 +144,7 @@ class CloudflareChat:
         Returns:
             str: The generated answer
         """
-        response = self.invoke(search_results, chat_history)
+        response = self.invoke(search_results, chat_history, query)
         if "error" in response:
             raise ValueError(response["error"])
         return response["result"]["response"]

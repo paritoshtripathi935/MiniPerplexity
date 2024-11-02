@@ -1,144 +1,233 @@
-# Mini Perplexity
+# Mini Perplexity AI Chat Assistant
 
-Visit [Mini Perplexity](https://mini-perplexity.netlify.app/) to checkout the project for yourself!
-
-
-Mini Perplexity is an AI-powered chat assistant built with React, TypeScript, and Tailwind CSS. It leverages Cloudflare's AI models to provide intelligent responses to user queries, along with a dynamic and visually appealing user interface.
-
-## Features
-
-- **AI-Powered Responses**: Utilizes Cloudflare's AI models to generate answers based on user queries.
-- **Dynamic Background Animations**: Includes animated text and particles to enhance the user experience.
-- **Dark Mode Support**: Offers a dark mode for better usability in low-light environments.
-- **Responsive Design**: Fully responsive layout that works on various screen sizes.
-- **User Authentication**: Integrated with Clerk for user authentication and management.
-
-## Technologies Used
-
-- **Frontend**: 
-  - React
-  - TypeScript
-  - Tailwind CSS
-  - Lucide React (for icons)
-- **Backend**: 
-  - FastAPI
-  - Pydantic
-  - Cloudflare API
-- **Deployment**: 
-  - Vite for development and build
-  - Netlify for hosting
-
-## Deployment Status
+Visit [Mini Perplexity](https://mini-perplexity.netlify.app/) to try the project!
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/48d8733e-bef8-4967-a416-73c53bdb1ecf/deploy-status)](https://app.netlify.com/sites/mini-perplexity/deploys)
 
-## Metrics
+## Overview
 
-- **Build Time**: Approximately 27 seconds
-- **Page Load Time**: Under 1 second on average
-- **First Contentful Paint (FCP)**: ~300ms
-- **Time to Interactive (TTI)**: ~500ms
+Mini Perplexity is an AI-powered chat assistant that combines real-time web search capabilities with natural language processing. Built with modern web technologies, it offers an intuitive interface for users to ask questions and receive comprehensive, sourced answers.
 
-## Maintaining LLM Context
+### Key Features
 
-### Backend
+- **AI-Powered Responses**: Leverages Cloudflare's AI models for intelligent answer generation
+- **Real-time Web Search**: Integrates Google and Bing search APIs for up-to-date information
+- **User Authentication**: Secure access with Clerk authentication
+- **Dark Mode Support**: Customizable interface for better usability
+- **Responsive Design**: Fully adaptive layout across devices
+- **Source Attribution**: Transparent citation of information sources
+- **Interactive UI**: Dynamic typing animations and loading states
+- **Session Management**: Maintains conversation context for better responses
 
-In the backend, we maintain the context for the Large Language Model (LLM) by utilizing session IDs that are generated for each user interaction. When a user sends a query, the backend associates that query with the user's session ID. This allows the backend to keep track of the conversation history and context, which is essential for generating coherent and contextually relevant responses.
-
-1. **Session Management**: Each user session is uniquely identified using a UUID, which is generated when the user starts interacting with the assistant. This session ID is passed along with each request to ensure that the context is preserved.
-
-2. **Conversation History**: The backend stores the conversation history in memory or a temporary database, allowing it to reference previous messages when generating responses. This helps the LLM understand the context of the conversation and provide more accurate answers.
-
-3. **API Integration**: When a query is received, the backend fetches the relevant context and sends it to the Cloudflare AI model along with the user's query. The model then generates a response based on the provided context.
+## Technology Stack
 
 ### Frontend
+- React 18 with TypeScript
+- Tailwind CSS for styling
+- Clerk for authentication
+- Lucide React for icons
+- React Markdown for content rendering
 
-On the frontend, we maintain the context by managing the state of the conversation within the React application. 
-
-1. **State Management**: The application uses React's state management to keep track of messages exchanged between the user and the assistant. Each message is stored in an array, which allows the application to render the conversation dynamically.
-
-2. **User Interface**: The frontend displays the conversation history, allowing users to see previous messages. This visual representation helps users understand the context of the current interaction.
-
-3. **Handling Responses**: When the user submits a query, the frontend sends the current message along with the session ID to the backend. Once the response is received, it updates the state to include the new message, ensuring that the conversation flow is maintained.
+### Backend
+- FastAPI framework
+- Cloudflare AI integration
+- Pydantic for data validation
+- Multiple search API integrations
 
 ## Installation
-
-To get started with the project, follow these steps:
 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/paritoshtripathi935/mini-perplexity.git
+   git clone https://github.com/yourusername/mini-perplexity.git
    cd mini-perplexity
    ```
 
-2. Install the dependencies:
-
-   For the frontend:
+2. Set up the frontend:
 
    ```bash
    cd frontend
    npm install
    ```
 
-   For the backend:
+3. Set up the backend:
 
    ```bash
    cd backend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
-3. Set up environment variables:
+4. Configure environment variables:
 
-   Create a `.env` file in the backend directory and add your Cloudflare API credentials:
+   Frontend `.env`:
 
+   ```plaintext
+   VITE_API_HOST=http://localhost:8000
+   VITE_CLERK_PUBLISHABLE_KEY=your_clerk_key
    ```
-   CLOUDFLARE_API_KEY=your_api_key
+
+   Backend `.env`:
+
+   ```plaintext
+   CLOUDFLARE_API_KEY=your_cloudflare_key
    CLOUDFLARE_ACCOUNT_ID=your_account_id
+   GOOGLE_API_KEY=your_google_key
+   GOOGLE_SEARCH_CX=your_search_cx
+   BING_API_KEY=your_bing_key
    ```
 
-4. Run the backend server:
+## Running the Application
+
+1. Start the backend server:
 
    ```bash
    cd backend
-   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   uvicorn app.main:app --reload
    ```
 
-5. Run the frontend development server:
+2. Start the frontend development server:
 
    ```bash
    cd frontend
    npm run dev
    ```
 
-6. Open your browser and navigate to `http://localhost:3000` to see the application in action.
+3. Access the application at `http://localhost:5173`
 
-## Usage
+## Deployment
 
-- Enter your query in the search bar and hit enter or click the send button.
-- The assistant will respond with an AI-generated answer.
-- You can toggle dark mode using the button in the header.
+### Frontend Deployment (Netlify)
 
-### Screenshots
+1. Connect your repository to Netlify
+2. Configure build settings:
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+3. Add environment variables in Netlify dashboard
 
-#### 1. Home Screen
-<img src="homepage.png" alt="Home Screen" width="500"/>
+### Backend Deployment (Render)
 
-#### 2. Entering a Query
-<img src="query.png" alt="Entering a Query" width="500"/>
+1. Connect your repository to Render
+2. Configure the service:
+   - Type: Web Service
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-#### 3. AI Response
-<img src="query.png" alt="AI Response" width="500"/>
+## Architecture and Design Decisions
+
+### Frontend Architecture
+- Component-based structure for maintainability
+- Custom hooks for state management
+- Responsive design with Tailwind CSS
+- Progressive loading states for better UX
+
+### Backend Architecture
+- RESTful API design with FastAPI
+- Parallel search execution for faster results
+- Session-based context management
+- Error handling and validation with Pydantic
+
+## Maintaining LLM Context
+
+### Backend Implementation
+The backend maintains conversation context through:
+- Unique session IDs for each user interaction
+- In-memory conversation history storage
+- Context-aware prompt engineering
+- Efficient state management with FastAPI
+
+### Frontend Implementation
+The frontend manages context through:
+- React state management for conversation flow
+- Real-time UI updates with loading states
+- Efficient message rendering and history display
+- Session persistence across page reloads
+
+## Challenges and Solutions
+
+1. **Search Result Integration**
+   - Challenge: Combining multiple search APIs
+   - Solution: Implemented parallel processing with ThreadPoolExecutor
+
+2. **Context Management**
+   - Challenge: Maintaining conversation context
+   - Solution: Session-based storage with unique IDs
+
+3. **Response Generation**
+   - Challenge: Coherent AI responses with citations
+   - Solution: Custom prompt engineering with source context
+
+## Future Improvements
+
+1. **Performance Optimization**
+   - Implement caching for frequent queries
+   - Add response streaming capabilities
+
+2. **Feature Enhancements**
+   - Multi-language support
+   - Voice input/output
+   - Custom knowledge base integration
+
+3. **Infrastructure**
+   - Add Redis for session management
+   - Implement rate limiting
+   - Add comprehensive monitoring
+
+## Language Model Support
+
+### Current Models
+
+CloudflareChat currently supports the large language models from Meta's Llama 3.1 family and other models from Meta, Google, Anthropic, and OpenAI. Some examples include:
+
+- `LLAMA_2_7B_CHAT_FP16`
+- `LLAMA_2_7B_CHAT_INT8`
+- `LLAMA_3_8B_INSTRUCT_AWQ`
+- `LLAMA_3_8B_INSTRUCT`
+- `LLAMA_3_1_70B_INSTRUCT`
+- `LLAMA_3_1_8B_INSTRUCT_AWQ`
+- `LLAMA_3_1_8B_INSTRUCT_FAST`
+- `LLAMA_3_1_8B_INSTRUCT_FP8`
+- `LLAMA_3_2_11B_VISION_INSTRUCT`
+
+Current Model in Production: `LLAMA_3_1_70B_INSTRUCT` because it is the most powerful and has the best performance.
+
+### Usage
+
+You can specify the model when initializing the CloudflareChat instance:
+
+```python
+from backend.app.services.language_model import CloudflareChat, CloudflareModel
+
+chat = CloudflareChat(
+    api_key="your-api-key",
+    account_id="your-account-id",
+    model=CloudflareModel.LLAMA_3_70B_INSTRUCT
+)
+```
+
+### Future Model Support
+
+The system is designed with multi-model support in mind. Future updates will include:
+
+- Support for additional Cloudflare AI models as they become available
+- Integration with other LLM providers (e.g., OpenAI, Anthropic)
+- Custom model configuration options
+- Model fallback and load balancing capabilities
+- Performance metrics and cost optimization features
+
+To maintain flexibility for future expansion, the system uses an enum-based model selection system that can be easily extended to support new models and providers.
 
 ## Contributing
 
-Contributions are welcome! If you have suggestions for improvements or new features, feel free to open an issue or submit a pull request.
+Contributions are welcome! Please read our contributing guidelines and submit pull requests to our repository.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
-- Thanks to Cloudflare for providing the AI models.
-- Special thanks to the open-source community for the libraries and tools used in this project.
+- Cloudflare for AI model access
+- Search API providers
+- Open source community for tools and libraries

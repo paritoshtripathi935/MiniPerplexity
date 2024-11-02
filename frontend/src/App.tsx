@@ -3,7 +3,7 @@ import { Brain } from 'lucide-react';
 import { SearchBar } from './components/SearchBar';
 import { ChatMessage } from './components/ChatMessage';
 import { Message } from './types';
-import { fetchAnswer } from './services/api';
+import { fetchAnswer, performSearch, getAnswer } from './services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { SignIn, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
@@ -76,50 +76,60 @@ function App() {
     
     setMessages(prev => [...prev, userMessage]);
 
-    // Set up loading state sequence
-    const loadingStates = [
-      { message: 'Performing Google Search...', delay: 0 },
-      { message: 'Performing Bing Search...', delay: 1000 },
-      { message: 'Generating AI Results...', delay: 2000 },
-      { message: 'Thinking...', delay: 3000 }
-    ];
-
-    // Create and store loading state timers
-    loadingStates.forEach(({ message, delay }) => {
-      const timer = window.setTimeout(() => {
-        setLoadingState(message);
-      }, delay);
-      loadingTimersRef.current.push(timer);
-    });
-
     try {
-      const response = await fetchAnswer(query, sessionId);
+      const responseMessage: Message = {
+        id: uuidv4(),
+        type: 'assistant',
+        content: '🤔 Let me think about that...\n',
+        timestamp: new Date(),
+        search_results: [],
+        isSearching: true
+      };
       
-      // Clear all loading states immediately when response arrives
-      clearLoadingTimers();
+      setMessages(prev => [...prev, responseMessage]);
 
-      if (response && response.answer && Array.isArray(response.citations)) {
-        const assistantMessage: Message = {
-          id: uuidv4(),
-          type: 'assistant',
-          content: response.answer,
-          timestamp: new Date(),
-          sources: response.citations.map((citation: string) => ({
-            title: '',
-            url: citation,
-            type: 'web'
-          })),
-          search_results: response.search_results
-        };
-        
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        throw new Error("Invalid response format");
+      // First get search results
+      const searchResults = await performSearch(query, (url: string, status: string) => {
+        setMessages(prev => prev.map(msg => 
+          msg.id === responseMessage.id 
+            ? {
+                ...msg,
+                content: msg.content + `\n🔍 Searching: ${url}\n`,
+                animation: 'animate-pulse'
+              }
+            : msg
+        ));
+      });
+
+      // Then get answer using search results
+      const answerResponse = await getAnswer(query, sessionId, searchResults);
+
+      // Update final message
+      if (answerResponse && answerResponse.answer && Array.isArray(answerResponse.citations)) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === responseMessage.id 
+            ? {
+                ...msg,
+                content: answerResponse.answer,
+                search_results: searchResults.map((result: { title: any; url: any; source: any; }) => ({
+                  title: result.title,
+                  source: result.url,
+                  type: result.source
+                })),
+                sources: answerResponse.citations.map((citation: string) => ({
+                  title: '',
+                  url: citation,
+                  type: 'web'
+                })),
+                isSearching: false
+              }
+            : msg
+        ));
       }
     } catch (err) {
       console.error(err);
       setError(`Failed to fetch answer: ${err}`);
-      clearLoadingTimers(); // Clear loading states on error
+      clearLoadingTimers();
     }
   };
 
@@ -174,7 +184,7 @@ function App() {
             {showDevInfo ? (
               <DeveloperInfo darkMode={darkMode} />
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-6 overflow-y-auto pb-24" style={{ maxHeight: 'calc(100vh - 180px)' }}>
                 {messages.map((message) => (
                   <ChatMessage
                     key={message.id}
@@ -210,7 +220,7 @@ function App() {
               </div>
             )}
 
-            <footer className={`fixed bottom-0 left-0 right-0 p-4 border-t ${
+            <footer className={`fixed bottom-0 left-0 right-0 p-4 border-t z-10 ${
               darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
             }`}>
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

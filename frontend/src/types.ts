@@ -34,5 +34,6 @@ export interface Message {
     type: string;
     title: string;
   }[];
+  isSearching?: boolean;
 }
 
