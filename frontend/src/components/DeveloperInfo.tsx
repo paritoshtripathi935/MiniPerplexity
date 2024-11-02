@@ -5,6 +5,19 @@ interface DeveloperInfoProps {
   darkMode: boolean;
 }
 
+/**
+ * DeveloperInfo component.
+ *
+ * This component displays detailed information about the developer, Paritosh Tripathi,
+ * including name, title, description, skills, and links to external profiles.
+ * It supports dark and light modes for styling.
+ *
+ * Props:
+ * - darkMode (boolean): Determines whether the component is rendered in dark mode.
+ *
+ * The component uses Tailwind CSS for styling and includes icons from lucide-react
+ * for external profile links, such as GitHub, LinkedIn, Email, and Portfolio.
+ */
 const DeveloperInfo: React.FC<DeveloperInfoProps> = ({ darkMode }) => {
   const developerData = {
     name: "Paritosh Tripathi",

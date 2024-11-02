@@ -14,6 +14,21 @@ const EXAMPLE_QUERIES = [
   "Best practices for React performance optimization",
 ];
 
+/**
+ * SearchBar component.
+ *
+ * This component renders a search bar with a typing animation for the placeholder text.
+ * It allows users to input a query and submit it for searching.
+ *
+ * @param {Object} props - The component props.
+ * @param {Function} props.onSearch - The function to call when a search is submitted.
+ * @param {boolean} props.loading - Indicates if a search is in progress.
+ *
+ * The component includes:
+ * - An input field with a dynamic placeholder that cycles through example queries.
+ * - A submit button which is disabled while loading or when the query is empty.
+ * - A loading spinner that appears when a search is in progress.
+ */
 export function SearchBar({ onSearch, loading }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);

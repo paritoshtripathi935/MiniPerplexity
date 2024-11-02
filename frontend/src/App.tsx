@@ -9,6 +9,14 @@ import { SignIn, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
 import DeveloperInfo from './components/DeveloperInfo';
 
+  /**
+   * Main App component.
+   *
+   * This component renders the main chat interface, SearchBar, and footer.
+   * It also handles the logic for loading and displaying the developer info.
+   *
+   * @returns {JSX.Element} The main app component.
+   */
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);

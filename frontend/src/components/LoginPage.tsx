@@ -13,6 +13,20 @@ const developerData = {
   ]
 };
  
+/**
+ * LoginPage component.
+ *
+ * This component renders the login page, which includes a background with animated
+ * particles, a content container with developer information on the left, and a
+ * Clerk Sign In component on the right.
+ *
+ * The developer information section includes a brain icon, name, title, and links
+ * to external profiles, such as GitHub, LinkedIn, Email, and Portfolio.
+ *
+ * The Sign In component is wrapped in a container with a background blur effect.
+ *
+ * @returns {JSX.Element} The login page component.
+ */
 const LoginPage: React.FC = () => {
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-blue-900 overflow-hidden">

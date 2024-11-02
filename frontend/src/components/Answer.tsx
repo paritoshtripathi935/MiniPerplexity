@@ -8,6 +8,18 @@ interface AnswerProps {
   darkMode: boolean;
 }
 
+/**
+ * Renders an answer with typing animation, copy functionality, and displays search results and sources.
+ *
+ * @param answer - The answer object containing text, sources, and loading state.
+ * @param darkMode - Boolean indicating if dark mode is enabled.
+ *
+ * @remarks
+ * - Displays the answer text with a typing animation, which can be stopped to reveal the full text.
+ * - Includes a button to copy the answer text to the clipboard.
+ * - Displays search results and sources if available.
+ * - Uses Tailwind CSS classes for styling.
+ */
 export function Answer({ answer, darkMode }: AnswerProps) {
   const [displayedText, setDisplayedText] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);

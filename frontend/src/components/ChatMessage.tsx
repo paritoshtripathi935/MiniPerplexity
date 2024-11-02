@@ -9,6 +9,18 @@ interface ChatMessageProps {
   darkMode: boolean;
 }
 
+/**
+ * Renders a chat message component with user or assistant information.
+ *
+ * @param {ChatMessageProps} props - The properties for the chat message.
+ * @param {Message} props.message - The message object containing content and metadata.
+ * @param {boolean} props.darkMode - A flag indicating if dark mode is enabled.
+ *
+ * The component displays a message header with an icon or user image, 
+ * and the message content formatted with markdown. If the message is from 
+ * the assistant and has search results or sources, these are displayed in 
+ * a separate section.
+ */
 export function ChatMessage({ message, darkMode }: ChatMessageProps) {
   const { user } = useUser();
   const isAssistant = message.type === 'assistant';
