@@ -175,6 +175,6 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ---
 
-Built with ❤️ by [Your Name/Team]
+Built with ❤️ by [Paritosh Tripathi]
 
 Tags: #AI #ChatAssistant #WebSearch #React #FastAPI #CloudflareAI #OpenSource
