@@ -36,10 +36,10 @@ class CloudflareChat:
     name: str = "CloudflareChat"
     api_key: Optional[str] = None
     account_id: Optional[str] = None
-    model: CloudflareModel = Field(default=CloudflareModel.LLAMA_3_8B_INSTRUCT)
+    model: CloudflareModel = Field(default=CloudflareModel.LLAMA_3_70B_INSTRUCT)
     base_url: str = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
 
-    def __init__(self, api_key: Optional[str], account_id: str, model: CloudflareModel = CloudflareModel.LLAMA_3_8B_INSTRUCT):
+    def __init__(self, api_key: Optional[str], account_id: str, model: CloudflareModel = CloudflareModel.LLAMA_3_70B_INSTRUCT):
         """
         Initialize the CloudflareChat instance.
         
