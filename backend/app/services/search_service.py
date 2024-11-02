@@ -1,17 +1,11 @@
-import itertools
-from typing import List, Dict
-import requests
-from concurrent.futures import ThreadPoolExecutor
-import os
-from bs4 import BeautifulSoup
-import random
 from app.models.search_model import SearchResult
-
+from bs4 import BeautifulSoup
+import itertools
 import os
 import random
 import requests
-from typing import List, Dict
-from bs4 import BeautifulSoup
+from typing import Dict, List
+from concurrent.futures import ThreadPoolExecutor
 
 def fetch_content_from_url(url: str) -> str:
     """

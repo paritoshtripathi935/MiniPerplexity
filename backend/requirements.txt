@@ -6,3 +6,4 @@ python-decouple
 pydantic-settings
 # Add any other dependencies your project needs
 gunicorn
+bs4
