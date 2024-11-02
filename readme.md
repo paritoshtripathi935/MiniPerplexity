@@ -18,6 +18,7 @@ Mini Perplexity is an AI-powered chat assistant that combines real-time web sear
 - **Source Attribution**: Transparent citation of information sources
 - **Interactive UI**: Dynamic typing animations and loading states
 - **Session Management**: Maintains conversation context for better responses
+- **Rate Limiting**: Custom rate limiting implementation with token bucket algorithm
 
 ## Technology Stack
 
@@ -33,6 +34,8 @@ Mini Perplexity is an AI-powered chat assistant that combines real-time web sear
 - Cloudflare AI integration
 - Pydantic for data validation
 - Multiple search API integrations
+- Custom rate limiting implementation
+- Token bucket algorithm for API calls
 
 ## Installation
 
@@ -127,6 +130,8 @@ Mini Perplexity is an AI-powered chat assistant that combines real-time web sear
 - Parallel search execution for faster results
 - Session-based context management
 - Error handling and validation with Pydantic
+- Token bucket rate limiting for API stability
+- Efficient request throttling
 
 ## Maintaining LLM Context
 
@@ -217,6 +222,25 @@ The system is designed with multi-model support in mind. Future updates will inc
 - Performance metrics and cost optimization features
 
 To maintain flexibility for future expansion, the system uses an enum-based model selection system that can be easily extended to support new models and providers.
+
+## Rate Limiting Implementation
+
+The system implements a custom rate limiter using the token bucket algorithm:
+
+- Per-function rate limiting with configurable thresholds
+- Automatic cleanup of expired tokens
+- Graceful request throttling with wait times
+- Debug logging for rate limit events
+- Thread-safe implementation
+- Configurable calls per minute and period
+
+Example configuration:
+
+```python
+@rate_limit(calls=30, period=60)
+def search_api():
+    # API call implementation
+```
 
 ## Contributing
 

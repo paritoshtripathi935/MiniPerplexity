@@ -194,6 +194,31 @@ Implementation details:
 - Loading state tracking
 - Source attribution system
 
+### 3. Rate Limiting Implementation
+
+**Challenge:** Managing API call frequency to external services while maintaining responsiveness.
+
+**Solution:**
+- Implemented token bucket algorithm for rate limiting
+- Per-function tracking of API calls
+- Configurable thresholds and periods
+- Automatic cleanup of expired tokens
+- Graceful request throttling
+
+Key implementation details:
+- Custom rate limiter decorator
+- Thread-safe token management
+- Debug logging for monitoring
+- Configurable wait times
+- Automatic token cleanup
+
+Benefits:
+- Prevents API quota exhaustion
+- Maintains service stability
+- Provides visibility into API usage
+- Enables fine-grained control
+- Supports multiple API endpoints
+
 ## Security Considerations
 
 ### 1. Authentication Implementation
