@@ -131,17 +131,17 @@ Analyze specific web content by providing custom URLs:
 3. Enter your query about the content
 4. Get AI-powered insights specifically about that webpage
 
-#### Example Usage
+##### Example Usage
 
-# Analyzing Documentation
+###### Analyzing Documentation
 URL: https://reactjs.org/docs/hooks-intro.html
 Query: "Summarize the key concepts of React Hooks from this page"
 
-# Research Papers
+###### Research Papers
 URL: https://arxiv.org/abs/2303.08774
 Query: "What are the main findings of this paper?"
 
-# News Articles
+###### News Articles
 URL: https://example.com/tech-news
 Query: "What are the key points discussed in this article?"
 
