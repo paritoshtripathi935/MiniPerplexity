@@ -1,7 +1,8 @@
 from pydantic import BaseModel
-from typing import List
 
 class SearchResult(BaseModel):
+    """Search result model"""
+    question: str
     title: str
     url: str
     snippet: str

@@ -1,159 +1,222 @@
-from app.models.search_model import SearchResult
+import logging
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 import itertools
 import os
 import random
 import requests
-from typing import Dict, List
 from concurrent.futures import ThreadPoolExecutor
+from app.models.search_model import SearchResult
+from app.utils.rate_limter import rate_limit
 
+# Constants
+BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
+GOOGLE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+MAX_CONTENT_LENGTH = 5000
+MAX_PARAGRAPHS = 5
+RESULTS_PER_ENGINE = 2
+REQUEST_TIMEOUT = 5
+CALLS_PER_MINUTE = 30
+
+# User agent rotation
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+]
+
+# Custom exceptions
+class SearchAPIError(Exception):
+    """Raised when search API returns an error"""
+    pass
+
+class ContentFetchError(Exception):
+    """Raised when content fetching fails"""
+    pass
+
+logger = logging.getLogger(__name__)
+
+@rate_limit(calls=CALLS_PER_MINUTE, period=60)
 def fetch_content_from_url(url: str) -> str:
-    """
-    Fetch and extract main text content from a URL.
-    Retrieves and parses the first two sentences from each paragraph in the page content.
+    """Fetch and extract main text content from a URL.
     
     Args:
-        url (str): The URL to fetch content from.
+        url: The URL to fetch content from
     
     Returns:
-        str: Extracted text content from the URL.
+        Extracted text content from the URL
+        
+    Raises:
+        ContentFetchError: If content cannot be fetched or parsed
     """
-    headers = {
-        "User-Agent": random.choice([
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        ])
-    }
+    headers = {"User-Agent": random.choice(USER_AGENTS)}
 
     try:
-        page_response = requests.get(url, headers=headers, timeout=5)
-        page_response.raise_for_status()
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
         
-        # Parse the page content with BeautifulSoup
-        soup = BeautifulSoup(page_response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Extract main text content (first 2 sentences of each paragraph)
-        search_content = ' '.join(
-            '. '.join(p.get_text().split('. ')[:2]) + '.'
-            for p in soup.find_all('p')[:5] if p.get_text()  # Ensure each <p> has text
+        paragraphs = [
+            p.get_text() for p in soup.find_all('p')[:MAX_PARAGRAPHS]
+            if p.get_text()
+        ]
+        
+        content = ' '.join(
+            '. '.join(p.split('. ')[:2]) + '.'
+            for p in paragraphs
         )
         
-        # Limit the size to avoid excessively large content
-        return search_content[:5000]
+        return content[:MAX_CONTENT_LENGTH]
     
     except Exception as e:
-        print(f"Error extracting content from {url}: {e}")
-        return ""
+        logger.error(f"Error extracting content from {url}: {str(e)}")
+        raise ContentFetchError(f"Failed to fetch content from {url}: {str(e)}")
 
-def search_bing(query: str) -> List[Dict]:
-    """
-    Perform a Bing search for the given query.
+@rate_limit(calls=CALLS_PER_MINUTE, period=60)
+def search_bing(query: str) -> List[SearchResult]:
+    """Perform a Bing search for the given query.
     
     Args:
-        query (str): The search query to perform.
+        query: The search query to perform
     
     Returns:
-        List[Dict]: A list of search results, each containing the title, URL, snippet,
-                    search content, and source of the result.
+        List of SearchResult objects
+        
+    Raises:
+        SearchAPIError: If the Bing API request fails
     """
     subscription_key = os.getenv('BING_API_KEY')
-    endpoint = "https://api.bing.microsoft.com/v7.0/search"
-    
+    if not subscription_key:
+        raise SearchAPIError("BING_API_KEY environment variable not set")
+
     headers = {"Ocp-Apim-Subscription-Key": subscription_key}
-    params = {"q": query, "count": 2}
+    params = {"q": query, "count": RESULTS_PER_ENGINE}
     
     try:
-        response = requests.get(endpoint, headers=headers, params=params)
+        response = requests.get(
+            BING_ENDPOINT,
+            headers=headers,
+            params=params,
+            timeout=REQUEST_TIMEOUT
+        )
         response.raise_for_status()
         
         results = []
         for result in response.json().get("webPages", {}).get("value", []):
-            title = result.get("name", "")
-            url = result.get("url", "")
-            snippet = result.get("snippet", "")
-            
-            results.append({
-                "question": query,
-                "title": title,
-                "url": url,
-                "snippet": snippet,
-                "search_content": fetch_content_from_url(url),
-                "source": "bing"
-            })
+            try:
+                search_content = fetch_content_from_url(result.get("url", ""))
+                search_result = SearchResult(
+                    question=query,
+                    title=result.get("name", ""),
+                    url=result.get("url", ""),
+                    snippet=result.get("snippet", ""),
+                    search_content=search_content,
+                    source="bing"
+                )
+                results.append(search_result)
+            except ContentFetchError as e:
+                logger.warning(f"Skipping result due to content fetch error: {str(e)}")
+                continue
         
         return results
     
     except Exception as e:
-        print(f"Bing search error: {str(e)}")
-        return []
+        logger.error(f"Bing search error: {str(e)}")
+        raise SearchAPIError(f"Bing search failed: {str(e)}")
 
-def search_google(query: str) -> List[Dict]:
-    """
-    Perform a Google search for the given query.
+@rate_limit(calls=CALLS_PER_MINUTE, period=60)
+def search_google(query: str) -> List[SearchResult]:
+    """Perform a Google search for the given query.
     
     Args:
-        query (str): The search query to perform.
+        query: The search query to perform
     
     Returns:
-        List[Dict]: A list of search results, each containing the title, URL, snippet,
-                    search content, and source of the result.
+        List of SearchResult objects
+        
+    Raises:
+        SearchAPIError: If the Google API request fails
     """
     api_key = os.getenv('GOOGLE_API_KEY')
     cx = os.getenv('GOOGLE_SEARCH_CX')
-    endpoint = "https://www.googleapis.com/customsearch/v1"
+    
+    if not api_key or not cx:
+        raise SearchAPIError("Google API credentials not properly configured")
     
     params = {
         "key": api_key,
         "cx": cx,
         "q": query,
-        "num": 2
+        "num": RESULTS_PER_ENGINE
     }
     
     try:
-        response = requests.get(endpoint, params=params)
+        response = requests.get(
+            GOOGLE_ENDPOINT,
+            params=params,
+            timeout=REQUEST_TIMEOUT
+        )
         response.raise_for_status()
-        search_results = response.json().get("items", [])
         
-        results = [{
-            "title": item.get("title", ""),
-            "url": item.get("link", ""),
-            "snippet": item.get("snippet", ""),
-            "question": query,
-            "search_content": fetch_content_from_url(item.get("link", "")),
-            "source": "google",
-        } for item in search_results]
-        
+        results = []
+        for item in response.json().get("items", []):
+            try:
+                search_content = fetch_content_from_url(item.get("link", ""))
+                search_result = SearchResult(
+                    question=query,
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", ""),
+                    search_content=search_content,
+                    source="google"
+                )
+                results.append(search_result)
+            except ContentFetchError as e:
+                logger.warning(f"Skipping result due to content fetch error: {str(e)}")
+                continue
+                
         return results
     
     except Exception as e:
-        print(f"Google search error: {str(e)}")
-        return []
-
+        logger.error(f"Google search error: {str(e)}")
+        raise SearchAPIError(f"Google search failed: {str(e)}")
 
 def perform_search(query: str) -> List[SearchResult]:
-    """
-    Perform searches on both Google and Bing Custom Search APIs.
+    """Perform parallel searches on both Google and Bing APIs.
     
     Args:
-        query (str): The search query to run on both APIs.
+        query: The search query to run
     
     Returns:
-        List[SearchResult]: A list of SearchResult objects containing the combined search results from both APIs.
+        Combined list of unique SearchResult objects
     """
-    # Use ThreadPoolExecutor to run searches in parallel
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        bing_future, google_future = executor.submit(search_bing, query), executor.submit(search_google, query)
-        
-        # Combine results from both searches
-        results = list(itertools.chain(bing_future.result(), google_future.result()))
-        
-        # Remove duplicate results (if any)
-        seen = set()
-        filtered_results = []
-        for result in results:
-            if result["url"] not in seen:
-                seen.add(result["url"])
-                filtered_results.append(result)
-        
-    return filtered_results
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            bing_future = executor.submit(search_bing, query)
+            google_future = executor.submit(search_google, query)
+            
+            results = []
+            
+            # Gather results, handling potential failures
+            for future in [bing_future, google_future]:
+                try:
+                    results.extend(future.result())
+                except SearchAPIError as e:
+                    logger.error(f"Search engine error: {str(e)}")
+                    continue
+            
+            # Remove duplicates while preserving order
+            seen_urls = set()
+            unique_results = []
+            for result in results:
+                if result.url not in seen_urls:
+                    seen_urls.add(result.url)
+                    unique_results.append(result)
+            
+            return unique_results
+            
+    except Exception as e:
+        logger.error(f"Error in perform_search: {str(e)}")
+        return []

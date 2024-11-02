@@ -1,150 +1,172 @@
-from typing import Optional, List
+from dataclasses import dataclass
+from typing import Optional, List, Dict
 from enum import Enum
 import requests
 from pydantic import Field
 
+# Custom exceptions
+class CloudflareAPIError(Exception):
+    """Raised when Cloudflare API returns an error"""
+    pass
+
+class ConfigurationError(Exception):
+    """Raised when there's an issue with configuration"""
+    pass
+
+# Constants
+BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
+SYSTEM_PROMPT = "You are a helpful AI assistant. Use the following context to answer questions:\n\n{context}"
+
 
 class CloudflareModel(Enum):
+    """Available Cloudflare AI models"""
     LLAMA_3_70B_INSTRUCT = "@cf/meta/llama-3.1-70b-instruct"
 
     @classmethod
-    def list_models(cls):
-        return [model.name for model in cls]
-    
-    
-    def list_models(cls):
+    def list_models(cls) -> List[str]:
         """Returns a list of available models"""
         return [model.name for model in cls]
 
 
+@dataclass
+class Message:
+    """Represents a chat message"""
+    role: str
+    content: str
+
+
 class CloudflareChat:
-    """
-    CloudflareChat class to interact with Cloudflare's AI workers.
-    
-    Available models:
-    - LLAMA_2_7B_CHAT_FP16
-    - LLAMA_2_7B_CHAT_INT8
-    - LLAMA_3_8B_INSTRUCT_AWQ
-    - LLAMA_3_8B_INSTRUCT
-    - LLAMA_3_1_70B_INSTRUCT
-    - LLAMA_3_1_8B_INSTRUCT_AWQ
-    - LLAMA_3_1_8B_INSTRUCT_FAST
-    - LLAMA_3_1_8B_INSTRUCT_FP8
-    - LLAMA_3_2_11B_VISION_INSTRUCT
-    """
+    """CloudflareChat class to interact with Cloudflare's AI workers."""
 
-    name: str = "CloudflareChat"
-    api_key: Optional[str] = None
-    account_id: Optional[str] = None
-    model: CloudflareModel = Field(default=CloudflareModel.LLAMA_3_70B_INSTRUCT)
-    base_url: str = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
-
-    def __init__(self, api_key: Optional[str], account_id: str, model: CloudflareModel = CloudflareModel.LLAMA_3_70B_INSTRUCT):
-        """
-        Initialize the CloudflareChat instance.
+    def __init__(
+        self, 
+        api_key: str,
+        account_id: str,
+        model: CloudflareModel = CloudflareModel.LLAMA_3_70B_INSTRUCT
+    ) -> None:
+        """Initialize the CloudflareChat instance.
         
         Args:
-            api_key (str): Cloudflare API key
-            account_id (str): Cloudflare account ID
-            model (CloudflareModel): The model to use for generating answers
+            api_key: Cloudflare API key
+            account_id: Cloudflare account ID
+            model: The model to use for generating answers
+
+        Raises:
+            ConfigurationError: If required parameters are missing or invalid
         """
-        self.api_key = api_key
-        self.account_id = account_id
+        if not api_key or not account_id:
+            raise ConfigurationError("api_key and account_id must be specified")
 
         if not isinstance(model, CloudflareModel):
-            raise ValueError(f"Invalid model specified. Choose from: {', '.join(CloudflareModel.list_models())}")
-        
+            raise ConfigurationError(
+                f"Invalid model specified. Choose from: {', '.join(CloudflareModel.list_models())}"
+            )
+
+        self.api_key = api_key
+        self.account_id = account_id
         self.model = model
-
-        if self.account_id is None:
-            raise ValueError("account_id must be specified")
-
-        if self.api_key is None:
-            raise ValueError("api_key must be specified")
 
     @property
     def full_url(self) -> str:
         """Returns the complete URL with the specified model."""
-        return f"{self.base_url.format(account_id=self.account_id)}{self.model.value}"
+        return f"{BASE_URL.format(account_id=self.account_id)}{self.model.value}"
 
-    def _get_headers(self) -> dict:
-        """Returns the headers with the specified API key."""
+    def _get_headers(self) -> Dict[str, str]:
+        """Returns the headers with the API key."""
         return {"Authorization": f"Bearer {self.api_key}"}
 
-    def _format_context(self, search_results: dict) -> str:
-        """Format search results into a context string."""
-        context = "This is search results from search engine:\n"
+    def _format_context(self, search_results: List[Dict]) -> str:
+        """Format search results into a context string.
         
-        for search_result in search_results:
-            if search_result['search_content'] is not None:
-                context += f"\n{search_result['search_content']}\n"
+        Args:
+            search_results: List of search result dictionaries
+            
+        Returns:
+            Formatted context string
+        """
+        context_parts = ["This is search results from search engine:"]
         
-        return context
+        for result in search_results:
+            if result.get('search_content'):
+                context_parts.append(result['search_content'])
+        
+        return "\n\n".join(context_parts)
 
-    def _call_for_prompt(self, messages: List[dict]) -> dict:
-        """
-        Call the Cloudflare API with the messages list.
-        Each message should have 'role' and 'content'.
-        """
-        headers = self._get_headers()
-        payload = {"messages": messages}
+    def _call_for_prompt(self, messages: List[Dict[str, str]]) -> Dict:
+        """Call the Cloudflare API with the messages list.
         
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            
+        Returns:
+            API response dictionary
+            
+        Raises:
+            CloudflareAPIError: If the API call fails
+        """
         try:
-            print(f"Sending request to {self.full_url} with payload: {payload}")
-            response = requests.post(self.full_url, headers=headers, json=payload)
+            response = requests.post(
+                self.full_url,
+                headers=self._get_headers(),
+                json={"messages": messages}
+            )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            return {"error": str(e)}
+            raise CloudflareAPIError(f"API call failed: {str(e)}")
 
-    def invoke(self, search_results: dict, chat_history: List[dict] = None, query: str = None) -> dict:
-        """
-        Invoke the Cloudflare API with context and chat history.
-        
+    def generate_answer(
+        self,
+        search_results: List[Dict],
+        chat_history: Optional[List[Dict]] = None,
+        query: Optional[str] = None,
+        previous_queries: Optional[List[str]] = None
+    ) -> str:
+        """Generate an answer using context and chat history.
+
         Args:
-            search_results (dict): Search results to provide context
-            chat_history (List[dict]): Previous conversation messages
-            query (str): The user's query
-        
+            search_results: Search results to provide context
+            chat_history: Previous conversation messages
+            query: Current query
+            previous_queries: List of previous queries in the session
+
         Returns:
-            dict: The response from the Cloudflare API
+            The generated answer
+
+        Raises:
+            ValueError: If no search results are provided
+            CloudflareAPIError: If the API call fails
         """
         if not search_results:
             raise ValueError("No search results provided")
 
-        messages = []
-        
-        # Add system message with context
-        context = self._format_context(search_results)
-        messages.append({
-            "role": "system",
-            "content": f"You are a helpful AI assistant. Use the following context to answer questions:\n\n{context}"
-        })
+        # Format query with previous context if available
+        query_context = query
+        if previous_queries:
+            query_context = (
+                f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
+                f"Current question: {query}"
+            )
 
-        # Add chat history if available
+        # Build message list
+        messages = [
+            Message(
+                role="system",
+                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
+            )
+        ]
+
         if chat_history:
-            messages.extend(chat_history)
+            messages.extend([Message(**msg) for msg in chat_history])
 
-        # Add current question
-        messages.append({
-            "role": "user",
-            "content": query
-        })
+        if query_context:
+            messages.append(Message(role="user", content=query_context))
 
-        return self._call_for_prompt(messages)
+        # Convert messages to dict format for API
+        formatted_messages = [
+            {"role": msg.role, "content": msg.content}
+            for msg in messages
+        ]
 
-    def generate_answer(self, search_results: List[dict], chat_history: List[dict] = None, query: str = None) -> str:
-        """
-        Generates an answer using context and chat history.
-
-        Args:
-            search_results (dict): Search results to provide context
-            chat_history (List[dict]): Previous conversation messages
-
-        Returns:
-            str: The generated answer
-        """
-        response = self.invoke(search_results, chat_history, query)
-        if "error" in response:
-            raise ValueError(response["error"])
+        response = self._call_for_prompt(formatted_messages)
         return response["result"]["response"]
