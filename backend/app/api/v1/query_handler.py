@@ -94,10 +94,9 @@ async def search(
                 raise HTTPException(status_code=400, detail=str(e))
         
         # Fallback to regular search if no custom URL
-        return await perform_search(search_request.query)
+        return perform_search(search_request.query)
         
     except Exception as e:
-        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @router.post("/answer/{session_id}", response_model=QueryResponse)
