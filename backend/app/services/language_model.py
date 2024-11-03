@@ -122,20 +122,33 @@ class CloudflareChat:
         """Generate an answer using context and chat history.
 
         Args:
-            search_results: Search results to provide context
+            search_results: Search results to provide context (can be empty)
             chat_history: Previous conversation messages
             query: Current query
             previous_queries: List of previous queries in the session
 
         Returns:
             The generated answer
-
-        Raises:
-            ValueError: If no search results are provided
-            CloudflareAPIError: If the API call fails
         """
-        if not search_results:
-            raise ValueError("No search results provided")
+        
+        # Build message list
+        messages = []
+        
+        if search_results:
+            # Use context-aware system prompt if search results exist
+            messages.append(Message(
+                role="system",
+                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
+            ))
+        else:
+            # Use a basic system prompt for direct questions
+            messages.append(Message(
+                role="system",
+                content="You are a helpful AI assistant."
+            ))
+
+        if chat_history:
+            messages.extend([Message(**msg) for msg in chat_history])
 
         # Format query with previous context if available
         query_context = query
@@ -144,17 +157,6 @@ class CloudflareChat:
                 f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
                 f"Current question: {query}"
             )
-
-        # Build message list
-        messages = [
-            Message(
-                role="system",
-                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
-            )
-        ]
-
-        if chat_history:
-            messages.extend([Message(**msg) for msg in chat_history])
 
         if query_context:
             messages.append(Message(role="user", content=query_context))
