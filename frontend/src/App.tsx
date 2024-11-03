@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { SignIn, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
 import DeveloperInfo from './components/DeveloperInfo';
+import { MessageCircle } from 'lucide-react';
 
   /**
    * Main App component.
@@ -164,7 +165,7 @@ function App() {
     setDarkMode(!darkMode);
   };
 
-  return (
+ return (
     <>
       <SignedOut>
         <LoginPage />
@@ -180,13 +181,10 @@ function App() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => setShowDevInfo(!showDevInfo)}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
-                    darkMode
-                      ? 'bg-gray-800 hover:bg-gray-700 text-gray-100'
-                      : 'bg-white hover:bg-gray-100 text-gray-800'
-                  }`}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors group"
                 >
-                  Developer Info
+                  <MessageCircle className="w-4 h-4 transition-transform group-hover:scale-110" />
+                  <span>Connect with Developer</span>
                 </button>
                 <UserButton />
                 <button
