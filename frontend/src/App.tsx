@@ -9,6 +9,7 @@ import { SignIn, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
 import DeveloperInfo from './components/DeveloperInfo';
 import { MessageCircle } from 'lucide-react';
+import { wakeupBackend } from './utils/api';
 
   /**
    * Main App component.
@@ -19,6 +20,10 @@ import { MessageCircle } from 'lucide-react';
    * @returns {JSX.Element} The main app component.
    */
 function App() {
+  useEffect(() => {
+    wakeupBackend();
+  }, []);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<string | null>(null);
