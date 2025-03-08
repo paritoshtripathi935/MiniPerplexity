@@ -1,5 +1,5 @@
 # Mini Perplexity: AI Chat Assistant with Real-Time Web Search & Analysis
-
+**Note** - Wait While Using Backend is deployed on Render sometimes it goes to sleep
 <div align="center">
 
 [![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=flat-square)](https://mini-perplexity.netlify.app/)
