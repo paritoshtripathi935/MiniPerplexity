@@ -35,35 +35,76 @@ Mini Perplexity turns a plain-English question ("*what changed in Python 3.13?*"
 
 ```mermaid
 flowchart LR
-    UI["React UI<br/>(Vite + Tailwind)"]
-    API["FastAPI Backend<br/>(Render)"]
-    LLM["Cloudflare AI<br/>LLaMA 3.1 70B / 8B"]
+    subgraph Client["Browser"]
+        UI["React 18 · Tailwind<br/>Clerk auth · Markdown render<br/>Dark / light · typing animation"]
+    end
 
-    UI -- "POST /search, /chat" --> API
-    API -- "Chat completion" --> LLM
+    subgraph Backend["FastAPI · Render"]
+        direction TB
+        RL["⚡ Rate limiter<br/>@rate_limit(30/60s) token bucket<br/>per function: bing · google · yt · fetch"]
+        H["Query handler<br/>/search/{sid} · /chat/{sid}<br/>/session · /health"]
+        SM["💬 Session memory<br/>chat_sessions dict<br/>10-min TTL · lazy cleanup<br/>MAX_PREVIOUS_QUERIES = 3"]
+        PM["📝 Prompt manager<br/>SYSTEM_PROMPT template<br/>context-injection<br/>(only answer from snippets)"]
+        FS["🧹 Filter & extractor<br/>• BS4 p-tags · max 5 paras<br/>• 5000-char cap per page<br/>• URL dedup · UA rotation<br/>• per-result try/except"]
+        CT["🔖 Citation tracker<br/>records source URLs<br/>per session"]
+    end
 
-    API --> G["Google CSE"]
-    API --> B["Bing Web Search"]
-    API --> F["URL fetcher<br/>(BeautifulSoup)"]
+    subgraph External["External services"]
+        LLM["Cloudflare AI Workers<br/>LLaMA 3.1 70B (depth)<br/>LLaMA 3 8B (speed)"]
+        G["Google CSE<br/>safeSearch: strict"]
+        B["Bing Web Search v7<br/>safeSearch: Strict"]
+        YT["YouTube Data v3<br/>safeSearch: strict"]
+        URL["Arbitrary URL<br/>(user-provided)"]
+    end
 
-    classDef svc fill:#1e3a5f,stroke:#61dafb,color:#fff
+    UI -- "HTTPS" --> RL
+    RL -- "back-pressure<br/>sleep on saturation" --> RL
+    RL --> H
+    H --> SM
+    H --> G
+    H --> B
+    H --> YT
+    H --> URL
+    G --> FS
+    B --> FS
+    URL --> FS
+    YT -- "video cards" --> UI
+    FS --> PM
+    SM --> PM
+    PM <-. "chat completion" .-> LLM
+    LLM --> CT
+    CT --> UI
+
+    classDef ours fill:#1e3a5f,stroke:#61dafb,color:#fff
     classDef ext fill:#f5f5f5,stroke:#1e3a5f,color:#1e3a5f
-    class UI,API,LLM svc
-    class G,B,F ext
+    class UI,RL,H,SM,PM,FS,CT ours
+    class LLM,G,B,YT,URL ext
 ```
 
 ### Request pipeline
 
 ```mermaid
 flowchart TD
-    Q["User query"] --> S{"Custom URL?"}
-    S -- "Yes" --> U["Fetch & extract page<br/>BS4 · 5 s timeout · UA rotation"]
-    S -- "No" --> P["Parallel search<br/>Google CSE + Bing<br/>2 results each · ThreadPoolExecutor"]
-    U --> CX["Build context<br/>(last 3 session queries)"]
-    P --> D["Deduplicate + extract<br/>max 5000 chars / 5 paragraphs"]
-    D --> CX
-    CX --> LLM["Chat completion<br/>Cloudflare LLaMA 3.1 70B"]
-    LLM --> R["Answer + citations<br/>tracked per session"]
+    Q["User query<br/>(+ optional custom URL)"] --> RL{"⚡ Rate limit<br/>token bucket · 30/min<br/>per function name"}
+    RL -- "saturated" --> RL1["Decorator sleeps<br/>until next token"]
+    RL1 --> RL
+    RL -- "pass" --> S{"Custom URL<br/>provided?"}
+    S -- "Yes" --> UF["URL fetcher<br/>rotating UA · 5 s timeout<br/>BS4 · 5 paras · 5000-char cap"]
+    S -- "No" --> PAR["⚡ Parallel fan-out<br/>ThreadPoolExecutor · 3 workers"]
+    PAR --> GS["Google CSE<br/>2 results · safeSearch: strict"]
+    PAR --> BS["Bing Web Search<br/>2 results · safeSearch: Strict"]
+    PAR --> YS["YouTube Data v3<br/>2 videos · safeSearch: strict"]
+    GS --> FE["🧹 Per-result content fetch<br/>rate-limited · try/except<br/>skip on fetch error"]
+    BS --> FE
+    YS --> VR["Video results<br/>(no content fetch)"]
+    FE --> MRG["Merge + URL dedup<br/>first occurrence wins"]
+    VR --> MRG
+    UF --> CTX
+    MRG --> CTX["📝 Build LLM context<br/>SYSTEM_PROMPT + results<br/>+ last 3 session queries<br/>(MAX_PREVIOUS_QUERIES = 3)"]
+    CTX --> LLM["Cloudflare LLaMA<br/>3.1 70B (depth) / 3 8B (speed)"]
+    LLM --> CT["🔖 citation_tracker<br/>records source URLs<br/>for this session"]
+    CT --> ANS["Answer + citation chips<br/>rendered in UI"]
+    SESS["💬 chat_sessions<br/>10-min TTL · lazy GC"] -. "update on each req" .- CTX
 ```
 
 ---
