@@ -1,151 +1,243 @@
-# Mini Perplexity: AI Chat Assistant with Real-Time Web Search & Analysis
-**Note** - Wait While Using Backend is deployed on Render sometimes it goes to sleep
-<div align="center">
+# Mini Perplexity
+
+**A Perplexity-style conversational search engine.**
+Ask a question in plain English, get a cited answer backed by live Google + Bing results, fetched and re-ranked on the fly — all powered by Cloudflare's LLaMA 3.1 70B.
+
+### 🔗 [**Try the live demo →**](https://mini-perplexity.netlify.app/)
 
 [![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=flat-square)](https://mini-perplexity.netlify.app/)
 [![Netlify Status](https://api.netlify.com/api/v1/badges/48d8733e-bef8-4967-a416-73c53bdb1ecf/deploy-status?style=flat-square)](https://app.netlify.com/sites/mini-perplexity/deploys)
 [![GitHub stars](https://img.shields.io/github/stars/paritoshtripathi935/MiniPerplexity?style=flat-square)](https://github.com/paritoshtripathi935/MiniPerplexity/stargazers)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](https://github.com/paritoshtripathi935/MiniPerplexity/blob/main/LICENSE)
-
-[View Demo](https://mini-perplexity.netlify.app/) | [Documentation](#-documentation) | [Quick Start](#-quick-start) | [Features](#-key-features) | [Contributing](#-contributing)
-
-![Mini Perplexity Demo](https://mini-perplexity.netlify.app/demo.gif)
-
-</div>
-
-## 🌟 Overview
-
-Mini Perplexity is an advanced AI chat assistant that combines real-time web search capabilities with state-of-the-art language models. Built with React, FastAPI, and Cloudflare AI, it offers an enterprise-grade solution for intelligent, context-aware conversations with accurate source attribution.
-
-### What Makes Mini Perplexity Special?
-
-- 🔍 **Real-time Web Intelligence**: Integrates Google and Bing search APIs for up-to-date information
-- 🤖 **Advanced AI Models**: Powered by Meta's Llama 3.1 family for human-like conversations
-- 🔒 **Enterprise Security**: Clerk authentication and smart rate limiting
-- 📱 **Responsive Design**: Beautiful UI that works seamlessly across all devices
-- 🎯 **Smart Context**: Maintains conversation flow with efficient state management
-
-## 🚀 Key Features
-
-### AI & Search Capabilities
-- Real-time web search integration
-- Custom URL content analysis
-- Multiple AI model support (LLAMA_3_1_70B_INSTRUCT, LLAMA_3_8B_INSTRUCT)
-- Intelligent context management
-
-### User Experience
-- Dark/Light mode theming
-- Dynamic typing animations
-- Responsive grid layouts
-- Interactive message history
-- Structured search result display
-
-### Enterprise Features
-- Secure authentication
-- Rate limiting
-- Session management
-- Source attribution
-- Error handling
-
-## 💻 Technology Stack
-
-### Frontend
-```
-React 18 + TypeScript
-Tailwind CSS
-Clerk Authentication
-Lucide React Icons
-React Markdown
-```
-
-### Backend
-```
-FastAPI
-Cloudflare AI
-Pydantic
-Google & Bing Search APIs
-Custom Rate Limiting
-```
-
-## 📖 Documentation
-
-### Installation Requirements
-- Node.js 16+
-- Python 3.8+
-- NPM or Yarn
-- Virtual environment tool
-
-### Environment Setup
-```bash
-# Frontend (.env)
-VITE_API_HOST=http://localhost:8000
-VITE_CLERK_PUBLISHABLE_KEY=your_clerk_key
-
-# Backend (.env)
-CLOUDFLARE_API_KEY=your_cloudflare_key
-CLOUDFLARE_ACCOUNT_ID=your_account_id
-GOOGLE_API_KEY=your_google_key
-GOOGLE_SEARCH_CX=your_search_cx
-BING_API_KEY=your_bing_key
-```
-
-## 🚦 Quick Start
-
-```bash
-# Clone and install
-git clone https://github.com/yourusername/mini-perplexity.git
-cd mini-perplexity
-
-# Frontend setup
-cd frontend
-npm install
-
-# Backend setup
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Launch application
-npm run dev           # Frontend
-uvicorn app.main:app --reload  # Backend
-```
-
-Visit `http://localhost:5173` to start using Mini Perplexity.
-
-## 🔮 Roadmap
-
-- Response streaming implementation
-- Multi-language support
-- Voice interaction capabilities
-- Redis-based caching
-- Custom knowledge base integration
-- Enhanced monitoring and analytics
-
-## 🤝 Contributing
-
-We welcome contributions! See our [Contributing Guidelines](CONTRIBUTING.md) for:
-- Code style guide
-- Development workflow
-- Pull request process
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Cloudflare AI](https://developers.cloudflare.com/workers-ai/) for AI capabilities
-- [Clerk](https://clerk.dev/) for authentication
-- [FastAPI](https://fastapi.tiangolo.com/) framework
-- Open source community
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg?style=flat-square)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white&style=flat-square)](https://fastapi.tiangolo.com/)
+[![React 18](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=black&style=flat-square)](https://react.dev/)
+[![Cloudflare AI](https://img.shields.io/badge/Cloudflare-LLaMA%203.1%2070B-f38020?logo=cloudflare&logoColor=white&style=flat-square)](https://developers.cloudflare.com/workers-ai/)
 
 ---
 
-<div align="center">
+## What it does
 
-Created by [Paritosh Tripathi](https://github.com/yourusername) | [Report Bug](https://github.com/yourusername/mini-perplexity/issues) | [Request Feature](https://github.com/yourusername/mini-perplexity/issues)
+Mini Perplexity turns a plain-English question ("*what changed in Python 3.13?*") into a grounded, cited answer with:
 
-If you find this project useful, please consider giving it a ⭐️
+- **Dual-provider web search** — Google CSE and Bing Web Search are queried in parallel; results are deduplicated and extracted into clean text before the model sees them.
+- **Live URL reading** — paste a URL and the model answers about that specific page, not from its training data.
+- **Conversational context** — the last three queries per session are threaded back into the prompt for follow-up questions.
+- **Per-session rate limiting** — sliding-window limiter (30 req/min) on every content fetch, plus user-agent rotation to play nicely with upstream providers.
+- **Multi-model support** — LLaMA 3.1 70B Instruct for depth, LLaMA 3 8B Instruct for latency-sensitive queries.
+- **Citation tracking** — every answer keeps the list of source URLs it was grounded in, surfaced in the UI.
+- **Clerk auth** — Google/GitHub sign-in out of the box; guest access gated behind an env flag.
+- **Dark / light themes** with animated typing and responsive layout.
 
-</div>
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["React UI<br/>(Vite + Tailwind)"]
+    API["FastAPI Backend<br/>(Render)"]
+    LLM["Cloudflare AI<br/>LLaMA 3.1 70B / 8B"]
+
+    UI -- "POST /search, /chat" --> API
+    API -- "Chat completion" --> LLM
+
+    API --> G["Google CSE"]
+    API --> B["Bing Web Search"]
+    API --> F["URL fetcher<br/>(BeautifulSoup)"]
+
+    classDef svc fill:#1e3a5f,stroke:#61dafb,color:#fff
+    classDef ext fill:#f5f5f5,stroke:#1e3a5f,color:#1e3a5f
+    class UI,API,LLM svc
+    class G,B,F ext
+```
+
+### Request pipeline
+
+```mermaid
+flowchart TD
+    Q["User query"] --> S{"Custom URL?"}
+    S -- "Yes" --> U["Fetch & extract page<br/>BS4 · 5 s timeout · UA rotation"]
+    S -- "No" --> P["Parallel search<br/>Google CSE + Bing<br/>2 results each · ThreadPoolExecutor"]
+    U --> CX["Build context<br/>(last 3 session queries)"]
+    P --> D["Deduplicate + extract<br/>max 5000 chars / 5 paragraphs"]
+    D --> CX
+    CX --> LLM["Chat completion<br/>Cloudflare LLaMA 3.1 70B"]
+    LLM --> R["Answer + citations<br/>tracked per session"]
+```
+
+---
+
+## Engineering highlights
+
+| Concern | How it's handled |
+| --- | --- |
+| **Two search providers, one answer** | Google and Bing queried in parallel via `ThreadPoolExecutor`; results merged and deduplicated by URL before ranking. |
+| **Dead links / flaky targets** | Per-fetch `try/except` with 5 s timeout — one dead page never poisons the whole result set. |
+| **Scraping etiquette** | `@rate_limit(calls=30, period=60)` decorator on every content fetch plus rotating User-Agent strings from a small pool. |
+| **Context length control** | Extracted page content capped at 5000 chars / 5 paragraphs; last 3 session queries threaded into the prompt (`MAX_PREVIOUS_QUERIES = 3`). |
+| **Server-side state** | In-memory `chat_sessions` dict keyed by `session_id`, with 10-minute TTL and lazy cleanup on each request. No external DB. |
+| **Secrets handling** | All API keys server-side; frontend only sees `VITE_API_HOST` and the Clerk publishable key. |
+| **Cold starts on Render** | Free-tier backend spins down after inactivity — first request after idle may take ~30 s. Health-check ping via Better Stack keeps it warm during demo windows. |
+| **Hallucination surface area** | The system prompt is instructed to answer *only* from the provided search snippets; citation tracker captures the URLs the answer was grounded in. |
+
+---
+
+## Tech stack
+
+| Layer           | Choice                                                    |
+| --------------- | --------------------------------------------------------- |
+| Frontend        | React 18, TypeScript, Tailwind CSS, Lucide icons           |
+| Auth            | Clerk                                                     |
+| Markdown        | `react-markdown`                                          |
+| Backend         | FastAPI, Pydantic, Uvicorn, Gunicorn                      |
+| HTML extraction | BeautifulSoup 4                                           |
+| Parallelism     | `concurrent.futures.ThreadPoolExecutor`                   |
+| LLM             | Cloudflare AI Workers — `@cf/meta/llama-3.1-70b-instruct` & 8B |
+| Search          | Google Custom Search · Bing Web Search v7                 |
+| Rate limiting   | Custom sliding-window decorator (30 calls / 60 s)         |
+| Deploy          | Netlify (frontend) · Render (backend)                     |
+
+---
+
+## Project layout
+
+```
+MiniPerplexity/
+├── backend/
+│   ├── Procfile
+│   ├── render.yaml
+│   ├── gunicorn_config.py
+│   ├── requirements.txt
+│   ├── pytest.ini
+│   ├── tests/
+│   └── app/
+│       ├── main.py                       # FastAPI entry, CORS, router mount
+│       ├── api/v1/query_handler.py       # /search, /chat, /session
+│       ├── core/                         # settings & config
+│       ├── constants/constants.py        # env-driven constants
+│       ├── services/
+│       │   ├── search_service.py         # Google + Bing parallel search, URL fetch
+│       │   ├── language_model.py         # Cloudflare chat completion wrapper
+│       │   └── youtube_service.py
+│       ├── models/                       # Pydantic request/response schemas
+│       └── utils/
+│           ├── rate_limter.py            # @rate_limit decorator
+│           └── citation_tracker.py       # tracks source URLs per session
+│
+└── frontend/
+    ├── package.json
+    ├── vite.config.ts
+    ├── tailwind.config.js
+    ├── netlify.toml
+    └── src/
+        ├── App.tsx
+        ├── main.tsx
+        ├── index.css
+        ├── background-animation.css
+        ├── components/                    # UI components
+        ├── services/                      # API client
+        ├── types/                         # TS types
+        └── utils/
+```
+
+---
+
+## Running locally
+
+### Prerequisites
+- Python 3.8+
+- Node 16+ and npm
+- A Cloudflare AI Workers account (API key + account ID)
+- A Google API key with Custom Search enabled + a CSE `cx`
+- A Bing Search v7 API key
+- A Clerk project (publishable + secret keys)
+
+### 1. Backend
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env    # fill in your tokens (see below)
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env    # set VITE_API_HOST and VITE_CLERK_PUBLISHABLE_KEY
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) and start asking.
+
+---
+
+## Environment variables
+
+### Backend (`backend/.env`)
+
+| Variable                  | Required | Purpose                                             |
+| ------------------------- | :------: | --------------------------------------------------- |
+| `CLOUDFLARE_API_KEY`      |    ✅    | Cloudflare AI Workers auth token                    |
+| `CLOUDFLARE_ACCOUNT_ID`   |    ✅    | Cloudflare account ID                               |
+| `GOOGLE_API_KEY`          |    ✅    | Google Custom Search API key                        |
+| `GOOGLE_SEARCH_CX`        |    ✅    | Custom Search Engine ID                             |
+| `BING_API_KEY`            |    ✅    | Bing Web Search v7 key                              |
+| `CLERK_SECRET_KEY`        |          | Server-side Clerk verification                      |
+| `ALLOWED_ORIGINS`         |          | Comma-separated CORS origins                        |
+
+### Frontend (`frontend/.env`)
+
+| Variable                      | Required | Purpose                      |
+| ----------------------------- | :------: | ---------------------------- |
+| `VITE_API_HOST`               |    ✅    | Backend base URL             |
+| `VITE_CLERK_PUBLISHABLE_KEY`  |    ✅    | Clerk client publishable key |
+
+---
+
+## API
+
+```
+POST   /api/v1/search/{session_id}    → dual-provider search results
+POST   /api/v1/chat/{session_id}      → grounded chat completion
+DELETE /api/v1/session/{session_id}   → clear server-side session state
+GET    /api/v1/health                 → liveness probe
+```
+
+Sessions expire after 10 minutes of inactivity (`SESSION_TTL = timedelta(minutes=10)`); the last 3 queries per session are retained as conversational context (`MAX_PREVIOUS_QUERIES = 3`).
+
+---
+
+## Roadmap
+
+- **Streaming responses** (SSE) so users see the first token in <1 s instead of waiting for the whole answer.
+- **Reciprocal-rank fusion** for Google + Bing merge (cleaner than dedupe-by-URL).
+- **Answer grounding check** — verify each claim in the answer actually appears in the retrieved snippets; report a hallucination rate metric in the README.
+- **Redis cache** — semantic + exact-match cache over recent queries to cut repeat-query LLM spend.
+- **Multi-model routing** — Groq for speed-sensitive queries, LLaMA 70B for deep ones.
+- **Eval harness** — golden-set of 30–50 questions with expected citations, run in CI.
+- **Load test** — publish k6/Locust results (p50 / p95 / p99, sustained RPS) in the README.
+
+---
+
+## Deploy
+
+- **Frontend → Netlify.** `netlify.toml` points to `frontend/` with `npm run build`.
+- **Backend → Render.** `render.yaml` declares a web service from `backend/` running `gunicorn` with a Uvicorn worker.
+
+Update `ALLOWED_ORIGINS` on Render to your Netlify domain before promoting.
+
+---
+
+## Credits
+
+Built by **[Paritosh Tripathi](https://paritoshdev.netlify.app/)**.
+Domain-specific fork/companion: [**MiniHarvey**](https://github.com/paritoshtripathi935/MiniHarvery) — the same shape, repurposed as an Indian-law research workbench.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
