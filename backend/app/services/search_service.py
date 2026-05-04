@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.models.search_model import SearchResult
 from app.utils.rate_limter import rate_limit
 from app.services.youtube_service import YouTubeAPIError
+from tavily import TavilyClient
 
 # Constants
 BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
@@ -240,25 +241,65 @@ def search_youtube(query: str) -> List[SearchResult]:
     except Exception as e:
         raise YouTubeAPIError(f"YouTube search failed: {str(e)}")
 
+@rate_limit(calls=CALLS_PER_MINUTE, period=60)
+def search_tavily(query: str) -> List[SearchResult]:
+    """Perform a Tavily search for the given query.
+
+    Args:
+        query: The search query to perform
+
+    Returns:
+        List of SearchResult objects
+
+    Raises:
+        SearchAPIError: If the Tavily API request fails
+    """
+    api_key = os.getenv('TAVILY_API_KEY')
+    if not api_key:
+        raise SearchAPIError("TAVILY_API_KEY environment variable not set")
+
+    try:
+        client = TavilyClient(api_key=api_key)
+        response = client.search(query, max_results=RESULTS_PER_ENGINE)
+
+        results = []
+        for item in response.get("results", []):
+            search_result = SearchResult(
+                question=query,
+                title=item.get("title", ""),
+                url=item.get("url", ""),
+                snippet=item.get("content", ""),
+                search_content=item.get("raw_content") or item.get("content", ""),
+                source="tavily"
+            )
+            results.append(search_result)
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Tavily search error: {str(e)}")
+        raise SearchAPIError(f"Tavily search failed: {str(e)}")
+
 def perform_search(query: str) -> List[SearchResult]:
-    """Perform parallel searches on Google, Bing, and YouTube APIs.
-    
+    """Perform parallel searches on Google, Bing, YouTube, and Tavily APIs.
+
     Args:
         query: The search query to run
-    
+
     Returns:
         Combined list of unique SearchResult objects
     """
     try:
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             bing_future = executor.submit(search_bing, query)
             google_future = executor.submit(search_google, query)
             youtube_future = executor.submit(search_youtube, query)
-            
+            tavily_future = executor.submit(search_tavily, query)
+
             results = []
-            
+
             # Gather results, handling potential failures
-            for future in [bing_future, google_future, youtube_future]:
+            for future in [bing_future, google_future, youtube_future, tavily_future]:
                 try:
                     results.extend(future.result())
                 except (SearchAPIError, YouTubeAPIError) as e:
