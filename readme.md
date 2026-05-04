@@ -228,6 +228,7 @@ Open [http://localhost:5173](http://localhost:5173) and start asking.
 | `GOOGLE_API_KEY`          |    ✅    | Google Custom Search API key                        |
 | `GOOGLE_SEARCH_CX`        |    ✅    | Custom Search Engine ID                             |
 | `BING_API_KEY`            |    ✅    | Bing Web Search v7 key                              |
+| `TAVILY_API_KEY`          |          | Tavily Search API key (optional, additive provider)  |
 | `CLERK_SECRET_KEY`        |          | Server-side Clerk verification                      |
 | `ALLOWED_ORIGINS`         |          | Comma-separated CORS origins                        |
 

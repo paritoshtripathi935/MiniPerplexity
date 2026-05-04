@@ -7,3 +7,4 @@ pydantic-settings
 # Add any other dependencies your project needs
 gunicorn
 bs4
+tavily-python
