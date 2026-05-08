@@ -226,7 +226,8 @@ RETURNS TABLE (table_name text, deleted_rows bigint) AS $$
 DECLARE
     n bigint;
 BEGIN
-    DELETE FROM sessions      WHERE expires_at < now() AND is_archived = false;
+    -- Anonymous sessions only: signed-in users' chat history is durable.
+    DELETE FROM sessions      WHERE expires_at < now() AND is_archived = false AND user_id IS NULL;
     GET DIAGNOSTICS n = ROW_COUNT; table_name := 'sessions';      deleted_rows := n; RETURN NEXT;
 
     DELETE FROM content_cache WHERE expires_at < now();
