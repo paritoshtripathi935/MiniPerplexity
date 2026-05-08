@@ -35,5 +35,13 @@ export interface Message {
     title: string;
   }[];
   isSearching?: boolean;
+  /**
+   * Inputs that produced this assistant turn — kept around so the user
+   * can hit "Regenerate" without re-running the search step.
+   * Only populated on assistant messages.
+   */
+  originatingQuery?: string;
+  originatingSearchResults?: any[];
+  originatingPlayId?: string;
 }
 

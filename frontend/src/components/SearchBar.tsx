@@ -9,12 +9,17 @@ import React, {
 } from 'react';
 import { ArrowUp, Link as LinkIcon, X } from 'lucide-react';
 import clsx from 'clsx';
+import { SlashMenu } from './SlashMenu';
+import type { Play } from '../services/api';
 
 interface Props {
   onSearch: (query: string, customUrl?: string) => void;
   loading: boolean;
-  /** Filename kept for back-compat with imports across the app. */
   placeholder?: string;
+  /** When provided, typing `/` opens a fuzzy-search Plays popover. */
+  plays?: Play[];
+  /** Fired when the user picks a play from the slash menu. */
+  onPlaySelect?: (play: Play) => void;
 }
 
 /** Imperative API for prefilling the composer from starter prompts. */
@@ -49,13 +54,25 @@ function isValidUrl(url: string): boolean {
 }
 
 export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
-  { onSearch, loading, placeholder = 'Ask anything paid-acquisition…' },
+  {
+    onSearch,
+    loading,
+    placeholder = 'Ask anything paid-acquisition…    Tip: type / to run a play',
+    plays = [],
+    onPlaySelect,
+  },
   ref
 ) {
   const [query, setQuery] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Slash-menu mode is on whenever the textarea content (trimmed of leading
+  // whitespace only) starts with "/" and a Play set is available. The text
+  // after the slash is the live filter.
+  const slashMode = !!plays.length && /^\s*\/[^\n]*$/.test(query);
+  const slashFilter = slashMode ? query.replace(/^\s*\//, '') : '';
 
   // Auto-grow textarea up to MAX_LINES.
   const resize = useCallback(() => {
@@ -95,11 +112,23 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // While the slash menu is open, let it own ↑↓/Enter/Esc so the user
+    // can navigate the popover without these keys reaching the textarea.
+    if (slashMode && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+      // Let `Enter` insert a newline only if no plays match — handled by
+      // SlashMenu's keydown listener returning early.
+      return;
+    }
     // ⌘/Ctrl + Enter submits.
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       submit();
     }
+  };
+
+  const handlePlaySelect = (play: Play) => {
+    setQuery(''); // clear the slash text — host opens the run modal
+    onPlaySelect?.(play);
   };
 
   const sendKey = isMac() ? '⌘' : 'Ctrl';
@@ -113,6 +142,14 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
           'transition-colors duration-150'
         )}
       >
+        {slashMode && (
+          <SlashMenu
+            plays={plays}
+            query={slashFilter}
+            onSelect={handlePlaySelect}
+            onDismiss={() => setQuery('')}
+          />
+        )}
         <textarea
           ref={textareaRef}
           rows={1}

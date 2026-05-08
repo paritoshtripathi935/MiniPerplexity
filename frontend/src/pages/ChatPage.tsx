@@ -5,8 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage } from '../components/ChatMessage';
 import { SearchBar, type ComposerHandle } from '../components/SearchBar';
 import { SessionsSidebar } from '../components/SessionsSidebar';
+import { PlayRunModal } from '../components/PlayRunModal';
 import {
-  getBrandProfile,
+  getBrandProfile, listPlays,
   performSearch, getAnswer, getSessionHistory, runPlay,
   type BrandProfile, type Play,
 } from '../services/api';
@@ -42,9 +43,30 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const [loading, setLoading] = useState(false);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [profile, setProfile] = useState<BrandProfile | null>(null);
+  const [plays, setPlays] = useState<Play[]>([]);
+  // When set, the slash-menu picked a play and we need to collect inputs
+  // before running it in the current session.
+  const [slashPlay, setSlashPlay] = useState<Play | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const justCreatedRef = useRef(true);
+
+  // One-time load of the Plays catalog so the composer can offer slash
+  // commands. Failure is non-fatal — the user just doesn't get the menu.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { plays } = await listPlays();
+        if (!cancelled) setPlays(plays);
+      } catch {
+        /* slash menu silently disabled */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Pull the brand profile so the empty-state can be brand-aware.
   useEffect(() => {
@@ -142,6 +164,9 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                     title: '', url: c, type: 'web',
                   })),
                   isSearching: false,
+                  originatingQuery: pending.query,
+                  originatingSearchResults: searchResults,
+                  originatingPlayId: pending.play.id,
                 }
               : m
           ));
@@ -156,6 +181,126 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, sessionId]);
+
+  /**
+   * Regenerate an assistant turn in place — same query + same search
+   * results, just re-call /answer (re-running search would change the
+   * underlying sources). Cheaper than a fresh round and mirrors what
+   * ChatGPT/Claude do.
+   */
+  const handleRegenerate = async (msg: Message) => {
+    if (!msg.originatingQuery || !msg.originatingSearchResults?.length) return;
+    setError(null);
+    setMessages(prev =>
+      prev.map(m =>
+        m.id === msg.id
+          ? { ...m, content: '_Regenerating…_\n', isSearching: true }
+          : m
+      )
+    );
+    setLoading(true);
+    try {
+      const answerResponse = msg.originatingPlayId
+        ? await runPlay(
+            msg.originatingPlayId,
+            msg.originatingQuery,
+            sessionId,
+            msg.originatingSearchResults,
+            getToken
+          )
+        : await getAnswer(
+            msg.originatingQuery,
+            sessionId,
+            msg.originatingSearchResults,
+            [],
+            getToken
+          );
+      if (answerResponse?.answer) {
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === msg.id
+              ? {
+                  ...m,
+                  content: answerResponse.answer,
+                  sources: (answerResponse.citations ?? []).map((c: string) => ({
+                    title: '',
+                    url: c,
+                    type: 'web',
+                  })),
+                  isSearching: false,
+                }
+              : m
+          )
+        );
+      }
+    } catch (e) {
+      setError(`Regenerate failed: ${e}`);
+      setMessages(prev =>
+        prev.map(m => (m.id === msg.id ? { ...m, isSearching: false } : m))
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Run a slash-selected play in the *current* session (vs. the /plays page
+   * which spins up a fresh session). Behaviour otherwise matches the
+   * pending-play branch.
+   */
+  const handleSlashPlayRun = async (play: Play, query: string) => {
+    setSlashPlay(null);
+    setError(null);
+    const userMsg: Message = {
+      id: uuidv4(),
+      type: 'user',
+      content: `▸ ${play.title}\n\n${query}`,
+      timestamp: new Date(),
+    };
+    const responseMsg: Message = {
+      id: uuidv4(),
+      type: 'assistant',
+      content: `_Running play: ${play.title}…_\n`,
+      timestamp: new Date(),
+      search_results: [],
+      isSearching: true,
+    };
+    setMessages(prev => [...prev, userMsg, responseMsg]);
+    setLoading(true);
+    try {
+      const searchResults = await performSearch(
+        query, sessionId, [], undefined, undefined, getToken
+      );
+      const answerResponse = await runPlay(
+        play.id, query, sessionId, searchResults, getToken
+      );
+      if (answerResponse?.answer) {
+        setMessages(prev => prev.map(m =>
+          m.id === responseMsg.id
+            ? {
+                ...m,
+                content: answerResponse.answer,
+                search_results: searchResults.map((r: { title: any; url: any; source: any }) => ({
+                  title: r.title, source: r.url, type: r.source,
+                })),
+                sources: (answerResponse.citations ?? []).map((c: string) => ({
+                  title: '', url: c, type: 'web',
+                })),
+                isSearching: false,
+                originatingQuery: query,
+                originatingSearchResults: searchResults,
+                originatingPlayId: play.id,
+              }
+            : m
+        ));
+        setSidebarRefresh(n => n + 1);
+      }
+    } catch (e) {
+      setError(`Play failed: ${e}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSearch = async (query: string, customUrl?: string) => {
     setError(null);
@@ -203,6 +348,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                 })),
                 sources: answerResponse.citations.map((c: string) => ({ title: '', url: c, type: 'web' })),
                 isSearching: false,
+                originatingQuery: query,
+                originatingSearchResults: searchResults,
               }
             : m
         ));
@@ -249,7 +396,16 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             ) : (
               <div className="space-y-10">
                 {messages.map(message => (
-                  <ChatMessage key={message.id} message={message} darkMode={darkMode} />
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    darkMode={darkMode}
+                    onRegenerate={
+                      message.originatingQuery && message.originatingSearchResults?.length
+                        ? handleRegenerate
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
             )}
@@ -264,10 +420,24 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
 
         <div className="border-t border-border bg-surface px-4 sm:px-6 py-3">
           <div className="max-w-3xl mx-auto">
-            <SearchBar ref={composerRef} onSearch={handleSearch} loading={loading} />
+            <SearchBar
+              ref={composerRef}
+              onSearch={handleSearch}
+              loading={loading}
+              plays={plays}
+              onPlaySelect={p => setSlashPlay(p)}
+            />
           </div>
         </div>
       </div>
+
+      {slashPlay && (
+        <PlayRunModal
+          play={slashPlay}
+          onClose={() => setSlashPlay(null)}
+          onSubmit={(p, q) => handleSlashPlayRun(p, q)}
+        />
+      )}
     </div>
   );
 }

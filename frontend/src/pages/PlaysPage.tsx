@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, Beaker, Eye, FileText, PieChart, Play as PlayIcon, Search as SearchIcon,
-  Shield, TrendingUp, Users, X, Zap,
+  Activity, Beaker, Eye, FileText, PieChart, Play as PlayIcon,
+  Search as SearchIcon, Shield, TrendingUp, Users, Zap,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
-import { listPlays, type Play, type PlayInput } from '../services/api';
+import { listPlays, type Play } from '../services/api';
 import { PageHeader } from '../components/AppLayout';
 import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
+import { PlayRunModal } from '../components/PlayRunModal';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
   Activity, Beaker, Eye, FileText, PieChart, Search: SearchIcon,
@@ -21,23 +21,12 @@ interface Props {
   onPrepareRun: (play: Play, query: string, sessionId: string) => void;
 }
 
-function buildQuery(play: Play, values: Record<string, string>): string {
-  const lines: string[] = [`Run the "${play.title}" play.`];
-  for (const i of play.inputs) {
-    const v = (values[i.key] ?? '').trim();
-    if (v) lines.push(`- ${i.label}: ${v}`);
-  }
-  return lines.join('\n');
-}
-
 export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
   const [plays, setPlays] = useState<Play[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [activePlay, setActivePlay] = useState<Play | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -63,24 +52,9 @@ export function PlaysPage({ onPrepareRun }: Props) {
       .filter(p => !q || p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
   }, [plays, filter, search]);
 
-  const startPlay = (p: Play) => {
-    const blank: Record<string, string> = {};
-    for (const i of p.inputs) blank[i.key] = '';
-    setValues(blank);
-    setActivePlay(p);
-    setErr(null);
-  };
-
-  const submit = () => {
-    if (!activePlay) return;
-    const missing = activePlay.inputs.filter(i => i.required && !values[i.key]?.trim());
-    if (missing.length) {
-      setErr(`Missing required: ${missing.map(m => m.label).join(', ')}`);
-      return;
-    }
+  const handleSubmit = (play: Play, query: string) => {
     const sid = uuidv4();
-    const query = buildQuery(activePlay, values);
-    onPrepareRun(activePlay, query, sid);
+    onPrepareRun(play, query, sid);
     navigate(`/chat/${sid}`);
   };
 
@@ -128,7 +102,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
             return (
               <button
                 key={p.id}
-                onClick={() => startPlay(p)}
+                onClick={() => setActivePlay(p)}
                 className="group text-left focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
               >
                 <Card interactive className="p-4 h-full">
@@ -159,103 +133,13 @@ export function PlaysPage({ onPrepareRun }: Props) {
       {activePlay && (
         <PlayRunModal
           play={activePlay}
-          values={values}
-          setValues={setValues}
-          onSubmit={submit}
           onClose={() => setActivePlay(null)}
-          err={err}
+          onSubmit={(p, q) => {
+            setActivePlay(null);
+            handleSubmit(p, q);
+          }}
         />
       )}
     </>
-  );
-}
-
-interface ModalProps {
-  play: Play;
-  values: Record<string, string>;
-  setValues: (v: Record<string, string>) => void;
-  onSubmit: () => void;
-  onClose: () => void;
-  err: string | null;
-}
-
-function PlayRunModal({ play, values, setValues, onSubmit, onClose, err }: ModalProps) {
-  const update = (k: string, v: string) => setValues({ ...values, [k]: v });
-  const inputCls =
-    'w-full px-3 py-2 rounded-md border border-border bg-surface text-[13px] placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="relative w-full max-w-lg rounded-xl bg-surface shadow-dialog border border-border">
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 grid place-items-center w-7 h-7 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
-          aria-label="Close"
-        >
-          <X className="w-4 h-4" />
-        </button>
-        <div className="p-6">
-          <div className="text-[10px] uppercase tracking-[0.08em] font-medium text-fg-subtle mb-1">
-            {play.category}
-          </div>
-          <h2 className="font-display text-[18px] font-semibold tracking-tight mb-1">
-            {play.title}
-          </h2>
-          <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">{play.description}</p>
-
-          <div className="space-y-3.5">
-            {play.inputs.map((i: PlayInput) => (
-              <div key={i.key}>
-                <label className="block text-[12px] font-medium mb-1 text-fg">
-                  {i.label}
-                  {i.required && <span className="text-danger ml-1">*</span>}
-                </label>
-                {i.type === 'textarea' ? (
-                  <textarea
-                    rows={3}
-                    value={values[i.key] ?? ''}
-                    onChange={e => update(i.key, e.target.value)}
-                    placeholder={i.placeholder}
-                    className={inputCls}
-                  />
-                ) : i.type === 'select' ? (
-                  <select
-                    value={values[i.key] ?? ''}
-                    onChange={e => update(i.key, e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">Select…</option>
-                    {(i.options ?? []).map(o => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type={i.type === 'number' ? 'number' : 'text'}
-                    value={values[i.key] ?? ''}
-                    onChange={e => update(i.key, e.target.value)}
-                    placeholder={i.placeholder}
-                    className={inputCls}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {err && (
-            <div className="mt-4 px-3 py-2 text-[13px] rounded-md bg-danger-subtle text-danger">
-              {err}
-            </div>
-          )}
-
-          <div className="mt-6 flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={onSubmit} leadingIcon={<PlayIcon className="w-3.5 h-3.5" />}>
-              Run play
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
