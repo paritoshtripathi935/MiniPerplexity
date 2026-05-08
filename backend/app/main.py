@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.v1.brand_profile import router as brand_profile_router
+from app.api.v1.plays import router as plays_router
 from app.api.v1.query_handler import router
 from app.core.settings import BackendBaseSettings
 from app.db.engine import async_session_factory, dispose_engine, engine
@@ -72,8 +74,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API router
+# Include API routers
 app.include_router(router, prefix="/api/v1")
+app.include_router(brand_profile_router, prefix="/api/v1", tags=["BrandProfile"])
+app.include_router(plays_router, prefix="/api/v1", tags=["Plays"])
 
 
 @app.get("/health", tags=["Health"])

@@ -1,7 +1,9 @@
-# Mini Perplexity
+# PaidPilot
 
-**A Perplexity-style conversational search engine.**
-Ask a question in plain English, get a cited answer backed by live Google + Bing results, fetched and re-ranked on the fly — all powered by Cloudflare's LLaMA 3.1 70B.
+**An AI co-pilot for in-house performance marketers.**
+Benchmarks, briefs, and channel plans grounded in citations from sources you actually trust — Meta &amp; Google docs, eMarketer, Adweek — with your brand context baked into every answer. Free while in beta.
+
+> Originally built as Mini Perplexity (a generic Perplexity-style search engine) and pivoted to a marketing-focused product. The core RAG plumbing — dual-provider web search, live URL reading, citation tracking — is reused; the V1 layer adds per-user brand profiles, source-authority re-ranking, a curated "Plays" library (creative briefs, channel plans, A/B specs), and built-in calculators (CAC payback, ROAS-to-margin, sample size, blended efficiency). See [docs/product/V1_PLAN.md](docs/product/V1_PLAN.md) for the rationale.
 
 ### 🔗 [**Try the live demo →**](https://mini-perplexity.netlify.app/)
 

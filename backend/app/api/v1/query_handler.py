@@ -18,6 +18,7 @@ from app.db.repository import (
     delete_session,
     export_session_markdown,
     find_or_create_query,
+    get_brand_profile,
     get_chat_history,
     get_or_create_session,
     get_recent_queries,
@@ -28,6 +29,9 @@ from app.db.repository import (
     update_session,
     upsert_search_results,
 )
+from app.plays import get_play
+from app.services.source_ranker import rerank
+from app.services.system_prompt import compose_system_prompt
 from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
 from app.services import CloudflareChat, fetch_content_from_custom_url, perform_search
 from app.utils.citation_tracker import track_citations
@@ -70,9 +74,11 @@ async def search(
 
         # Persist results so /answer can resolve citation_number → search_result_id.
         normalised = [r if isinstance(r, dict) else r.model_dump() for r in results]
-        await upsert_search_results(db, query_row.id, normalised)
+        # Re-rank toward authoritative marketing domains before saving + returning.
+        ranked = rerank(normalised)
+        await upsert_search_results(db, query_row.id, ranked)
 
-        return results
+        return ranked
 
     except HTTPException:
         raise
@@ -85,10 +91,16 @@ async def search(
 async def get_answer(
     session_id: str,
     query_request: QueryRequest,
+    play_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user: Optional[User] = Depends(get_optional_user),
 ):
-    """Generate an answer grounded in the supplied search results, with citations."""
+    """Generate an answer grounded in the supplied search results, with citations.
+
+    `play_id`, when supplied, layers a Play's instructions + output schema
+    onto the system prompt. The user's brand profile (if any) is always
+    composed in for signed-in users.
+    """
     try:
         await get_or_create_session(
             db, session_id, user_id=(user.id if user else None)
@@ -99,6 +111,11 @@ async def get_answer(
         chat_history = await get_chat_history(db, session_id)
         previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
 
+        # Compose marketing-tuned system prompt.
+        profile = await get_brand_profile(db, user.id) if user else None
+        play = get_play(play_id) if play_id else None
+        system_override = compose_system_prompt(profile=profile, play=play)
+
         cf_chat = CloudflareChat(
             api_key=CLOUDFLARE_API_KEY,
             account_id=CLOUDFLARE_ACCOUNT_ID,
@@ -108,6 +125,7 @@ async def get_answer(
             chat_history=chat_history,
             query=query_request.query,
             previous_queries=previous_queries + [query_request.query],
+            system_override=system_override,
         )
 
         # Track this turn: reuse the query row from /search if it's still the

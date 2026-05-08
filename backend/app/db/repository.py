@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    BrandProfile,
     Citation,
     Message,
     MessageRole,
@@ -328,6 +329,78 @@ async def upsert_search_results(
         )
     ).scalars().all()
     return list(rows)
+
+
+# ---------- Brand profile (PaidPilot V1) -----------------------------------
+async def get_brand_profile(
+    db: AsyncSession, user_id: uuid.UUID
+) -> Optional[BrandProfile]:
+    return await db.get(BrandProfile, user_id)
+
+
+async def upsert_brand_profile(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    company_name: Optional[str] = None,
+    website: Optional[str] = None,
+    icp_description: Optional[str] = None,
+    primary_channels: Optional[list[str]] = None,
+    target_cac: Optional[float] = None,
+    target_roas: Optional[float] = None,
+    voice_guidelines: Optional[str] = None,
+    current_campaigns_summary: Optional[str] = None,
+    mark_completed: bool = False,
+) -> BrandProfile:
+    """Insert-or-update a user's brand profile.
+
+    Only fields explicitly passed (non-None) are written, so the wizard can
+    submit partial updates without clobbering previously-saved fields.
+    `primary_channels` is treated specially: an empty list is a deliberate
+    clear; None means "leave alone".
+    """
+    values: dict = {"user_id": user_id}
+    update_set: dict = {}
+
+    field_map = {
+        "company_name": company_name,
+        "website": website,
+        "icp_description": icp_description,
+        "target_cac": target_cac,
+        "target_roas": target_roas,
+        "voice_guidelines": voice_guidelines,
+        "current_campaigns_summary": current_campaigns_summary,
+    }
+    for k, v in field_map.items():
+        if v is not None:
+            values[k] = v
+            update_set[k] = v
+
+    if primary_channels is not None:
+        values["primary_channels"] = primary_channels
+        update_set["primary_channels"] = primary_channels
+
+    if mark_completed:
+        now = _now()
+        values["onboarding_completed_at"] = now
+        update_set["onboarding_completed_at"] = now
+
+    update_set["updated_at"] = _now()
+
+    stmt = (
+        pg_insert(BrandProfile)
+        .values(**values)
+        .on_conflict_do_update(
+            index_elements=[BrandProfile.user_id],
+            set_=update_set,
+        )
+        .returning(BrandProfile.user_id)
+    )
+    await db.execute(stmt)
+    await db.flush()
+    profile = await db.get(BrandProfile, user_id)
+    assert profile is not None  # just upserted
+    return profile
 
 
 # ---------- Session listing / management -----------------------------------

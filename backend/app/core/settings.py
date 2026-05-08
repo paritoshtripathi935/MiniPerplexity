@@ -7,10 +7,10 @@ ROOT_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent.parent.parent.pare
 
 
 class BackendBaseSettings(BaseSettings):
-    TITLE: str = "Mini Perplexity System"
-    VERSION: str = "0.1.0"
+    TITLE: str = "PaidPilot API"
+    VERSION: str = "1.0.0"
     TIMEZONE: str = "UTC"
-    DESCRIPTION: str | None = None
+    DESCRIPTION: str | None = "AI co-pilot for in-house performance marketers."
     DEBUG: bool = False
 
     # Get environment from env variable, default to 'development'
