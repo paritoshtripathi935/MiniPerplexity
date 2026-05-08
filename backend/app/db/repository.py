@@ -26,8 +26,14 @@ from app.db.models import (
 )
 
 
-# Mirrors the original SESSION_TTL = timedelta(minutes=10), but configurable.
+# TTL for *anonymous* sessions only. Owned (signed-in) sessions never
+# expire automatically — chat history is part of the product, not a
+# scratchpad. Override via SESSION_TTL_SECONDS for the anonymous path only.
 SESSION_TTL = timedelta(seconds=int(os.getenv("SESSION_TTL_SECONDS", "600")))
+# Effectively-never. We push owned sessions' expires_at to a date far in
+# the future so any external `WHERE expires_at < now()` cleanup also
+# leaves them alone.
+NEVER_EXPIRES = timedelta(days=365 * 100)
 MAX_HISTORY_MESSAGES = 50  # Cap loaded chat history to keep prompt sizes sane.
 
 
@@ -61,7 +67,11 @@ async def get_or_create_session(
     """
     sid = _to_uuid(session_id)
     now = _now()
-    expires = now + SESSION_TTL
+    # Anonymous → 10-min TTL (gets bumped on every touch). Owned → effectively
+    # never. We still touch `expires_at` for owned rows so an existing
+    # anonymous session that the user just claimed (sign-in mid-conversation)
+    # gets promoted to non-expiring.
+    expires = now + (NEVER_EXPIRES if user_id is not None else SESSION_TTL)
 
     values: dict = {
         "id": sid,
@@ -101,12 +111,18 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
 
 
 async def cleanup_expired_sessions(db: AsyncSession) -> int:
-    """Drop sessions whose TTL has elapsed (cascades to children)."""
+    """Drop expired *anonymous* sessions (cascades to children).
+
+    Authenticated sessions (`user_id IS NOT NULL`) are never reaped by this
+    job — chat history is intentionally durable for signed-in users. They
+    can still be removed via the archive/delete UI or by direct DELETE.
+    """
     now = _now()
     result = await db.execute(
         delete(DBSession).where(
             DBSession.expires_at < now,
             DBSession.is_archived.is_(False),
+            DBSession.user_id.is_(None),
         )
     )
     return result.rowcount or 0
