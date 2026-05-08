@@ -1,132 +1,141 @@
+/**
+ * PaidPilot — global styles
+ * ----------------------------------------------------------------------------
+ * Inter variable font, theme tokens (CSS vars consumed by tailwind.config.js),
+ * baseline typography. Light/dark themes are class-based; toggling .dark on
+ * <html> swaps the variables atomically. No prop-drilling of `darkMode`.
+ */
+@import '@fontsource-variable/inter';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* Light theme (default) */
+  :root {
+    /* Brand — a desaturated indigo. Confidence without circus colour. */
+    --brand: 79 70 229;          /* #4F46E5 */
+    --brand-fg: 255 255 255;
+    --brand-subtle: 238 242 255;
+
+    /* Surfaces — never pure white; layered with subtle contrast. */
+    --surface: 255 255 255;
+    --surface-raised: 255 255 255;
+    --surface-sunken: 248 248 250;
+
+    /* Borders — soft, not harsh. */
+    --border: 232 232 236;
+    --border-strong: 214 214 221;
+
+    /* Foreground (text) — never pure black. */
+    --fg: 17 18 22;
+    --fg-muted: 80 82 92;
+    --fg-subtle: 124 127 137;
+    --fg-inverted: 255 255 255;
+
+    --danger: 220 38 38;
+    --danger-subtle: 254 226 226;
+    --success: 16 163 74;
+  }
+
+  /* Dark theme — Linear-flavoured neutrals (cooler, never #000). */
+  .dark {
+    --brand: 129 140 248;        /* lighter on dark for contrast */
+    --brand-fg: 17 18 22;
+    --brand-subtle: 30 27 75;
+
+    --surface: 14 15 17;          /* near-black, not actual black */
+    --surface-raised: 22 23 27;
+    --surface-sunken: 10 11 13;
+
+    --border: 36 38 43;
+    --border-strong: 56 58 64;
+
+    --fg: 232 232 236;
+    --fg-muted: 161 164 175;
+    --fg-subtle: 117 121 132;
+    --fg-inverted: 17 18 22;
+
+    --danger: 248 113 113;
+    --danger-subtle: 60 24 24;
+    --success: 52 211 153;
+  }
+
+  html, body {
+    font-family: theme('fontFamily.sans');
+    font-feature-settings:
+      'cv02' on,
+      'cv03' on,
+      'cv04' on,
+      'cv11' on,
+      'ss01' on,
+      'ss03' on;
+    letter-spacing: -0.01em;
+    @apply antialiased bg-surface-sunken text-fg;
+  }
+
   body {
-    @apply antialiased text-gray-900;
+    overflow-y: scroll;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: theme('fontFamily.display');
+    letter-spacing: -0.02em;
+  }
+
+  /* Visible focus ring on every interactive element — accessibility default. */
+  :where(button, a, input, textarea, select, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: theme('boxShadow.focus');
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: rgb(var(--brand) / 0.25);
+    color: rgb(var(--fg));
+  }
+
+  .prose { @apply max-w-none; }
+  .prose p { @apply mb-4 leading-relaxed; }
+  .prose p:last-child { @apply mb-0; }
+
+  /* Slim, theme-aware scrollbar. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--border-strong) / 0.6);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--border-strong) / 1);
   }
 }
 
-.prose {
-  @apply max-w-none;
+@layer components {
+  /* Replaces the floating-particle vibe-tell on the login surface. */
+  .bg-dots {
+    background-image: radial-gradient(circle at center, rgb(var(--border-strong) / 0.5) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
 }
 
-.prose p {
-  @apply mb-4 leading-relaxed;
-}
-
-.prose p:last-child {
-  @apply mb-0;
-}
-
-/* Centering and Hello Animation */
+/* Keep a couple of legacy animations the existing components reference. */
 .animate-hello {
   animation: helloAnimation 0.6s ease forwards;
-  transform: scale(0.8);
+  transform: scale(0.96);
   opacity: 0;
 }
-
 @keyframes helloAnimation {
-  from {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
+  to { transform: scale(1); opacity: 1; }
 }
 
-/* Add these to your existing CSS */
-.dev-info-enter {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.dev-info-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 300ms, transform 300ms;
-}
-
-.dev-info-exit {
-  opacity: 1;
-}
-
-.dev-info-exit-active {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 300ms, transform 300ms;
-}
-
-/* Add to your existing CSS */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
 .animate-fade-in {
-  animation: fade-in 1s ease-out forwards;
-}
-
-.particle {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, rgba(147, 197, 253, 0.15), rgba(147, 197, 253, 0.05));
-  box-shadow: 0 0 10px rgba(147, 197, 253, 0.1);
-  pointer-events: none;
-  animation: float linear infinite;
-}
-
-@keyframes float {
-  0% {
-    transform: translateY(0) translateX(0) rotate(0deg) scale(1);
-    opacity: 0;
-  }
-  20% {
-    opacity: 0.6;
-  }
-  80% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: translateY(-100vh) translateX(100px) rotate(360deg) scale(0.8);
-    opacity: 0;
-  }
-}
-
-/* Add after your existing styles */
-/* Custom Scrollbar Styles */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.5);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.7);
-}
-
-/* Dark mode scrollbar */
-.dark ::-webkit-scrollbar-thumb {
-  background-color: rgba(75, 85, 99, 0.5);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(75, 85, 99, 0.7);
+  animation: fade-in 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

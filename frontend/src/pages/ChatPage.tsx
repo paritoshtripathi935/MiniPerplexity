@@ -95,7 +95,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       const responseMsg: Message = {
         id: uuidv4(),
         type: 'assistant',
-        content: `🤔 Running play: ${pending.play.title}…\n`,
+        content: `_Running play: ${pending.play.title}…_\n`,
         timestamp: new Date(),
         search_results: [],
         isSearching: true,
@@ -148,7 +148,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     const responseMsg: Message = {
       id: uuidv4(),
       type: 'assistant',
-      content: '🤔 Let me think about that...\n',
+      content: '_Thinking…_\n',
       timestamp: new Date(),
       search_results: [],
       isSearching: true,
@@ -165,7 +165,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         url => {
           setMessages(prev => prev.map(m =>
             m.id === responseMsg.id
-              ? { ...m, content: m.content + `\n🔍 Searching: ${url}\n`, animation: 'animate-pulse' }
+              ? { ...m, content: m.content + `\n› ${url}\n` }
               : m
           ));
         },
@@ -207,11 +207,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
       <div className="hidden md:block h-full">
-        <aside
-          className={`flex flex-col h-full w-72 shrink-0 border-r ${
-            darkMode ? 'bg-gray-950 border-gray-800' : 'bg-gray-50 border-gray-200'
-          }`}
-        >
+        <aside className="flex flex-col h-full w-72 shrink-0 border-r border-border bg-surface-sunken">
           <SessionsSidebar
             darkMode={darkMode}
             activeSessionId={sessionId}
@@ -222,14 +218,16 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         </aside>
       </div>
 
-      <div className={`flex-1 flex flex-col min-w-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
+      <div className="flex-1 flex flex-col min-w-0 bg-surface">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-8">
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.length === 0 && (
-              <div className={`text-center mt-20 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                <p className="text-lg mb-1">Ask anything paid-acquisition.</p>
-                <p className="text-sm">
-                  Citations are biased toward Meta/Google docs, eMarketer, Adweek. Your brand context is auto-applied.
+              <div className="text-center mt-20 text-fg-muted max-w-md mx-auto">
+                <p className="font-display text-[18px] tracking-tight text-fg mb-2">
+                  Ask anything paid-acquisition.
+                </p>
+                <p className="text-[13px] leading-relaxed">
+                  Citations are biased toward Meta/Google docs, eMarketer, and Adweek. Your brand context is applied automatically.
                 </p>
               </div>
             )}
@@ -237,11 +235,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               <ChatMessage key={message.id} message={message} darkMode={darkMode} />
             ))}
             {error && (
-              <div
-                className={`p-4 rounded-lg ${
-                  darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-50 text-red-600'
-                }`}
-              >
+              <div className="p-4 rounded-md bg-danger-subtle text-danger text-[13px]">
                 {error}
               </div>
             )}
@@ -249,11 +243,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           </div>
         </div>
 
-        <div
-          className={`border-t px-4 sm:px-6 py-3 ${
-            darkMode ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-white'
-          }`}
-        >
+        <div className="border-t border-border bg-surface px-4 sm:px-6 py-3">
           <div className="max-w-3xl mx-auto">
             <SearchBar onSearch={handleSearch} loading={loading} />
           </div>

@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { Search, Plus, Pencil, Archive, Trash2, Download, X } from 'lucide-react';
+import clsx from 'clsx';
 import {
   listSessions,
   patchSession,
@@ -10,13 +11,14 @@ import {
   type SessionListItem,
   type SearchHit,
 } from '../services/api';
+import { Button } from './ui/Button';
 
 interface Props {
-  darkMode: boolean;
+  /** Kept for backwards-compat; tokens swap via .dark on <html>. */
+  darkMode?: boolean;
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
-  /** Bumped by parent after a successful chat round so the list refreshes. */
   refreshSignal?: number;
 }
 
@@ -33,7 +35,6 @@ function relativeTime(iso: string): string {
 }
 
 export function SessionsSidebar({
-  darkMode,
   activeSessionId,
   onSelectSession,
   onNewChat,
@@ -140,57 +141,44 @@ export function SessionsSidebar({
     }
   };
 
-  const containerCls = useMemo(
-    () => `flex flex-col h-full`,
-    []
-  );
-  const itemBase = darkMode
-    ? 'hover:bg-gray-800 border-gray-800'
-    : 'hover:bg-white border-gray-200';
-  const itemActive = darkMode ? 'bg-gray-800' : 'bg-white shadow-sm';
-
   return (
-    <aside className={containerCls}>
-      <div className="p-3 space-y-2">
-        <button
+    <div className="flex flex-col h-full">
+      <div className="p-3 space-y-2 border-b border-border">
+        <Button
+          variant="primary"
+          size="sm"
           onClick={onNewChat}
-          className={`w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
-            darkMode
-              ? 'bg-blue-600 hover:bg-blue-500 text-white'
-              : 'bg-blue-600 hover:bg-blue-500 text-white'
-          }`}
+          leadingIcon={<Plus className="w-3.5 h-3.5" />}
+          className="w-full justify-center"
         >
-          <Plus className="w-4 h-4" /> New chat
-        </button>
+          New chat
+        </Button>
 
         <SignedIn>
-          <div className={`relative ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            <Search className="absolute left-2.5 top-2.5 w-4 h-4 opacity-60" />
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-subtle" />
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search history…"
-              className={`w-full pl-8 pr-7 py-2 rounded-lg text-sm outline-none border ${
-                darkMode
-                  ? 'bg-gray-900 border-gray-800 placeholder-gray-500'
-                  : 'bg-white border-gray-200 placeholder-gray-400'
-              }`}
+              placeholder="Search history"
+              className="w-full pl-8 pr-7 h-8 rounded-md text-[12px] bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
             />
             {query && (
               <button
                 onClick={() => setQuery('')}
-                className="absolute right-2 top-2 opacity-60 hover:opacity-100"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-fg-subtle hover:text-fg"
                 aria-label="clear search"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-          <label className="flex items-center gap-2 text-xs opacity-75 px-1">
+          <label className="flex items-center gap-1.5 text-[11px] text-fg-subtle px-1 cursor-pointer">
             <input
               type="checkbox"
               checked={includeArchived}
               onChange={e => setIncludeArchived(e.target.checked)}
+              className="w-3 h-3 accent-brand"
             />
             Show archived
           </label>
@@ -198,64 +186,60 @@ export function SessionsSidebar({
       </div>
 
       <SignedOut>
-        <div className="px-4 py-6 text-sm opacity-75">
+        <div className="px-4 py-6 text-[13px] text-fg-muted">
           Sign in to keep your chat history across devices.
         </div>
       </SignedOut>
 
       <SignedIn>
-        <div className="flex-1 overflow-y-auto px-2 pb-4">
+        <div className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
           {errMsg && (
-            <div className="mb-2 px-3 py-2 text-xs rounded bg-red-500/10 text-red-400">
+            <div className="mb-2 mx-1 px-3 py-2 text-[12px] rounded-md bg-danger-subtle text-danger">
               {errMsg}
             </div>
           )}
 
           {searchResults !== null ? (
             <div>
-              <div className="px-2 py-1 text-xs uppercase tracking-wider opacity-60">
+              <div className="px-2 pb-1.5 text-[10px] uppercase tracking-[0.06em] font-medium text-fg-subtle">
                 {searching ? 'Searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
               </div>
               {searchResults.map(hit => (
                 <button
                   key={hit.message_id}
                   onClick={() => onSelectSession(hit.session_id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg border-b text-sm ${itemBase}`}
+                  className="w-full text-left px-2.5 py-2 rounded-md hover:bg-surface transition-colors"
                 >
-                  <div className="font-medium truncate">{hit.title || 'Untitled'}</div>
+                  <div className="font-medium text-[13px] truncate">{hit.title || 'Untitled'}</div>
                   <div
-                    className="opacity-75 text-xs mt-1 line-clamp-2"
-                    // ts_headline returns sanitised text + <mark> tags only
+                    className="text-fg-muted text-[11px] mt-1 line-clamp-2 leading-snug [&_mark]:bg-brand/20 [&_mark]:text-fg [&_mark]:rounded-sm [&_mark]:px-0.5"
                     dangerouslySetInnerHTML={{ __html: hit.snippet }}
                   />
-                  <div className="opacity-50 text-[10px] mt-1">
+                  <div className="text-fg-subtle text-[10px] mt-1">
                     {hit.role} · {relativeTime(hit.matched_at)}
                   </div>
                 </button>
               ))}
               {!searching && searchResults.length === 0 && (
-                <div className="px-3 py-3 text-sm opacity-60">No matches.</div>
+                <div className="px-3 py-3 text-[13px] text-fg-muted">No matches.</div>
               )}
             </div>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-0.5">
               {loading && sessions.length === 0 && (
-                <li className="px-3 py-2 text-sm opacity-60">Loading…</li>
+                <li className="px-3 py-2 text-[13px] text-fg-muted">Loading…</li>
               )}
               {!loading && sessions.length === 0 && (
-                <li className="px-3 py-2 text-sm opacity-60">
+                <li className="px-3 py-2 text-[13px] text-fg-muted">
                   No conversations yet. Ask something to get started.
                 </li>
               )}
               {sessions.map(s => {
                 const isActive = s.id === activeSessionId;
                 return (
-                  <li
-                    key={s.id}
-                    className={`rounded-lg border ${itemBase} ${isActive ? itemActive : ''}`}
-                  >
+                  <li key={s.id} className="group">
                     {renameId === s.id ? (
-                      <div className="flex items-center gap-1 px-2 py-1">
+                      <div className="flex items-center gap-1 px-1.5 py-1">
                         <input
                           autoFocus
                           value={renameDraft}
@@ -264,77 +248,63 @@ export function SessionsSidebar({
                             if (e.key === 'Enter') onRename(s.id);
                             if (e.key === 'Escape') setRenameId(null);
                           }}
-                          className={`flex-1 px-2 py-1 rounded text-sm outline-none border ${
-                            darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                          }`}
+                          className="flex-1 px-2 h-7 rounded-md text-[12px] outline-none border border-border bg-surface focus-visible:shadow-focus"
                         />
-                        <button
-                          onClick={() => onRename(s.id)}
-                          className="text-xs px-2 py-1 rounded bg-blue-600 text-white"
-                        >
+                        <Button size="sm" variant="primary" onClick={() => onRename(s.id)}>
                           Save
-                        </button>
+                        </Button>
                       </div>
                     ) : (
                       <div
-                        className="px-3 py-2 cursor-pointer"
                         onClick={() => onSelectSession(s.id)}
+                        className={clsx(
+                          'px-2.5 py-2 rounded-md cursor-pointer transition-colors duration-150',
+                          isActive ? 'bg-surface border border-border' : 'hover:bg-surface'
+                        )}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium text-sm truncate">
+                          <div className="font-medium text-[13px] truncate">
                             {s.title || 'Untitled'}
                           </div>
-                          <div className="opacity-50 text-[10px] shrink-0">
+                          <div className="text-fg-subtle text-[10px] shrink-0 tabular-nums">
                             {relativeTime(s.last_accessed_at)}
                           </div>
                         </div>
                         <div className="flex items-center justify-between mt-1">
-                          <div className="opacity-50 text-xs">
+                          <div className="text-fg-subtle text-[11px]">
                             {s.message_count} message{s.message_count === 1 ? '' : 's'}
                             {s.is_archived ? ' · archived' : ''}
                           </div>
-                          <div className="flex items-center gap-1 opacity-60 hover:opacity-100">
-                            <button
-                              title="Rename"
-                              onClick={e => {
-                                e.stopPropagation();
-                                setRenameId(s.id);
-                                setRenameDraft(s.title || '');
-                              }}
-                              className="p-1 rounded hover:bg-black/10"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              title={s.is_archived ? 'Unarchive' : 'Archive'}
-                              onClick={e => {
-                                e.stopPropagation();
-                                onArchive(s);
-                              }}
-                              className="p-1 rounded hover:bg-black/10"
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              title="Export markdown"
-                              onClick={e => {
-                                e.stopPropagation();
-                                onExport(s.id);
-                              }}
-                              className="p-1 rounded hover:bg-black/10"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                            <button
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                            <IconBtn title="Rename" onClick={e => {
+                              e.stopPropagation();
+                              setRenameId(s.id);
+                              setRenameDraft(s.title || '');
+                            }}>
+                              <Pencil className="w-3 h-3" />
+                            </IconBtn>
+                            <IconBtn title={s.is_archived ? 'Unarchive' : 'Archive'} onClick={e => {
+                              e.stopPropagation();
+                              onArchive(s);
+                            }}>
+                              <Archive className="w-3 h-3" />
+                            </IconBtn>
+                            <IconBtn title="Export markdown" onClick={e => {
+                              e.stopPropagation();
+                              onExport(s.id);
+                            }}>
+                              <Download className="w-3 h-3" />
+                            </IconBtn>
+                            <IconBtn
                               title="Delete"
+                              danger
                               onClick={e => {
                                 e.stopPropagation();
                                 onDelete(s.id);
                               }}
-                              className="p-1 rounded hover:bg-red-500/20 text-red-400"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                              <Trash2 className="w-3 h-3" />
+                            </IconBtn>
                           </div>
                         </div>
                       </div>
@@ -346,6 +316,33 @@ export function SessionsSidebar({
           )}
         </div>
       </SignedIn>
-    </aside>
+    </div>
+  );
+}
+
+function IconBtn({
+  children,
+  onClick,
+  title,
+  danger = false,
+}: {
+  children: React.ReactNode;
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={clsx(
+        'grid place-items-center w-6 h-6 rounded-md transition-colors duration-150',
+        danger
+          ? 'text-fg-subtle hover:text-danger hover:bg-danger-subtle'
+          : 'text-fg-subtle hover:text-fg hover:bg-surface-sunken'
+      )}
+    >
+      {children}
+    </button>
   );
 }

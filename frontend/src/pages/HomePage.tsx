@@ -1,14 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
-import {
-  Activity, ArrowRight, Calculator, MessageSquare, Settings as SettingsIcon, Sparkles,
-} from 'lucide-react';
+import { ArrowUpRight, Calculator, MessageSquare, Sparkles } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   getBrandProfile, listSessions, type BrandProfile, type SessionListItem,
 } from '../services/api';
 import { PageHeader } from '../components/AppLayout';
+import { Card } from '../components/ui/Card';
 
 interface Props {
   darkMode: boolean;
@@ -25,7 +24,7 @@ function relativeTime(iso: string): string {
   return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
 }
 
-export function HomePage({ darkMode }: Props) {
+export function HomePage({}: Props) {
   const { getToken } = useAuth();
   const { user } = useUser();
   const [profile, setProfile] = useState<BrandProfile | null>(null);
@@ -42,50 +41,36 @@ export function HomePage({ darkMode }: Props) {
         if (p) setProfile(p);
         setSessions(s.sessions);
       } catch {
-        // Silent — first-load failures show empty state.
+        /* silent */
       }
     })();
   }, [getToken]);
-
-  const card = darkMode
-    ? 'bg-gray-900 border-gray-800 hover:border-gray-700'
-    : 'bg-white border-gray-200 hover:border-gray-300 shadow-sm';
-  const subtle = darkMode ? 'text-gray-400' : 'text-gray-500';
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     const time = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
     const name = user?.firstName ? `, ${user.firstName}` : '';
-    return `Good ${time}${name}.`;
+    return `Good ${time}${name}`;
   }, [user?.firstName]);
 
-  const quickActions: {
-    to: string;
-    icon: React.ComponentType<{ className?: string }>;
-    title: string;
-    body: string;
-    accent: string;
-  }[] = [
+  const quickActions = [
     {
       to: `/chat/${newChatId}`,
       icon: MessageSquare,
       title: 'Start a chat',
-      body: 'Ask anything paid-acquisition. Sources weighted toward Meta/Google docs, eMarketer, Adweek.',
-      accent: 'text-blue-500',
+      body: 'Ask anything paid-acquisition. Citations weighted toward platform docs and trade press.',
     },
     {
       to: '/plays',
       icon: Sparkles,
       title: 'Run a play',
       body: '10 ready-to-run playbooks — creative briefs, channel plans, A/B specs, weekly reviews.',
-      accent: 'text-purple-500',
     },
     {
       to: '/calc',
       icon: Calculator,
       title: 'Open calculators',
       body: 'CAC payback, ROAS-to-margin, A/B sample size, blended channel efficiency.',
-      accent: 'text-emerald-500',
     },
   ];
 
@@ -95,67 +80,71 @@ export function HomePage({ darkMode }: Props) {
         title={greeting}
         subtitle={
           profile?.company_name
-            ? `Working on ${profile.company_name}. Ask anything paid-acquisition — your brand context is baked into every answer.`
-            : "Welcome to PaidPilot. Ask anything paid-acquisition, run a play, or do the math."
+            ? `Working on ${profile.company_name} — your brand context is baked into every answer.`
+            : 'Welcome to PaidPilot. Ask anything paid-acquisition, run a play, or do the math.'
         }
       />
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
         {quickActions.map(a => {
           const Icon = a.icon;
           return (
             <Link
               key={a.to}
               to={a.to}
-              className={`group rounded-xl border p-5 transition ${card}`}
+              className="group block focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
             >
-              <div className="flex items-center justify-between mb-3">
-                <Icon className={`w-6 h-6 ${a.accent}`} />
-                <ArrowRight
-                  className={`w-4 h-4 ${subtle} transition group-hover:translate-x-1`}
-                />
-              </div>
-              <h3 className="font-semibold mb-1">{a.title}</h3>
-              <p className={`text-sm ${subtle}`}>{a.body}</p>
+              <Card interactive className="p-5 h-full">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="grid place-items-center w-9 h-9 rounded-md bg-surface-sunken text-fg-muted group-hover:bg-brand-subtle group-hover:text-brand transition-colors">
+                    <Icon className="w-4 h-4" strokeWidth={2} />
+                  </div>
+                  <ArrowUpRight className="w-4 h-4 text-fg-subtle opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+                </div>
+                <h3 className="font-display font-semibold text-[15px] mb-1.5 tracking-tight">
+                  {a.title}
+                </h3>
+                <p className="text-[13px] text-fg-muted leading-relaxed">{a.body}</p>
+              </Card>
             </Link>
           );
         })}
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className={`lg:col-span-2 rounded-xl border p-5 ${card.replace('hover:border-gray-700', '').replace('hover:border-gray-300', '')}`}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Recent chats</h2>
-            <Link to="/chat" className="text-xs text-blue-500 hover:underline">
-              View all →
+        <Card className="lg:col-span-2 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display font-semibold text-[15px] tracking-tight">
+              Recent chats
+            </h2>
+            <Link to="/chat" className="text-[12px] text-brand hover:underline">
+              View all
             </Link>
           </div>
           {sessions.length === 0 ? (
-            <p className={`text-sm ${subtle}`}>
-              No chats yet. {' '}
-              <Link to={`/chat/${newChatId}`} className="text-blue-500 hover:underline">
+            <p className="text-[13px] text-fg-muted">
+              No chats yet.{' '}
+              <Link to={`/chat/${newChatId}`} className="text-brand hover:underline">
                 Start one →
               </Link>
             </p>
           ) : (
-            <ul className="divide-y divide-current/5">
+            <ul className="-mx-2">
               {sessions.map(s => (
                 <li key={s.id}>
                   <Link
                     to={`/chat/${s.id}`}
-                    className={`flex items-center justify-between gap-3 py-2.5 -mx-2 px-2 rounded ${
-                      darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'
-                    }`}
+                    className="flex items-center justify-between gap-3 py-2.5 px-2 rounded-md hover:bg-surface-sunken transition-colors"
                   >
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium truncate">
                         {s.title || 'Untitled chat'}
                       </div>
-                      <div className={`text-xs ${subtle}`}>
+                      <div className="text-[12px] text-fg-subtle mt-0.5">
                         {s.message_count} message{s.message_count === 1 ? '' : 's'}
                       </div>
                     </div>
-                    <div className={`text-xs ${subtle} shrink-0`}>
+                    <div className="text-[12px] text-fg-subtle shrink-0 tabular-nums">
                       {relativeTime(s.last_accessed_at)}
                     </div>
                   </Link>
@@ -163,54 +152,52 @@ export function HomePage({ darkMode }: Props) {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
 
-        <div className={`rounded-xl border p-5 ${card.replace('hover:border-gray-700', '').replace('hover:border-gray-300', '')}`}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Brand</h2>
-            <Link to="/settings" className="text-xs text-blue-500 hover:underline inline-flex items-center gap-1">
-              Edit <SettingsIcon className="w-3 h-3" />
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display font-semibold text-[15px] tracking-tight">Brand</h2>
+            <Link to="/settings" className="text-[12px] text-brand hover:underline">
+              Edit
             </Link>
           </div>
           {profile?.onboarding_completed ? (
-            <dl className={`text-sm space-y-2 ${subtle}`}>
+            <dl className="text-[13px] space-y-2.5">
               {profile.company_name && (
-                <div className="flex justify-between gap-2">
-                  <dt>Company</dt>
-                  <dd className="text-right truncate max-w-[60%] font-medium">{profile.company_name}</dd>
-                </div>
+                <Row label="Company" value={profile.company_name} />
               )}
               {profile.primary_channels?.length > 0 && (
-                <div className="flex justify-between gap-2">
-                  <dt>Channels</dt>
-                  <dd className="text-right font-medium">{profile.primary_channels.join(', ')}</dd>
-                </div>
+                <Row label="Channels" value={profile.primary_channels.join(', ')} />
               )}
               {profile.target_cac != null && (
-                <div className="flex justify-between gap-2">
-                  <dt>Target CAC</dt>
-                  <dd className="font-medium">${profile.target_cac.toLocaleString()}</dd>
-                </div>
+                <Row
+                  label="Target CAC"
+                  value={`$${Number(profile.target_cac).toLocaleString()}`}
+                />
               )}
               {profile.target_roas != null && (
-                <div className="flex justify-between gap-2">
-                  <dt>Target ROAS</dt>
-                  <dd className="font-medium">{profile.target_roas}×</dd>
-                </div>
+                <Row label="Target ROAS" value={`${profile.target_roas}×`} />
               )}
             </dl>
           ) : (
-            <p className={`text-sm ${subtle}`}>
-              <Activity className="inline w-4 h-4 mr-1 -mt-0.5" />
-              Finish onboarding to personalise every answer.
-              <br />
-              <Link to="/settings" className="text-blue-500 hover:underline">
+            <p className="text-[13px] text-fg-muted">
+              Finish onboarding to personalise every answer.{' '}
+              <Link to="/settings" className="text-brand hover:underline">
                 Set up brand profile →
               </Link>
             </p>
           )}
-        </div>
+        </Card>
       </section>
     </>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-fg-subtle">{label}</dt>
+      <dd className="font-medium text-right truncate max-w-[60%]">{value}</dd>
+    </div>
   );
 }

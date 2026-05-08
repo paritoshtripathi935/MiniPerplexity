@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Check, Save } from 'lucide-react';
+import clsx from 'clsx';
 import { getBrandProfile, putBrandProfile, type BrandProfile } from '../services/api';
 import { PageHeader } from '../components/AppLayout';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
 const CHANNELS: { id: string; label: string }[] = [
   { id: 'meta', label: 'Meta' },
@@ -24,7 +27,11 @@ interface Props {
   onUpdate?: (p: BrandProfile) => void;
 }
 
-export function SettingsPage({ darkMode, onUpdate }: Props) {
+const fieldCls =
+  'w-full px-3 py-2 rounded-md border border-border bg-surface text-[13px] placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
+const labelCls = 'block text-[12px] font-medium mb-1.5 text-fg';
+
+export function SettingsPage({ onUpdate }: Props) {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,8 +42,8 @@ export function SettingsPage({ darkMode, onUpdate }: Props) {
   const [website, setWebsite] = useState('');
   const [icp, setIcp] = useState('');
   const [channels, setChannels] = useState<string[]>([]);
-  const [targetCac, setTargetCac] = useState<string>('');
-  const [targetRoas, setTargetRoas] = useState<string>('');
+  const [targetCac, setTargetCac] = useState('');
+  const [targetRoas, setTargetRoas] = useState('');
   const [voice, setVoice] = useState('');
   const [campaigns, setCampaigns] = useState('');
 
@@ -53,16 +60,15 @@ export function SettingsPage({ darkMode, onUpdate }: Props) {
         setVoice(p.voice_guidelines ?? '');
         setCampaigns(p.current_campaigns_summary ?? '');
       } catch {
-        // First-load empty state — leave fields blank.
+        /* first-load empty */
       } finally {
         setLoading(false);
       }
     })();
   }, [getToken]);
 
-  const toggleChannel = (id: string) => {
+  const toggleChannel = (id: string) =>
     setChannels(prev => (prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]));
-  };
 
   const save = async () => {
     setSaving(true);
@@ -91,62 +97,52 @@ export function SettingsPage({ darkMode, onUpdate }: Props) {
     }
   };
 
-  const card = darkMode
-    ? 'bg-gray-900 border-gray-800'
-    : 'bg-white border-gray-200 shadow-sm';
-  const subtle = darkMode ? 'text-gray-400' : 'text-gray-500';
-  const inputCls = darkMode
-    ? 'bg-gray-800 border-gray-700 placeholder-gray-500 text-gray-100'
-    : 'bg-white border-gray-300 placeholder-gray-400 text-gray-900';
-
-  if (loading) {
-    return <p className={`text-sm ${subtle}`}>Loading…</p>;
-  }
+  if (loading) return <p className="text-[13px] text-fg-muted">Loading…</p>;
 
   return (
     <>
       <PageHeader
         title="Brand profile"
-        subtitle="Composed into the system prompt for every chat — so answers cite the right channels, the right ICP, and the right targets."
+        subtitle="Composed into the system prompt for every chat — so answers cite the right channels, ICP, and targets."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <section className={`lg:col-span-2 rounded-xl border p-5 sm:p-6 space-y-5 ${card}`}>
+        <Card className="lg:col-span-2 p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Company name</label>
+              <label className={labelCls}>Company name</label>
               <input
                 value={companyName}
                 onChange={e => setCompanyName(e.target.value)}
-                placeholder="e.g. Acme Tools"
-                className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                placeholder="Acme Tools"
+                className={fieldCls}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Website</label>
+              <label className={labelCls}>Website</label>
               <input
                 value={website}
                 onChange={e => setWebsite(e.target.value)}
                 placeholder="https://acme.com"
-                className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                className={fieldCls}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">ICP — who you sell to</label>
+            <label className={labelCls}>ICP — who you sell to</label>
             <textarea
               value={icp}
               onChange={e => setIcp(e.target.value)}
               rows={3}
-              placeholder="e.g. Operations leads at SMB ecom brands ($1–10M ARR), mostly US, looking to cut order-fulfilment cost without hiring."
-              className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+              placeholder="Operations leads at SMB ecom brands ($1–10M ARR), mostly US, looking to cut order-fulfilment cost without hiring."
+              className={fieldCls}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Primary channels</label>
-            <div className="flex flex-wrap gap-2">
+            <label className={labelCls}>Primary channels</label>
+            <div className="flex flex-wrap gap-1.5">
               {CHANNELS.map(c => {
                 const on = channels.includes(c.id);
                 return (
@@ -154,15 +150,14 @@ export function SettingsPage({ darkMode, onUpdate }: Props) {
                     key={c.id}
                     type="button"
                     onClick={() => toggleChannel(c.id)}
-                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                    className={clsx(
+                      'h-8 px-3 rounded-md text-[12px] font-medium transition-colors duration-150',
                       on
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : darkMode
-                          ? 'bg-gray-800 border-gray-700 hover:bg-gray-700'
-                          : 'bg-white border-gray-300 hover:bg-gray-50'
-                    }`}
+                        ? 'bg-fg text-fg-inverted'
+                        : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
+                    )}
                   >
-                    {on && <Check className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />}
+                    {on && <Check className="inline w-3 h-3 mr-1 -mt-0.5" />}
                     {c.label}
                   </button>
                 );
@@ -172,18 +167,18 @@ export function SettingsPage({ darkMode, onUpdate }: Props) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Target CAC ($)</label>
+              <label className={labelCls}>Target CAC ($)</label>
               <input
                 type="number"
                 inputMode="decimal"
                 value={targetCac}
                 onChange={e => setTargetCac(e.target.value)}
                 placeholder="120"
-                className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                className={fieldCls}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Target ROAS (×)</label>
+              <label className={labelCls}>Target ROAS (×)</label>
               <input
                 type="number"
                 inputMode="decimal"
@@ -191,63 +186,62 @@ export function SettingsPage({ darkMode, onUpdate }: Props) {
                 value={targetRoas}
                 onChange={e => setTargetRoas(e.target.value)}
                 placeholder="2.5"
-                className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                className={fieldCls}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Brand voice (optional)</label>
+            <label className={labelCls}>Brand voice <span className="text-fg-subtle font-normal">(optional)</span></label>
             <textarea
               value={voice}
               onChange={e => setVoice(e.target.value)}
               rows={2}
-              placeholder="e.g. direct, lightly playful, never corporate. Avoid superlatives."
-              className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+              placeholder="Direct, lightly playful, never corporate. Avoid superlatives."
+              className={fieldCls}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Current campaigns (optional)</label>
+            <label className={labelCls}>Current campaigns <span className="text-fg-subtle font-normal">(optional)</span></label>
             <textarea
               value={campaigns}
               onChange={e => setCampaigns(e.target.value)}
               rows={3}
-              placeholder="e.g. Meta Advantage+ for SMB acquisition, Google brand + non-brand search, retargeting on Display."
-              className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+              placeholder="Meta Advantage+ for SMB acquisition, Google brand + non-brand search, retargeting on Display."
+              className={fieldCls}
             />
           </div>
 
           {error && (
-            <div className="px-3 py-2 text-sm rounded bg-red-500/10 text-red-400">{error}</div>
+            <div className="px-3 py-2 text-[13px] rounded-md bg-danger-subtle text-danger">
+              {error}
+            </div>
           )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
             {savedAt && Date.now() - savedAt < 4000 && (
-              <span className="text-xs text-emerald-500 inline-flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Saved
+              <span className="text-[12px] text-success inline-flex items-center gap-1">
+                <Check className="w-3 h-3" /> Saved
               </span>
             )}
-            <button
-              onClick={save}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60"
-            >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving…' : 'Save profile'}
-            </button>
+            <Button variant="primary" onClick={save} loading={saving} leadingIcon={<Save className="w-3.5 h-3.5" />}>
+              {saving ? 'Saving' : 'Save profile'}
+            </Button>
           </div>
-        </section>
+        </Card>
 
-        <aside className={`rounded-xl border p-5 ${card} h-fit`}>
-          <h2 className="font-semibold mb-2">How this is used</h2>
-          <ul className={`text-sm space-y-3 ${subtle}`}>
-            <li>• <span className="opacity-90">Every chat</span> gets your brand context injected into the system prompt — no need to re-explain who you are.</li>
-            <li>• <span className="opacity-90">Plays</span> personalise their output to your channels and ICP automatically.</li>
-            <li>• <span className="opacity-90">Targets</span> are used as a sanity check when you ask "is this CAC normal?"</li>
-            <li>• Stored on Neon, scoped to your Clerk account. Never shared.</li>
+        <Card className="p-5 h-fit">
+          <h2 className="font-display font-semibold text-[14px] tracking-tight mb-3">
+            How this is used
+          </h2>
+          <ul className="text-[13px] text-fg-muted space-y-2.5 leading-relaxed">
+            <li><span className="text-fg">Every chat</span> gets your brand context in the system prompt.</li>
+            <li><span className="text-fg">Plays</span> personalise their output to your channels and ICP.</li>
+            <li><span className="text-fg">Targets</span> sanity-check your "is this CAC normal?" questions.</li>
+            <li>Stored on Neon, scoped to your account. Never shared.</li>
           </ul>
-        </aside>
+        </Card>
       </div>
     </>
   );

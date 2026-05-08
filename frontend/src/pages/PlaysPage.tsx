@@ -2,27 +2,22 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, Beaker, Eye, FileText, PieChart, Play as PlayIcon, Search as SearchIcon,
-  Shield, TrendingUp, Users, X, Zap, Sparkles,
+  Shield, TrendingUp, Users, X, Zap,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import clsx from 'clsx';
 import { listPlays, type Play, type PlayInput } from '../services/api';
 import { PageHeader } from '../components/AppLayout';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
-const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const ICONS: Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
   Activity, Beaker, Eye, FileText, PieChart, Search: SearchIcon,
   Shield, TrendingUp, Users, Zap,
 };
 
-const ACCENTS: Record<string, string> = {
-  Creative: 'text-purple-500 bg-purple-500/10',
-  Research: 'text-blue-500 bg-blue-500/10',
-  Planning: 'text-emerald-500 bg-emerald-500/10',
-  Audit: 'text-amber-500 bg-amber-500/10',
-};
-
 interface Props {
   darkMode: boolean;
-  /** Persisted in App so we can hand it off to ChatPage. */
   onPrepareRun: (play: Play, query: string, sessionId: string) => void;
 }
 
@@ -35,7 +30,7 @@ function buildQuery(play: Play, values: Record<string, string>): string {
   return lines.join('\n');
 }
 
-export function PlaysPage({ darkMode, onPrepareRun }: Props) {
+export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
   const [plays, setPlays] = useState<Play[]>([]);
   const [filter, setFilter] = useState<string>('All');
@@ -89,43 +84,34 @@ export function PlaysPage({ darkMode, onPrepareRun }: Props) {
     navigate(`/chat/${sid}`);
   };
 
-  const card = darkMode
-    ? 'bg-gray-900 border-gray-800 hover:border-gray-700'
-    : 'bg-white border-gray-200 hover:border-gray-300 shadow-sm';
-  const subtle = darkMode ? 'text-gray-400' : 'text-gray-500';
-  const inputCls = darkMode
-    ? 'bg-gray-900 border-gray-800 placeholder-gray-500 text-gray-100'
-    : 'bg-white border-gray-300 placeholder-gray-400 text-gray-900';
-
   return (
     <>
       <PageHeader
         title="Plays"
-        subtitle="Pre-baked playbooks for the most common asks. Pick one, fill a few inputs, get a marketer-grade output. Free while in beta."
+        subtitle="Pre-baked playbooks for the most common asks. Pick one, fill a few inputs, get a marketer-grade output."
       />
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-5">
-        <div className={`relative flex-1 max-w-md ${subtle}`}>
-          <SearchIcon className="absolute left-3 top-2.5 w-4 h-4 opacity-60" />
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search plays…"
-            className={`w-full pl-9 pr-3 py-2 rounded-lg text-sm border outline-none ${inputCls}`}
+            placeholder="Search plays"
+            className="w-full pl-9 pr-3 h-9 rounded-md text-[13px] bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
           />
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {categories.map(c => (
             <button
               key={c}
               onClick={() => setFilter(c)}
-              className={`text-xs px-3 py-1.5 rounded-full border ${
+              className={clsx(
+                'h-8 px-3 rounded-md text-[12px] font-medium transition-colors duration-150',
                 filter === c
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : darkMode
-                    ? 'bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800'
-                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
+                  ? 'bg-fg text-fg-inverted'
+                  : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
+              )}
             >
               {c}
             </button>
@@ -134,43 +120,44 @@ export function PlaysPage({ darkMode, onPrepareRun }: Props) {
       </div>
 
       {loading ? (
-        <p className={`text-sm ${subtle}`}>Loading plays…</p>
+        <p className="text-[13px] text-fg-muted">Loading plays…</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(p => {
             const Icon = ICONS[p.icon ?? ''] ?? PlayIcon;
-            const accent = ACCENTS[p.category] ?? 'text-blue-500 bg-blue-500/10';
             return (
               <button
                 key={p.id}
                 onClick={() => startPlay(p)}
-                className={`group text-left rounded-xl border p-5 transition ${card}`}
+                className="group text-left focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`w-9 h-9 rounded-lg inline-flex items-center justify-center ${accent}`}>
-                    <Icon className="w-4 h-4" />
+                <Card interactive className="p-4 h-full">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="grid place-items-center w-8 h-8 rounded-md bg-surface-sunken text-fg-muted group-hover:bg-brand-subtle group-hover:text-brand transition-colors">
+                      <Icon className="w-4 h-4" strokeWidth={2} />
+                    </div>
+                    <span className="text-[10px] uppercase tracking-[0.08em] font-medium text-fg-subtle">
+                      {p.category}
+                    </span>
                   </div>
-                  <span className={`text-[10px] uppercase tracking-wider ${subtle}`}>
-                    {p.category}
-                  </span>
-                </div>
-                <h3 className="font-semibold mb-1.5">{p.title}</h3>
-                <p className={`text-sm ${subtle} line-clamp-3`}>{p.description}</p>
-                <div className="mt-4 inline-flex items-center gap-1 text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition">
-                  <PlayIcon className="w-3 h-3" /> Run
-                </div>
+                  <h3 className="font-display font-semibold text-[14px] tracking-tight mb-1">
+                    {p.title}
+                  </h3>
+                  <p className="text-[13px] text-fg-muted leading-snug line-clamp-3">
+                    {p.description}
+                  </p>
+                </Card>
               </button>
             );
           })}
           {filtered.length === 0 && (
-            <p className={`text-sm ${subtle} col-span-full`}>No plays match.</p>
+            <p className="text-[13px] text-fg-muted col-span-full">No plays match.</p>
           )}
         </div>
       )}
 
       {activePlay && (
         <PlayRunModal
-          darkMode={darkMode}
           play={activePlay}
           values={values}
           setValues={setValues}
@@ -184,7 +171,6 @@ export function PlaysPage({ darkMode, onPrepareRun }: Props) {
 }
 
 interface ModalProps {
-  darkMode: boolean;
   play: Play;
   values: Record<string, string>;
   setValues: (v: Record<string, string>) => void;
@@ -193,39 +179,36 @@ interface ModalProps {
   err: string | null;
 }
 
-function PlayRunModal({ darkMode, play, values, setValues, onSubmit, onClose, err }: ModalProps) {
-  const card = darkMode ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900';
-  const subtle = darkMode ? 'text-gray-400' : 'text-gray-500';
-  const inputCls = darkMode
-    ? 'bg-gray-800 border-gray-700 placeholder-gray-500 text-gray-100'
-    : 'bg-white border-gray-300 placeholder-gray-400 text-gray-900';
-
+function PlayRunModal({ play, values, setValues, onSubmit, onClose, err }: ModalProps) {
   const update = (k: string, v: string) => setValues({ ...values, [k]: v });
+  const inputCls =
+    'w-full px-3 py-2 rounded-md border border-border bg-surface text-[13px] placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl ${card}`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="relative w-full max-w-lg rounded-xl bg-surface shadow-dialog border border-border">
         <button
           onClick={onClose}
-          className={`absolute top-3 right-3 p-1 rounded ${subtle} hover:opacity-100`}
+          className="absolute top-3 right-3 grid place-items-center w-7 h-7 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
           aria-label="Close"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
         <div className="p-6">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="w-4 h-4 text-blue-500" />
-            <span className={`text-xs uppercase tracking-wider ${subtle}`}>{play.category}</span>
+          <div className="text-[10px] uppercase tracking-[0.08em] font-medium text-fg-subtle mb-1">
+            {play.category}
           </div>
-          <h2 className="text-lg font-semibold mb-1">{play.title}</h2>
-          <p className={`${subtle} text-sm mb-5`}>{play.description}</p>
+          <h2 className="font-display text-[18px] font-semibold tracking-tight mb-1">
+            {play.title}
+          </h2>
+          <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">{play.description}</p>
 
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             {play.inputs.map((i: PlayInput) => (
               <div key={i.key}>
-                <label className="block text-sm font-medium mb-1">
+                <label className="block text-[12px] font-medium mb-1 text-fg">
                   {i.label}
-                  {i.required && <span className="text-red-400 ml-1">*</span>}
+                  {i.required && <span className="text-danger ml-1">*</span>}
                 </label>
                 {i.type === 'textarea' ? (
                   <textarea
@@ -233,13 +216,13 @@ function PlayRunModal({ darkMode, play, values, setValues, onSubmit, onClose, er
                     value={values[i.key] ?? ''}
                     onChange={e => update(i.key, e.target.value)}
                     placeholder={i.placeholder}
-                    className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                    className={inputCls}
                   />
                 ) : i.type === 'select' ? (
                   <select
                     value={values[i.key] ?? ''}
                     onChange={e => update(i.key, e.target.value)}
-                    className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                    className={inputCls}
                   >
                     <option value="">Select…</option>
                     {(i.options ?? []).map(o => (
@@ -252,7 +235,7 @@ function PlayRunModal({ darkMode, play, values, setValues, onSubmit, onClose, er
                     value={values[i.key] ?? ''}
                     onChange={e => update(i.key, e.target.value)}
                     placeholder={i.placeholder}
-                    className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${inputCls}`}
+                    className={inputCls}
                   />
                 )}
               </div>
@@ -260,19 +243,16 @@ function PlayRunModal({ darkMode, play, values, setValues, onSubmit, onClose, er
           </div>
 
           {err && (
-            <div className="mt-4 px-3 py-2 text-sm rounded bg-red-500/10 text-red-400">
+            <div className="mt-4 px-3 py-2 text-[13px] rounded-md bg-danger-subtle text-danger">
               {err}
             </div>
           )}
 
           <div className="mt-6 flex items-center justify-end gap-2">
-            <button onClick={onClose} className={`px-3 py-2 text-sm ${subtle}`}>Cancel</button>
-            <button
-              onClick={onSubmit}
-              className="inline-flex items-center gap-1 text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500"
-            >
-              <PlayIcon className="w-4 h-4" /> Run play
-            </button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={onSubmit} leadingIcon={<PlayIcon className="w-3.5 h-3.5" />}>
+              Run play
+            </Button>
           </div>
         </div>
       </div>
