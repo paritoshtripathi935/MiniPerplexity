@@ -46,8 +46,12 @@ export function ChatMessage({ message, darkMode }: ChatMessageProps) {
             {isAssistant ? 'Assistant' : user?.fullName || 'You'}
           </span>
           {isSearching && (
-            <span className="animate-pulse text-blue-500 text-sm ml-2">
-              Searching...
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-fg-subtle ml-2">
+              <span
+                className="w-1 h-1 rounded-full bg-brand animate-[pulse_1.4s_ease-in-out_infinite]"
+                aria-hidden
+              />
+              Searching
             </span>
           )}
         </div>

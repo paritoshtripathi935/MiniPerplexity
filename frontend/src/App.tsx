@@ -15,7 +15,23 @@ import { wakeupBackend } from './utils/api';
 /** Cross-route shared state lives here; pages get what they need via props. */
 function AuthedShell() {
   const { getToken, isSignedIn } = useAuth();
-  const [darkMode, setDarkMode] = useState(true);
+  // Initial theme: respect saved preference, fall back to system preference.
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('paidpilot-theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
+  });
+
+  // Sync .dark on <html> so Tailwind class-based dark variants (and our CSS
+  // theme tokens) swap atomically.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) root.classList.add('dark');
+    else root.classList.remove('dark');
+    localStorage.setItem('paidpilot-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
   const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [pendingPlay, setPendingPlay] = useState<PendingPlay | null>(null);

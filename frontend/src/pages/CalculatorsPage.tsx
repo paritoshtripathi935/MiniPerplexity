@@ -7,27 +7,19 @@ interface Props {
 }
 
 /**
- * Calculators in a roomier multi-column layout. The Calculators component
- * itself is a vertical stack — this page lets the browser flow it into a
- * 2-column grid via CSS columns, which is the right layout for a set of
- * independent calculators of varying height.
+ * Calculators in a roomy 2-column flow. The Calculators component renders
+ * each calc as its own Card; column-css splits them into two responsive
+ * columns of varying height without the awkwardness of a CSS grid here.
  */
-export function CalculatorsPage({ darkMode }: Props) {
-  const card = darkMode
-    ? 'bg-gray-900 border-gray-800'
-    : 'bg-white border-gray-200 shadow-sm';
-
+export function CalculatorsPage({}: Props) {
   return (
     <>
       <PageHeader
         title="Calculators"
         subtitle="The four numbers performance marketers reach for daily. All client-side — no telemetry, no roundtrips."
       />
-
-      <div className={`rounded-xl border ${card}`}>
-        <div className="lg:columns-2 lg:gap-4 p-2 [&>div>div]:break-inside-avoid">
-          <Calculators darkMode={darkMode} />
-        </div>
+      <div className="lg:columns-2 lg:gap-4 space-y-4 lg:space-y-0 [&>div]:break-inside-avoid [&>div]:mb-4">
+        <Calculators darkMode={false} />
       </div>
     </>
   );
