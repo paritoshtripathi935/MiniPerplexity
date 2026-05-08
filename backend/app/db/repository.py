@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -142,6 +142,17 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
 
 
 # ---------- Queries ---------------------------------------------------------
+_TITLE_MAX_LEN = 80
+
+
+def _make_title(query_text: str) -> str:
+    """Derive a short, user-readable session title from the first query."""
+    title = " ".join(query_text.split())
+    if len(title) > _TITLE_MAX_LEN:
+        title = title[: _TITLE_MAX_LEN - 1].rstrip() + "…"
+    return title
+
+
 async def add_query(
     db: AsyncSession,
     session_id: str,
@@ -168,6 +179,15 @@ async def add_query(
     )
     db.add(q)
     await db.flush()
+
+    # First query in this session → use it to title the session.
+    if next_pos == 0:
+        await db.execute(
+            DBSession.__table__.update()
+            .where(DBSession.id == sid, DBSession.title.is_(None))
+            .values(title=_make_title(query_text))
+        )
+
     return q
 
 
@@ -308,6 +328,201 @@ async def upsert_search_results(
         )
     ).scalars().all()
     return list(rows)
+
+
+# ---------- Session listing / management -----------------------------------
+async def list_sessions_for_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    include_archived: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """Sidebar feed: user's sessions with title, message count, and last activity."""
+    msg_count = (
+        select(Message.session_id, func.count().label("n"))
+        .group_by(Message.session_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            DBSession.id,
+            DBSession.title,
+            DBSession.created_at,
+            DBSession.last_accessed_at,
+            DBSession.is_archived,
+            func.coalesce(msg_count.c.n, 0).label("message_count"),
+        )
+        .outerjoin(msg_count, msg_count.c.session_id == DBSession.id)
+        .where(DBSession.user_id == user_id)
+        .order_by(DBSession.last_accessed_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if not include_archived:
+        stmt = stmt.where(DBSession.is_archived.is_(False))
+
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "id": str(r.id),
+            "title": r.title,
+            "created_at": r.created_at.isoformat(),
+            "last_accessed_at": r.last_accessed_at.isoformat(),
+            "is_archived": r.is_archived,
+            "message_count": int(r.message_count),
+        }
+        for r in rows
+    ]
+
+
+async def update_session(
+    db: AsyncSession,
+    session_id: str,
+    *,
+    user_id: Optional[uuid.UUID] = None,
+    title: Optional[str] = None,
+    is_archived: Optional[bool] = None,
+) -> Optional[DBSession]:
+    """Rename or archive a session.
+
+    If `user_id` is supplied, only updates rows owned by that user — silently
+    no-ops on someone else's session (caller turns this into 404).
+    """
+    sid = _to_uuid(session_id)
+    values: dict = {}
+    if title is not None:
+        values["title"] = _make_title(title) if title else None
+    if is_archived is not None:
+        values["is_archived"] = is_archived
+    if not values:
+        return await db.get(DBSession, sid)
+
+    stmt = DBSession.__table__.update().where(DBSession.id == sid)
+    if user_id is not None:
+        stmt = stmt.where(DBSession.user_id == user_id)
+    stmt = stmt.values(**values).returning(DBSession.__table__.c.id)
+
+    updated_id = (await db.execute(stmt)).scalar_one_or_none()
+    if updated_id is None:
+        return None
+    return await db.get(DBSession, updated_id)
+
+
+async def export_session_markdown(db: AsyncSession, session_id: str) -> Optional[str]:
+    """Render a session's chat transcript as Markdown."""
+    sid = _to_uuid(session_id)
+    sess = await db.get(DBSession, sid)
+    if sess is None:
+        return None
+
+    msg_rows = (
+        await db.execute(
+            select(Message.role, Message.content, Message.created_at, Message.model_name)
+            .where(Message.session_id == sid)
+            .order_by(Message.created_at.asc())
+        )
+    ).all()
+
+    lines: list[str] = []
+    title = sess.title or "Untitled session"
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append(f"_Session `{sid}` · created {sess.created_at.isoformat()} · {len(msg_rows)} messages_")
+    lines.append("")
+
+    for role, content, created_at, model in msg_rows:
+        if role == MessageRole.user:
+            heading = f"## You · {created_at.isoformat()}"
+        elif role == MessageRole.assistant:
+            model_suffix = f" ({model})" if model else ""
+            heading = f"## Assistant{model_suffix} · {created_at.isoformat()}"
+        else:
+            heading = f"## {role.value.title()} · {created_at.isoformat()}"
+        lines.append(heading)
+        lines.append("")
+        lines.append(content)
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ---------- Full-text search -----------------------------------------------
+async def search_user_messages(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    query: str,
+    *,
+    limit: int = 20,
+) -> list[dict]:
+    """Search across the authenticated user's chat history using Postgres FTS.
+
+    Returns one row per matching session, with a `ts_headline`-rendered snippet
+    of the strongest-matching message. `websearch_to_tsquery` accepts natural
+    syntax (`"exact phrase"`, `OR`, `-not`).
+    """
+    if not query.strip():
+        return []
+
+    sql = text(
+        """
+        WITH ranked AS (
+            SELECT
+                m.id           AS message_id,
+                m.session_id   AS session_id,
+                m.role         AS role,
+                m.content      AS content,
+                m.created_at   AS created_at,
+                ts_rank_cd(m.content_tsv, websearch_to_tsquery('english', :q)) AS rank
+            FROM messages m
+            JOIN sessions s ON s.id = m.session_id
+            WHERE s.user_id = :user_id
+              AND m.content_tsv @@ websearch_to_tsquery('english', :q)
+        ),
+        top_per_session AS (
+            SELECT DISTINCT ON (session_id)
+                session_id, message_id, role, content, created_at, rank
+            FROM ranked
+            ORDER BY session_id, rank DESC, created_at DESC
+        )
+        SELECT
+            t.session_id,
+            t.message_id,
+            t.role,
+            t.created_at,
+            t.rank,
+            s.title,
+            s.last_accessed_at,
+            ts_headline(
+                'english',
+                t.content,
+                websearch_to_tsquery('english', :q),
+                'StartSel=<mark>,StopSel=</mark>,MaxWords=24,MinWords=10,ShortWord=3,MaxFragments=2'
+            ) AS snippet
+        FROM top_per_session t
+        JOIN sessions s ON s.id = t.session_id
+        ORDER BY t.rank DESC, s.last_accessed_at DESC
+        LIMIT :lim
+        """
+    )
+
+    rows = (
+        await db.execute(sql, {"q": query, "user_id": user_id, "lim": limit})
+    ).all()
+    return [
+        {
+            "session_id": str(r.session_id),
+            "message_id": str(r.message_id),
+            "role": r.role,
+            "title": r.title,
+            "snippet": r.snippet,
+            "rank": float(r.rank),
+            "matched_at": r.created_at.isoformat(),
+            "last_accessed_at": r.last_accessed_at.isoformat(),
+        }
+        for r in rows
+    ]
 
 
 # ---------- Citations -------------------------------------------------------

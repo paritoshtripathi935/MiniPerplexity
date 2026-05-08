@@ -151,3 +151,89 @@ export async function getMe(getToken: GetToken) {
   }
   return await response.json();
 }
+
+// ---------- History features (signed-in only) -----------------------------
+
+export interface SessionListItem {
+  id: string;
+  title: string | null;
+  created_at: string;
+  last_accessed_at: string;
+  is_archived: boolean;
+  message_count: number;
+}
+
+export interface SearchHit {
+  session_id: string;
+  message_id: string;
+  role: 'user' | 'assistant' | 'system';
+  title: string | null;
+  snippet: string;            // contains <mark>…</mark> highlights
+  rank: number;
+  matched_at: string;
+  last_accessed_at: string;
+}
+
+export async function listSessions(
+  getToken: GetToken,
+  opts: { includeArchived?: boolean; limit?: number; offset?: number } = {}
+): Promise<{ sessions: SessionListItem[] }> {
+  const qp = new URLSearchParams();
+  if (opts.includeArchived) qp.set('include_archived', 'true');
+  if (opts.limit !== undefined) qp.set('limit', String(opts.limit));
+  if (opts.offset !== undefined) qp.set('offset', String(opts.offset));
+  const url = `${API_HOST}/api/v1/sessions${qp.toString() ? `?${qp}` : ''}`;
+  const response = await fetch(url, { headers: { ...(await authHeaders(getToken)) } });
+  if (!response.ok) throw new Error(`Failed to list sessions: ${response.status}`);
+  return await response.json();
+}
+
+export async function patchSession(
+  sessionId: string,
+  payload: { title?: string; is_archived?: boolean },
+  getToken: GetToken
+) {
+  const response = await fetch(`${API_HOST}/api/v1/session/${sessionId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(await authHeaders(getToken)),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to update session: ${response.status}`);
+  return await response.json();
+}
+
+/**
+ * Trigger a browser download of the session's markdown export.
+ */
+export async function downloadSessionExport(sessionId: string, getToken?: GetToken) {
+  const response = await fetch(`${API_HOST}/api/v1/session/${sessionId}/export`, {
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) throw new Error(`Failed to export session: ${response.status}`);
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `miniperplexity-${sessionId}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function searchHistory(
+  q: string,
+  getToken: GetToken,
+  limit: number = 20
+): Promise<{ query: string; results: SearchHit[] }> {
+  const qp = new URLSearchParams({ q, limit: String(limit) });
+  const response = await fetch(`${API_HOST}/api/v1/search?${qp}`, {
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) throw new Error(`Failed to search: ${response.status}`);
+  return await response.json();
+}

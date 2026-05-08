@@ -92,16 +92,30 @@ if [[ -n "$COMMIT_MSG" ]]; then
 fi
 
 # ---------- Push with token --------------------------------------------------
-# We pass the token via an ephemeral remote URL so it never lands in `git config`
-# or in `.git/config` on disk. The token is only in process memory for this push.
-PUSH_URL="https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${REPO}.git"
+# Strategy: configure the token via http.extraHeader for THIS push only,
+# rather than embedding it in the remote URL. That way `git push` never has
+# the token in any string it might print to stdout/stderr (the
+# "set up to track 'URL'" line will show the clean origin URL, not the token).
+#
+# The header is encoded `Authorization: Basic base64(user:token)`. We pass it
+# with `git -c` so it lives only in the process env, never on disk.
+CLEAN_URL="https://github.com/${GITHUB_USER}/${REPO}.git"
+AUTH_B64="$(printf '%s:%s' "$GITHUB_USER" "$GITHUB_TOKEN" | base64 | tr -d '\n')"
 
-PUSH_ARGS=(push)
+# Make sure origin points at the clean URL (no embedded creds), so set-upstream
+# stores something safe.
+git remote set-url origin "$CLEAN_URL" 2>/dev/null || git remote add origin "$CLEAN_URL"
+
+PUSH_ARGS=(-c "http.${CLEAN_URL}.extraHeader=Authorization: Basic ${AUTH_B64}" push)
 [[ $FORCE_PUSH -eq 1 ]] && PUSH_ARGS+=(--force-with-lease)
-PUSH_ARGS+=(--set-upstream "$PUSH_URL" "$CURRENT_BRANCH")
+PUSH_ARGS+=(--set-upstream origin "$CURRENT_BRANCH")
 
-# Hide the URL from stderr so the token doesn't appear in logs.
-if git "${PUSH_ARGS[@]}" 2> >(sed -E "s|https://[^@]+@|https://***@|g" >&2); then
+# Belt-and-suspenders: filter both stderr AND stdout for any URL with creds,
+# in case a future git version prints them.
+SCRUB='s|https://[^@[:space:]]+@|https://***@|g; s|Authorization: Basic [A-Za-z0-9+/=]+|Authorization: Basic ***|g'
+if git "${PUSH_ARGS[@]}" \
+        > >(sed -E "$SCRUB") \
+        2> >(sed -E "$SCRUB" >&2); then
     green "✓ Pushed $CURRENT_BRANCH to origin."
     blue  "→ PR: https://github.com/${GITHUB_USER}/${REPO}/pull/new/${CURRENT_BRANCH}"
 else

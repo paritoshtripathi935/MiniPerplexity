@@ -2,7 +2,9 @@ import logging
 import traceback
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user, get_optional_user
@@ -14,12 +16,16 @@ from app.db.repository import (
     add_query,
     append_message,
     delete_session,
+    export_session_markdown,
     find_or_create_query,
     get_chat_history,
     get_or_create_session,
     get_recent_queries,
     get_session_history,
+    list_sessions_for_user,
+    search_user_messages,
     touch_session,
+    update_session,
     upsert_search_results,
 )
 from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
@@ -144,6 +150,86 @@ async def get_answer(
     except Exception as e:
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error generating answer: {e}")
+
+
+class SessionUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    is_archived: Optional[bool] = None
+
+
+@router.get("/sessions")
+async def list_my_sessions(
+    include_archived: bool = False,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sidebar feed of the authenticated user's sessions."""
+    rows = await list_sessions_for_user(
+        db, user.id, include_archived=include_archived, limit=limit, offset=offset
+    )
+    return {"sessions": rows}
+
+
+@router.patch("/session/{session_id}")
+async def patch_session(
+    session_id: str,
+    payload: SessionUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename or archive a session. Only the owner can patch."""
+    updated = await update_session(
+        db,
+        session_id,
+        user_id=user.id,
+        title=payload.title,
+        is_archived=payload.is_archived,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "id": str(updated.id),
+        "title": updated.title,
+        "is_archived": updated.is_archived,
+    }
+
+
+@router.get("/session/{session_id}/export")
+async def export_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a session's chat transcript as Markdown.
+
+    No auth required — anyone with the session_id can export, mirroring the
+    `/history` endpoint's access model.
+    """
+    md = await export_session_markdown(db, session_id)
+    if md is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    safe_name = session_id.replace("/", "_")[:64]
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="miniperplexity-{safe_name}.md"'
+        },
+    )
+
+
+@router.get("/search")
+async def search_history(
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full-text search across the user's past messages."""
+    results = await search_user_messages(db, user.id, q, limit=limit)
+    return {"query": q, "results": results}
 
 
 @router.get("/me")
