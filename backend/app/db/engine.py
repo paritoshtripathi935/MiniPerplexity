@@ -36,12 +36,19 @@ def _make_engine() -> AsyncEngine:
             "DATABASE_URL is not set. Add it to backend/.env "
             "(see docs/database/README.md)."
         )
+    # Note on pool_pre_ping: enabling it on the async engine can race with
+    # the asyncpg dialect's sync→async bridge and raise MissingGreenlet under
+    # Render's gunicorn+uvicorn workers (see sqlalchemy#9509). pool_recycle
+    # below gives us equivalent staleness protection without going through
+    # that path: any connection older than the threshold is silently
+    # recycled on checkout. Neon's idle-disconnect window is ~5 minutes on
+    # the pooled endpoint, so 180s is comfortable.
     return create_async_engine(
         db_config.url,
         echo=db_config.echo,
         pool_size=db_config.pool_size,
         max_overflow=db_config.max_overflow,
-        pool_pre_ping=True,
+        pool_recycle=180,
         connect_args=_connect_args(),
     )
 
