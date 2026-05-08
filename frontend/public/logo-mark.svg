@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PaidPilot">
+  <!-- Same composition as the favicon, but with more breathing room and
+       crisper edges for use as a marketing-asset / OG image / social mark. -->
+  <rect width="64" height="64" rx="14" fill="#4F46E5"/>
+  <path d="M32 12 L35.2 27 L50 30 L35.2 33 L32 48 L28.8 33 L14 30 L28.8 27 Z"
+        fill="#fff"/>
+  <path d="M48 16 L48.8 19.2 L52 20 L48.8 20.8 L48 24 L47.2 20.8 L44 20 L47.2 19.2 Z"
+        fill="#fff" opacity=".75"/>
+  <path d="M16 44 L16.6 46.4 L19 47 L16.6 47.6 L16 50 L15.4 47.6 L13 47 L15.4 46.4 Z"
+        fill="#fff" opacity=".55"/>
+</svg>

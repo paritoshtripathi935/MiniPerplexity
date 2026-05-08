@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="PaidPilot">
+  <!-- Brand-coloured rounded square. Matches CSS var --brand (#4F46E5). -->
+  <rect width="32" height="32" rx="7" fill="#4F46E5"/>
+  <!-- Four-point sparkle / north star — matches the in-app brand mark. -->
+  <path d="M16 6 L17.6 13.5 L25 15 L17.6 16.5 L16 24 L14.4 16.5 L7 15 L14.4 13.5 Z"
+        fill="#fff"/>
+  <!-- Small accent star, top-right. -->
+  <path d="M24 8 L24.4 9.6 L26 10 L24.4 10.4 L24 12 L23.6 10.4 L22 10 L23.6 9.6 Z"
+        fill="#fff" opacity=".75"/>
+  <!-- Smaller accent star, bottom-left. -->
+  <path d="M8 22 L8.3 23.2 L9.5 23.5 L8.3 23.8 L8 25 L7.7 23.8 L6.5 23.5 L7.7 23.2 Z"
+        fill="#fff" opacity=".55"/>
+</svg>
