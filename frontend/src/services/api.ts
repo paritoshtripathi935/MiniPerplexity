@@ -237,3 +237,102 @@ export async function searchHistory(
   if (!response.ok) throw new Error(`Failed to search: ${response.status}`);
   return await response.json();
 }
+
+// ---------- Brand profile (PaidPilot V1) ----------------------------------
+
+export interface BrandProfile {
+  user_id: string;
+  company_name: string | null;
+  website: string | null;
+  icp_description: string | null;
+  primary_channels: string[];
+  target_cac: number | null;
+  target_roas: number | null;
+  voice_guidelines: string | null;
+  current_campaigns_summary: string | null;
+  onboarding_completed: boolean;
+}
+
+export type BrandProfileUpdate = Partial<Omit<BrandProfile, 'user_id' | 'onboarding_completed'>> & {
+  mark_completed?: boolean;
+};
+
+export async function getBrandProfile(getToken: GetToken): Promise<BrandProfile> {
+  const response = await fetch(`${API_HOST}/api/v1/brand-profile`, {
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) throw new Error(`Failed to load brand profile: ${response.status}`);
+  return await response.json();
+}
+
+export async function putBrandProfile(
+  payload: BrandProfileUpdate,
+  getToken: GetToken
+): Promise<BrandProfile> {
+  const response = await fetch(`${API_HOST}/api/v1/brand-profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to save brand profile: ${response.status}`);
+  return await response.json();
+}
+
+// ---------- Plays catalog -------------------------------------------------
+
+export interface PlayInput {
+  key: string;
+  label: string;
+  type: 'text' | 'textarea' | 'select' | 'number';
+  required?: boolean;
+  placeholder?: string;
+  options?: string[];
+}
+
+export interface Play {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  icon?: string;
+  inputs: PlayInput[];
+}
+
+export async function listPlays(): Promise<{ plays: Play[] }> {
+  const response = await fetch(`${API_HOST}/api/v1/plays`);
+  if (!response.ok) throw new Error(`Failed to load plays: ${response.status}`);
+  return await response.json();
+}
+
+/**
+ * Run a Play: same as `getAnswer` but tags the request with `play_id` so
+ * the backend layers the Play's instructions + output schema onto the
+ * system prompt.
+ */
+export async function runPlay(
+  playId: string,
+  query: string,
+  sessionId: string,
+  searchResults: any,
+  getToken?: GetToken
+) {
+  const qp = new URLSearchParams({ play_id: playId });
+  const response = await fetch(`${API_HOST}/api/v1/answer/${sessionId}?${qp}`, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'Content-Type': 'application/json',
+      ...(await authHeaders(getToken)),
+    },
+    body: JSON.stringify({
+      query,
+      search_results: searchResults,
+      previous_queries: [],
+    }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(`Play failed: ${errorData.detail || response.statusText}`);
+  }
+  return await response.json();
+}

@@ -87,14 +87,20 @@ const LoginPage: React.FC = () => {
             <div className="flex items-center gap-4">
               <Brain className="w-12 h-12 text-blue-400 animate-pulse" />
               <div>
-                <h1 className="text-4xl font-bold">Mini Perplexity</h1>
-                <p className="text-xl text-gray-300">AI-Powered Search Assistant</p>
+                <h1 className="text-4xl font-bold">PaidPilot</h1>
+                <p className="text-xl text-gray-300">AI co-pilot for performance marketers</p>
               </div>
             </div>
             <div className="space-y-6">
               <p className="text-lg text-gray-300 max-w-lg">
-                Experience the next generation of AI-powered search. Get instant, accurate answers with cited sources and context-aware responses.
+                Benchmarks, briefs, and channel plans without the Slack-and-search slog. Citations weighted toward sources you actually trust — Meta &amp; Google docs, eMarketer, Adweek — and your brand context baked into every answer.
               </p>
+              <ul className="text-sm text-gray-400 space-y-1.5 max-w-lg">
+                <li>• 10 ready-to-run plays — creative briefs, channel plans, A/B specs.</li>
+                <li>• Persistent chat history with full-text search.</li>
+                <li>• Built-in calculators: CAC payback, ROAS-to-margin, sample size.</li>
+                <li>• Free while in beta.</li>
+              </ul>
               <button
                 onClick={() => setShowContact(true)}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors group"

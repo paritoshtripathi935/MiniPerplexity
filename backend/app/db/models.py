@@ -21,6 +21,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -28,7 +29,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -77,6 +78,35 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- brand_profiles -------------------------------------------------
+class BrandProfile(Base):
+    """One row per user. Composed into the system prompt for every chat."""
+    __tablename__ = "brand_profiles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    company_name: Mapped[Optional[str]] = mapped_column(Text)
+    website: Mapped[Optional[str]] = mapped_column(Text)
+    icp_description: Mapped[Optional[str]] = mapped_column(Text)
+    primary_channels: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")
+    )
+    target_cac: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    target_roas: Mapped[Optional[float]] = mapped_column(Numeric(8, 2))
+    voice_guidelines: Mapped[Optional[str]] = mapped_column(Text)
+    current_campaigns_summary: Mapped[Optional[str]] = mapped_column(Text)
+    onboarding_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 # ---------- sessions --------------------------------------------------------

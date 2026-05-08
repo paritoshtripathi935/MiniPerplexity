@@ -141,13 +141,8 @@ export function SessionsSidebar({
   };
 
   const containerCls = useMemo(
-    () =>
-      `flex flex-col h-full w-72 shrink-0 border-r ${
-        darkMode
-          ? 'bg-gray-950 border-gray-800 text-gray-200'
-          : 'bg-gray-50 border-gray-200 text-gray-800'
-      }`,
-    [darkMode]
+    () => `flex flex-col h-full`,
+    []
   );
   const itemBase = darkMode
     ? 'hover:bg-gray-800 border-gray-800'

@@ -117,7 +117,8 @@ class CloudflareChat:
         search_results: List[Dict],
         chat_history: Optional[List[Dict]] = None,
         query: Optional[str] = None,
-        previous_queries: Optional[List[str]] = None
+        previous_queries: Optional[List[str]] = None,
+        system_override: Optional[str] = None,
     ) -> str:
         """Generate an answer using context and chat history.
 
@@ -126,15 +127,24 @@ class CloudflareChat:
             chat_history: Previous conversation messages
             query: Current query
             previous_queries: List of previous queries in the session
+            system_override: Marketing-tuned system prompt composed by
+                app.services.system_prompt.compose_system_prompt. When set,
+                overrides the default helpful-assistant prompt and gets the
+                search-result context appended.
 
         Returns:
             The generated answer
         """
-        
+
         # Build message list
         messages = []
-        
-        if search_results:
+
+        if system_override:
+            content = system_override
+            if search_results:
+                content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
+            messages.append(Message(role="system", content=content))
+        elif search_results:
             # Use context-aware system prompt if search results exist
             messages.append(Message(
                 role="system",

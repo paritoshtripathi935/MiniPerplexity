@@ -3,12 +3,13 @@ import { Brain } from 'lucide-react';
 import { SearchBar } from './components/SearchBar';
 import { ChatMessage } from './components/ChatMessage';
 import { Message } from './types';
-import { fetchAnswer, performSearch, getAnswer, getSessionHistory } from './services/api';
+import { fetchAnswer, performSearch, getAnswer, getSessionHistory, runPlay, getBrandProfile, type Play, type BrandProfile } from './services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { SignIn, SignedIn, SignedOut, UserButton, useAuth } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
 import DeveloperInfo from './components/DeveloperInfo';
-import { SessionsSidebar } from './components/SessionsSidebar';
+import { Sidebar } from './components/Sidebar';
+import { Onboarding } from './components/Onboarding';
 import { MessageCircle } from 'lucide-react';
 import { wakeupBackend } from './utils/api';
 
@@ -25,7 +26,9 @@ function App() {
     wakeupBackend();
   }, []);
 
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
+  const [profile, setProfile] = useState<BrandProfile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<string | null>(null);
@@ -92,6 +95,73 @@ function App() {
     setMessages([]);
     setError(null);
     setSessionId(uuidv4());
+  };
+
+  // Hydrate brand profile so we know whether to show the onboarding wizard.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    (async () => {
+      try {
+        const p = await getBrandProfile(getToken);
+        setProfile(p);
+      } catch {
+        // First-time user — leave profile null; server will return defaults.
+      } finally {
+        setProfileLoaded(true);
+      }
+    })();
+  }, [isSignedIn, getToken]);
+
+  const handleRunPlay = async (play: Play, query: string) => {
+    resetSearch();
+    // Plays start in a fresh session by design — they're discrete tasks.
+    justCreatedRef.current = true;
+    const newSid = uuidv4();
+    setSessionId(newSid);
+    setMessages([]);
+
+    const userMsg: Message = {
+      id: uuidv4(),
+      type: 'user',
+      content: `▸ ${play.title}\n\n${query}`,
+      timestamp: new Date(),
+    };
+    const responseMsg: Message = {
+      id: uuidv4(),
+      type: 'assistant',
+      content: `🤔 Running play: ${play.title}…\n`,
+      timestamp: new Date(),
+      search_results: [],
+      isSearching: true,
+    };
+    setMessages([userMsg, responseMsg]);
+
+    try {
+      const searchResults = await performSearch(query, newSid, [], undefined, undefined, getToken);
+      const answerResponse = await runPlay(play.id, query, newSid, searchResults, getToken);
+
+      if (answerResponse?.answer && Array.isArray(answerResponse.citations)) {
+        setMessages(prev => prev.map(m =>
+          m.id === responseMsg.id
+            ? {
+                ...m,
+                content: answerResponse.answer,
+                search_results: searchResults.map((r: { title: any; url: any; source: any }) => ({
+                  title: r.title,
+                  source: r.url,
+                  type: r.source,
+                })),
+                sources: answerResponse.citations.map((c: string) => ({ title: '', url: c, type: 'web' })),
+                isSearching: false,
+              }
+            : m
+        ));
+        setSidebarRefresh(n => n + 1);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(`Play failed: ${err}`);
+    }
   };
 
   useEffect(() => {
@@ -228,13 +298,20 @@ function App() {
         <LoginPage />
       </SignedOut>
       <SignedIn>
+        {profileLoaded && profile && !profile.onboarding_completed && (
+          <Onboarding
+            darkMode={darkMode}
+            onComplete={p => setProfile(p)}
+          />
+        )}
         <div className={`min-h-screen flex ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
           <div className="hidden md:block h-screen sticky top-0">
-            <SessionsSidebar
+            <Sidebar
               darkMode={darkMode}
               activeSessionId={sessionId}
               onSelectSession={handleSelectSession}
               onNewChat={handleNewChat}
+              onRunPlay={handleRunPlay}
               refreshSignal={sidebarRefresh}
             />
           </div>
@@ -242,7 +319,10 @@ function App() {
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-2">
                 <Brain className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'} brain-icon`} />
-                <h1 className="text-2xl font-bold">Mini Perplexity</h1>
+                <div>
+                  <h1 className="text-2xl font-bold leading-tight">PaidPilot</h1>
+                  <p className="text-xs opacity-60 -mt-0.5">AI co-pilot for performance marketers</p>
+                </div>
               </div>
               <div className="flex items-center gap-4">
                 <button
