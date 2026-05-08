@@ -1,103 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Brain } from 'lucide-react';
-import { SearchBar } from './components/SearchBar';
-import { ChatMessage } from './components/ChatMessage';
-import { Message } from './types';
-import { fetchAnswer, performSearch, getAnswer, getSessionHistory, runPlay, getBrandProfile, type Play, type BrandProfile } from './services/api';
-import { v4 as uuidv4 } from 'uuid';
-import { SignIn, SignedIn, SignedOut, UserButton, useAuth } from "@clerk/clerk-react";
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
 import LoginPage from './components/LoginPage';
-import DeveloperInfo from './components/DeveloperInfo';
-import { Sidebar } from './components/Sidebar';
+import { AppLayout } from './components/AppLayout';
 import { Onboarding } from './components/Onboarding';
-import { MessageCircle } from 'lucide-react';
+import { HomePage } from './pages/HomePage';
+import { ChatPage, type PendingPlay } from './pages/ChatPage';
+import { PlaysPage } from './pages/PlaysPage';
+import { CalculatorsPage } from './pages/CalculatorsPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { getBrandProfile, type BrandProfile } from './services/api';
 import { wakeupBackend } from './utils/api';
 
-  /**
-   * Main App component.
-   *
-   * This component renders the main chat interface, SearchBar, and footer.
-   * It also handles the logic for loading and displaying the developer info.
-   *
-   * @returns {JSX.Element} The main app component.
-   */
-function App() {
-  useEffect(() => {
-    wakeupBackend();
-  }, []);
-
+/** Cross-route shared state lives here; pages get what they need via props. */
+function AuthedShell() {
   const { getToken, isSignedIn } = useAuth();
+  const [darkMode, setDarkMode] = useState(true);
   const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loadingState, setLoadingState] = useState<string | null>(null);
-  const [darkMode, setDarkMode] = useState(true);
-  const [sessionId, setSessionId] = useState<string>(() => uuidv4());
-  // Bumped after each successful answer so the sidebar refreshes its list.
-  const [sidebarRefresh, setSidebarRefresh] = useState(0);
-  // Tracks whether the current sessionId was just created locally (no DB row yet)
-  // so we don't bother fetching /history for a guaranteed 404.
-  const justCreatedRef = useRef(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [devInfoOpen, setDevInfoOpen] = useState<boolean>(false);
-  const developerInfo = "Your developer info text goes here";
-  const [typedText, setTypedText] = useState<string>('');
-  const [isTyping, setIsTyping] = useState<boolean>(false);
-  const loadingTimersRef = useRef<number[]>([]);
-  const [showDevInfo, setShowDevInfo] = useState(false);
+  const [pendingPlay, setPendingPlay] = useState<PendingPlay | null>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Hydrate the chat from the DB whenever the active session changes to a
-  // pre-existing one (i.e. user clicked a sidebar item).
-  useEffect(() => {
-    if (justCreatedRef.current) {
-      justCreatedRef.current = false;
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await getSessionHistory(sessionId, getToken);
-        if (cancelled) return;
-        const history = data?.history?.messages ?? [];
-        const hydrated: Message[] = history.map((m: { role: string; content: string }) => ({
-          id: uuidv4(),
-          type: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content,
-          timestamp: new Date(),
-          search_results: [],
-        }));
-        setMessages(hydrated);
-      } catch {
-        if (!cancelled) setMessages([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, getToken]);
-
-  const handleSelectSession = (id: string) => {
-    if (id === sessionId) return;
-    setSessionId(id);
-  };
-
-  const handleNewChat = () => {
-    justCreatedRef.current = true;
-    setMessages([]);
-    setError(null);
-    setSessionId(uuidv4());
-  };
-
-  // Hydrate brand profile so we know whether to show the onboarding wizard.
+  // Load brand profile so we know whether to show onboarding.
   useEffect(() => {
     if (!isSignedIn) return;
     (async () => {
@@ -105,300 +28,82 @@ function App() {
         const p = await getBrandProfile(getToken);
         setProfile(p);
       } catch {
-        // First-time user — leave profile null; server will return defaults.
+        // First-time user — server returns defaults; show onboarding.
       } finally {
         setProfileLoaded(true);
       }
     })();
   }, [isSignedIn, getToken]);
 
-  const handleRunPlay = async (play: Play, query: string) => {
-    resetSearch();
-    // Plays start in a fresh session by design — they're discrete tasks.
-    justCreatedRef.current = true;
-    const newSid = uuidv4();
-    setSessionId(newSid);
-    setMessages([]);
+  const showOnboarding =
+    profileLoaded && (profile === null || !profile.onboarding_completed);
 
-    const userMsg: Message = {
-      id: uuidv4(),
-      type: 'user',
-      content: `▸ ${play.title}\n\n${query}`,
-      timestamp: new Date(),
-    };
-    const responseMsg: Message = {
-      id: uuidv4(),
-      type: 'assistant',
-      content: `🤔 Running play: ${play.title}…\n`,
-      timestamp: new Date(),
-      search_results: [],
-      isSearching: true,
-    };
-    setMessages([userMsg, responseMsg]);
-
-    try {
-      const searchResults = await performSearch(query, newSid, [], undefined, undefined, getToken);
-      const answerResponse = await runPlay(play.id, query, newSid, searchResults, getToken);
-
-      if (answerResponse?.answer && Array.isArray(answerResponse.citations)) {
-        setMessages(prev => prev.map(m =>
-          m.id === responseMsg.id
-            ? {
-                ...m,
-                content: answerResponse.answer,
-                search_results: searchResults.map((r: { title: any; url: any; source: any }) => ({
-                  title: r.title,
-                  source: r.url,
-                  type: r.source,
-                })),
-                sources: answerResponse.citations.map((c: string) => ({ title: '', url: c, type: 'web' })),
-                isSearching: false,
-              }
-            : m
-        ));
-        setSidebarRefresh(n => n + 1);
-      }
-    } catch (err) {
-      console.error(err);
-      setError(`Play failed: ${err}`);
-    }
-  };
-
-  useEffect(() => {
-    if (devInfoOpen) {
-      setTypedText('');
-      setIsTyping(true);
-      let index = 0;
-
-      const typingInterval = setInterval(() => {
-        if (index < developerInfo.length) {
-          setTypedText(prev => prev + developerInfo[index]);
-          index++;
-        } else {
-          clearInterval(typingInterval);
-          setIsTyping(false);
-        }
-      }, 100); // Adjust typing speed here
-
-      return () => clearInterval(typingInterval);
-    }
-  }, [devInfoOpen]);
-
-  // Cleanup function to clear all timers
-  const clearLoadingTimers = () => {
-    loadingTimersRef.current.forEach(timer => window.clearTimeout(timer));
-    loadingTimersRef.current = [];
-    setLoadingState(null);
-  };
-
-  // Reset function for new search
-  const resetSearch = () => {
-    clearLoadingTimers();
-    setError(null);
-  };
-
-  const handleSearch = async (query: string, customUrl?: string) => {
-    resetSearch();
-
-    const userMessage: Message = {
-      id: uuidv4(),
-      type: 'user',
-      content: query,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-
-    try {
-      const responseMessage: Message = {
-        id: uuidv4(),
-        type: 'assistant',
-        content: '🤔 Let me think about that...\n',
-        timestamp: new Date(),
-        search_results: [],
-        isSearching: true
-      };
-      
-      setMessages(prev => [...prev, responseMessage]);
-
-      // Get previous queries from messages
-      const previousQueries = messages
-        .filter(msg => msg.type === 'user')
-        .map(msg => msg.content);
-
-      // Pass the customUrl to performSearch
-      const searchResults = await performSearch(
-        query,
-        sessionId,
-        previousQueries,
-        customUrl,
-        (url: string) => {
-          setMessages(prev => prev.map(msg =>
-            msg.id === responseMessage.id
-              ? {
-                  ...msg,
-                  content: msg.content + `\n🔍 Searching: ${url}\n`,
-                  animation: 'animate-pulse'
-                }
-              : msg
-          ));
-        },
-        getToken
-      );
-
-      // Then get answer using search results
-      const answerResponse = await getAnswer(query, sessionId, searchResults, previousQueries, getToken);
-
-      // Update final message
-      if (answerResponse && answerResponse.answer && Array.isArray(answerResponse.citations)) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === responseMessage.id
-            ? {
-                ...msg,
-                content: answerResponse.answer,
-                search_results: searchResults.map((result: { title: any; url: any; source: any; }) => ({
-                  title: result.title,
-                  source: result.url,
-                  type: result.source
-                })),
-                sources: answerResponse.citations.map((citation: string) => ({
-                  title: '',
-                  url: citation,
-                  type: 'web'
-                })),
-                isSearching: false
-              }
-            : msg
-        ));
-        // Refresh sidebar so the new (or now-titled) session bubbles to top.
-        setSidebarRefresh(n => n + 1);
-      }
-    } catch (err) {
-      console.error(err);
-      setError(`Failed to fetch answer: ${err}`);
-      clearLoadingTimers();
-    }
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearLoadingTimers();
-    };
-  }, []);
-  ;
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
-
- return (
+  return (
     <>
-      <SignedOut>
-        <LoginPage />
-      </SignedOut>
-      <SignedIn>
-        {profileLoaded && profile && !profile.onboarding_completed && (
-          <Onboarding
-            darkMode={darkMode}
-            onComplete={p => setProfile(p)}
+      {showOnboarding && (
+        <Onboarding darkMode={darkMode} onComplete={p => setProfile(p)} />
+      )}
+      <Routes>
+        <Route element={<AppLayout darkMode={darkMode} toggleDarkMode={() => setDarkMode(d => !d)} />}>
+          <Route index element={<HomePage darkMode={darkMode} />} />
+          <Route
+            path="chat"
+            element={
+              <ChatPage
+                darkMode={darkMode}
+                pending={pendingPlay}
+                clearPending={() => setPendingPlay(null)}
+              />
+            }
           />
-        )}
-        <div className={`min-h-screen flex ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-          <div className="hidden md:block h-screen sticky top-0">
-            <Sidebar
-              darkMode={darkMode}
-              activeSessionId={sessionId}
-              onSelectSession={handleSelectSession}
-              onNewChat={handleNewChat}
-              onRunPlay={handleRunPlay}
-              refreshSignal={sidebarRefresh}
-            />
-          </div>
-          <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex justify-between items-center mb-8">
-              <div className="flex items-center gap-2">
-                <Brain className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'} brain-icon`} />
-                <div>
-                  <h1 className="text-2xl font-bold leading-tight">PaidPilot</h1>
-                  <p className="text-xs opacity-60 -mt-0.5">AI co-pilot for performance marketers</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setShowDevInfo(!showDevInfo)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors group"
-                >
-                  <MessageCircle className="w-4 h-4 transition-transform group-hover:scale-110" />
-                  <span>Connect with Developer</span>
-                </button>
-                <UserButton />
-                <button
-                  onClick={() => setDarkMode(!darkMode)}
-                  className={`p-2 rounded-lg ${
-                    darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-100'
-                  }`}
-                >
-                  {darkMode ? '🌞' : '🌙'}
-                </button>
-              </div>
-            </div>
-
-            {showDevInfo ? (
-              <DeveloperInfo darkMode={darkMode} />
-            ) : (
-              <div className="space-y-6 overflow-y-auto pb-24" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-                {messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                    darkMode={darkMode}
-                  />
-                ))}
-                
-                {loadingState && (
-                  <div className={`p-4 rounded-lg ${
-                    darkMode 
-                      ? 'bg-gray-800 text-gray-300' 
-                      : 'bg-white text-gray-600'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"></div>
-                      <p>{loadingState}</p>
-                    </div>
-                  </div>
-                )}
-
-                {error && (
-                  <div className={`p-4 rounded-lg ${
-                    darkMode 
-                      ? 'bg-red-900/30 text-red-300' 
-                      : 'bg-red-50 text-red-600'
-                  }`}>
-                    {error}
-                  </div>
-                )}
-                
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-
-            <footer className={`fixed bottom-0 left-0 right-0 p-4 border-t z-10 ${
-              darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
-            }`}>
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <SearchBar 
-                  onSearch={handleSearch}
-                  loading={!!loadingState}
-                />
-              </div>
-            </footer>
-          </div>
-        </div>
-      </SignedIn>
+          <Route
+            path="chat/:sessionId"
+            element={
+              <ChatPage
+                darkMode={darkMode}
+                pending={pendingPlay}
+                clearPending={() => setPendingPlay(null)}
+              />
+            }
+          />
+          <Route
+            path="plays"
+            element={
+              <PlaysPage
+                darkMode={darkMode}
+                onPrepareRun={(play, query, sessionId) =>
+                  setPendingPlay({ play, query, sessionId })
+                }
+              />
+            }
+          />
+          <Route path="calc" element={<CalculatorsPage darkMode={darkMode} />} />
+          <Route
+            path="settings"
+            element={<SettingsPage darkMode={darkMode} onUpdate={p => setProfile(p)} />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
     </>
   );
 }
 
-export default App;
+function App() {
+  useEffect(() => {
+    wakeupBackend();
+  }, []);
 
+  return (
+    <BrowserRouter>
+      <SignedOut>
+        <LoginPage />
+      </SignedOut>
+      <SignedIn>
+        <AuthedShell />
+      </SignedIn>
+    </BrowserRouter>
+  );
+}
+
+export default App;
