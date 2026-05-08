@@ -57,7 +57,12 @@ engine: AsyncEngine = _make_engine()
 
 async_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     bind=engine,
-    expire_on_commit=db_config.expire_on_commit,
+    # IMPORTANT: must be False for async sessions. With True, commit() expires
+    # all attributes on managed objects; the next attribute access triggers a
+    # SYNC reload, which trips MissingGreenlet under the async engine. We
+    # ignore the env-config value (IS_DB_EXPIRE_ON_COMMIT) deliberately —
+    # there's no valid use case for True on an async session.
+    expire_on_commit=False,
     autoflush=False,
 )
 
