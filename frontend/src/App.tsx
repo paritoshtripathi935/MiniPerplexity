@@ -5,7 +5,7 @@ import { ChatMessage } from './components/ChatMessage';
 import { Message } from './types';
 import { fetchAnswer, performSearch, getAnswer } from './services/api';
 import { v4 as uuidv4 } from 'uuid';
-import { SignIn, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
+import { SignIn, SignedIn, SignedOut, UserButton, useAuth } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
 import DeveloperInfo from './components/DeveloperInfo';
 import { MessageCircle } from 'lucide-react';
@@ -24,6 +24,7 @@ function App() {
     wakeupBackend();
   }, []);
 
+  const { getToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<string | null>(null);
@@ -114,8 +115,8 @@ function App() {
         previousQueries,
         customUrl,
         (url: string) => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === responseMessage.id 
+          setMessages(prev => prev.map(msg =>
+            msg.id === responseMessage.id
               ? {
                   ...msg,
                   content: msg.content + `\n🔍 Searching: ${url}\n`,
@@ -123,11 +124,12 @@ function App() {
                 }
               : msg
           ));
-        }
+        },
+        getToken
       );
 
       // Then get answer using search results
-      const answerResponse = await getAnswer(query, sessionId, searchResults, previousQueries);
+      const answerResponse = await getAnswer(query, sessionId, searchResults, previousQueries, getToken);
 
       // Update final message
       if (answerResponse && answerResponse.answer && Array.isArray(answerResponse.citations)) {

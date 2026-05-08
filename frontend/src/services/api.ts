@@ -2,22 +2,35 @@
 const API_HOST = import.meta.env.VITE_API_HOST || 'http://127.0.0.1:8000';
 
 /**
+ * `getToken` matches the signature returned by Clerk's `useAuth()` hook
+ * (`@clerk/clerk-react`). When provided, every request gets an
+ * `Authorization: Bearer <jwt>` header so the backend can identify the user.
+ *
+ * Pass `undefined` for guest/anonymous flows — the backend treats missing
+ * tokens as anonymous, which matches the "Continue as guest" UX.
+ */
+export type GetToken = (() => Promise<string | null>) | null | undefined;
+
+async function authHeaders(getToken: GetToken): Promise<Record<string, string>> {
+  if (!getToken) return {};
+  try {
+    const token = await getToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Perform a search with the given query and session ID.
- * 
- * @param query The search query to perform
- * @param sessionId The session ID to associate the search with
- * @param previousQueries Previous queries in the session
- * @param customUrl Custom URL to include in the search
- * @param onProgress Function to call when a search result is found, with the URL as argument
- * @returns A JSON object containing the search results
- * @throws An error if the search fails
  */
 export async function performSearch(
   query: string,
   sessionId: string,
   previousQueries: string[] = [],
   customUrl?: string,
-  onProgress?: (url: string) => void
+  onProgress?: (url: string) => void,
+  getToken?: GetToken
 ) {
   const queryParams = new URLSearchParams({ custom_url: customUrl || '' }).toString();
   const response = await fetch(`${API_HOST}/api/v1/search/${sessionId}?${queryParams}`, {
@@ -25,8 +38,9 @@ export async function performSearch(
     headers: {
       'accept': 'application/json',
       'Content-Type': 'application/json',
+      ...(await authHeaders(getToken)),
     },
-    body: JSON.stringify({ 
+    body: JSON.stringify({
       query,
       previous_queries: previousQueries
     }),
@@ -37,7 +51,7 @@ export async function performSearch(
   }
 
   const searchResults = await response.json();
-  
+
   if (onProgress && searchResults) {
     for (const result of searchResults) {
       onProgress(result.url);
@@ -50,26 +64,22 @@ export async function performSearch(
 
 /**
  * Get an answer from the server based on the given query, search results, and previous queries.
- * @param query The query to get an answer for
- * @param sessionId The session ID to associate the search with
- * @param searchResults The search results to generate an answer based on
- * @param previousQueries Previous queries in the session
- * @returns A JSON object containing the answer
- * @throws An error if the answer generation fails
  */
 export async function getAnswer(
-  query: string, 
-  sessionId: string, 
+  query: string,
+  sessionId: string,
   searchResults: any,
-  previousQueries: string[] = []
+  previousQueries: string[] = [],
+  getToken?: GetToken
 ) {
   const response = await fetch(`${API_HOST}/api/v1/answer/${sessionId}`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
       'Content-Type': 'application/json',
+      ...(await authHeaders(getToken)),
     },
-    body: JSON.stringify({ 
+    body: JSON.stringify({
       query: query,
       search_results: searchResults,
       previous_queries: previousQueries
@@ -84,20 +94,13 @@ export async function getAnswer(
   return await response.json();
 }
 
-  /**
-   * Fetches an answer for a given query and session ID, by performing a search
-   * and then generating an answer based on the search results.
-   *
-   * @param query The query to get an answer for
-   * @param sessionId The session ID to associate the search with
-   * @returns A JSON object containing the answer
-   * @throws An error if the answer generation fails
-   */
-export async function fetchAnswer(query: string, sessionId: string) {
+/**
+ * Fetches an answer for a given query and session ID.
+ */
+export async function fetchAnswer(query: string, sessionId: string, getToken?: GetToken) {
   try {
-    const searchResults = await performSearch(query, sessionId);
-    console.log('searchResults', searchResults);
-    const data = await getAnswer(query, sessionId, searchResults);
+    const searchResults = await performSearch(query, sessionId, [], undefined, undefined, getToken);
+    const data = await getAnswer(query, sessionId, searchResults, [], getToken);
     return data;
   } catch (error) {
     console.error(error);
@@ -105,16 +108,13 @@ export async function fetchAnswer(query: string, sessionId: string) {
   }
 }
 
-  /**
-   * Deletes a user session.
-   *
-   * @param sessionId The session ID to clear
-   * @returns A JSON object indicating the session was cleared
-   * @throws An error if the session ID is not found
-   */
-export async function clearSession(sessionId: string) {
+/**
+ * Deletes a user session.
+ */
+export async function clearSession(sessionId: string, getToken?: GetToken) {
   const response = await fetch(`${API_HOST}/api/v1/session/${sessionId}`, {
     method: 'DELETE',
+    headers: { ...(await authHeaders(getToken)) },
   });
 
   if (!response.ok) {
@@ -124,19 +124,30 @@ export async function clearSession(sessionId: string) {
   return await response.json();
 }
 
-  /**
-   * Gets the chat history for a session.
-   *
-   * @param sessionId The session ID to retrieve the chat history for
-   * @returns A JSON object containing the chat history for the session
-   * @throws An error if the session ID is not found
-   */
-export async function getSessionHistory(sessionId: string) {
-  const response = await fetch(`${API_HOST}/api/v1/session/${sessionId}/history`);
+/**
+ * Gets the chat history for a session.
+ */
+export async function getSessionHistory(sessionId: string, getToken?: GetToken) {
+  const response = await fetch(`${API_HOST}/api/v1/session/${sessionId}/history`, {
+    headers: { ...(await authHeaders(getToken)) },
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to get session history: ${response.status} ${response.statusText}`);
   }
 
+  return await response.json();
+}
+
+/**
+ * Fetch the current user's profile. Requires a valid Clerk token.
+ */
+export async function getMe(getToken: GetToken) {
+  const response = await fetch(`${API_HOST}/api/v1/me`, {
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load profile: ${response.status} ${response.statusText}`);
+  }
   return await response.json();
 }

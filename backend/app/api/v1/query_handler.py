@@ -1,210 +1,177 @@
-from fastapi import APIRouter, HTTPException, Depends
-from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
-from app.models.search_model import SearchResult
-from app.services import perform_search, CloudflareChat, fetch_content_from_custom_url
-from app.utils.citation_tracker import track_citations
-from app.constants.constants import CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID
-from typing import Dict, List, Optional
-import traceback
 import logging
-from datetime import datetime, timedelta
-from dataclasses import dataclass
+import traceback
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth import get_current_user, get_optional_user
+from app.constants.constants import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_KEY
+from app.db import get_db
+from app.db.models import MessageRole, User
+from app.db.repository import (
+    add_citations,
+    add_query,
+    append_message,
+    delete_session,
+    find_or_create_query,
+    get_chat_history,
+    get_or_create_session,
+    get_recent_queries,
+    get_session_history,
+    touch_session,
+    upsert_search_results,
+)
+from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
+from app.services import CloudflareChat, fetch_content_from_custom_url, perform_search
+from app.utils.citation_tracker import track_citations
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Constants
-SESSION_TTL = timedelta(minutes=10)
 MAX_PREVIOUS_QUERIES = 3
 
-@dataclass
-class SessionData:
-    messages: List[Dict[str, str]]
-    queries: List[str]
-    last_accessed: datetime
-
-    @classmethod
-    def create_new(cls) -> 'SessionData':
-        return cls(
-            messages=[],
-            queries=[],
-            last_accessed=datetime.utcnow()
-        )
-
-# Replace chat_sessions dict with typed version
-chat_sessions: Dict[str, SessionData] = {}
-
-def cleanup_expired_sessions() -> None:
-    """Remove sessions that have exceeded their TTL."""
-    current_time = datetime.utcnow()
-    expired_sessions = [
-        session_id for session_id, session_data in chat_sessions.items()
-        if current_time - session_data.last_accessed > SESSION_TTL
-    ]
-    for session_id in expired_sessions:
-        del chat_sessions[session_id]
-
-def update_session_timestamp(session_id: str) -> None:
-    """Update the last accessed timestamp for a session.
-    
-    Args:
-        session_id: The ID of the session to update
-    """
-    if session_id in chat_sessions:
-        chat_sessions[session_id].last_accessed = datetime.utcnow()
-
-def get_or_create_session(session_id: str) -> SessionData:
-    """Get existing session or create new one if it doesn't exist.
-    
-    Args:
-        session_id: The session ID to lookup
-        
-    Returns:
-        SessionData: The session data object
-    """
-    if session_id not in chat_sessions:
-        chat_sessions[session_id] = SessionData.create_new()
-    else:
-        update_session_timestamp(session_id)
-    return chat_sessions[session_id]
 
 @router.post("/search/{session_id}")
 async def search(
-    session_id: str, 
+    session_id: str,
     search_request: SearchRequest,
     custom_url: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
 ):
-    """
-    Process search request, using either custom URL or search APIs.
-    """
+    """Run a search (or fetch a custom URL) and persist the query + results."""
     try:
-        cleanup_expired_sessions()
-        
-        # store query in session
-        if session_id not in chat_sessions:
-            chat_sessions[session_id] = SessionData.create_new()
-        chat_sessions[session_id].queries.append(search_request.query)
-        
-        # If custom URL is provided and not empty
+        await get_or_create_session(
+            db, session_id, user_id=(user.id if user else None)
+        )
+        query_row = await add_query(
+            db,
+            session_id=session_id,
+            query_text=search_request.query,
+            custom_url=(custom_url.strip() if custom_url and custom_url.strip() else None),
+        )
+
         if custom_url and custom_url.strip():
             try:
                 custom_result = fetch_content_from_custom_url(custom_url.strip())
-                return [custom_result]
             except Exception as e:
-                # logger.error(f"Error processing custom URL: {e}")
                 raise HTTPException(status_code=400, detail=str(e))
-        
-        # Fallback to regular search if no custom URL
-        return perform_search(search_request.query)
-        
+            results = [custom_result]
+        else:
+            results = perform_search(search_request.query)
+
+        # Persist results so /answer can resolve citation_number → search_result_id.
+        normalised = [r if isinstance(r, dict) else r.model_dump() for r in results]
+        await upsert_search_results(db, query_row.id, normalised)
+
+        return results
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        logger.exception("Search failed")
+        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+
 
 @router.post("/answer/{session_id}", response_model=QueryResponse)
-async def get_answer(session_id: str, query_request: QueryRequest):
-    """
-    Generate an answer using the given search results and chat history.
-
-    Args:
-        session_id: Unique session ID
-        query_request: QueryRequest with query string and search results
-
-    Returns:
-        QueryResponse: QueryResponse containing the generated answer, citations, and search results
-
-    Raises:
-        HTTPException: 500 Internal Server Error if error occurs generating answer
-    """
+async def get_answer(
+    session_id: str,
+    query_request: QueryRequest,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Generate an answer grounded in the supplied search results, with citations."""
     try:
-        # Clean up expired sessions first
-        cleanup_expired_sessions()
-        
-        search_results = [result.model_dump() for result in query_request.search_results]
+        await get_or_create_session(
+            db, session_id, user_id=(user.id if user else None)
+        )
 
-        # Initialize session if it doesn't exist
-        if session_id not in chat_sessions:
-            chat_sessions[session_id] = SessionData.create_new()
-        else:
-            update_session_timestamp(session_id)
-        
-        # Add current query to session queries
-        chat_sessions[session_id].queries.append(query_request.query)
-        
-        # Initialize CloudflareChat with session context
+        search_results = [r.model_dump() for r in query_request.search_results]
+
+        chat_history = await get_chat_history(db, session_id)
+        previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
+
         cf_chat = CloudflareChat(
-            api_key=CLOUDFLARE_API_KEY, 
-            account_id=CLOUDFLARE_ACCOUNT_ID
+            api_key=CLOUDFLARE_API_KEY,
+            account_id=CLOUDFLARE_ACCOUNT_ID,
         )
-        
-        # Generate answer using chat history and all queries
         answer = cf_chat.generate_answer(
-            search_results=search_results, 
-            chat_history=chat_sessions[session_id].messages,
+            search_results=search_results,
+            chat_history=chat_history,
             query=query_request.query,
-            previous_queries=chat_sessions[session_id].queries
+            previous_queries=previous_queries + [query_request.query],
         )
-        
-        # Update chat history
-        chat_sessions[session_id].messages.append({
-            "role": "user",
-            "content": query_request.query
-        })
-        chat_sessions[session_id].messages.append({
-            "role": "assistant",
-            "content": answer
-        })
-        
-        citations = track_citations(search_results)
+
+        # Track this turn: reuse the query row from /search if it's still the
+        # latest, otherwise create one. Search results upsert is idempotent.
+        query_row = await find_or_create_query(
+            db, session_id=session_id, query_text=query_request.query
+        )
+        sr_rows = await upsert_search_results(db, query_row.id, search_results)
+
+        await append_message(
+            db,
+            session_id=session_id,
+            role=MessageRole.user,
+            content=query_request.query,
+            query_id=query_row.id,
+        )
+        assistant_msg = await append_message(
+            db,
+            session_id=session_id,
+            role=MessageRole.assistant,
+            content=answer,
+            query_id=query_row.id,
+        )
+
+        # Build citation rows mapping cited URLs back to the search_result UUIDs.
+        citations_text = track_citations(search_results)
+        cited_urls_in_order = [r.get("url") for r in search_results if r.get("url")]
+        url_to_id = {row.url: row.id for row in sr_rows}
+        cited_ids = [url_to_id[u] for u in cited_urls_in_order if u in url_to_id]
+        await add_citations(db, assistant_msg.id, cited_ids)
+
         return QueryResponse(
-            answer=answer, 
-            citations=citations, 
-            search_results=search_results
+            answer=answer,
+            citations=citations_text,
+            search_results=search_results,
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error generating answer: {e}")
 
+
+@router.get("/me")
+async def me(user: User = Depends(get_current_user)):
+    """Return the authenticated user's profile (creates the row on first call)."""
+    return {
+        "id": str(user.id),
+        "clerk_user_id": user.clerk_user_id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "image_url": user.image_url,
+    }
+
+
 @router.delete("/session/{session_id}")
-async def clear_session(session_id: str):
-    """
-    Clear a user's session.
-
-    Deletes the session from the chat history.
-
-    Args:
-        session_id (str): The session ID to clear.
-
-    Returns:
-        dict: A message indicating the session was cleared.
-
-    Raises:
-        HTTPException: If the session ID is not found.
-    """
-    if session_id in chat_sessions:
-        del chat_sessions[session_id]
-        return {"message": f"Session {session_id} cleared"}
-    raise HTTPException(status_code=404, detail="Session not found")
-
-# Optional: Endpoint to get session history
-@router.get("/session/{session_id}/history")
-async def get_session_history(session_id: str):
-    """
-    Get the chat history for a session.
-
-    Args:
-        session_id (str): The session ID to retrieve the chat history for.
-
-    Returns:
-        dict: A dictionary containing the chat history for the session.
-
-    Raises:
-        HTTPException: If the session ID is not found.
-    """
-    # Clean up expired sessions first
-    cleanup_expired_sessions()
-    
-    if session_id not in chat_sessions:
+async def clear_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a session and everything underneath it (cascades)."""
+    deleted = await delete_session(db, session_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
-    
-    update_session_timestamp(session_id)
-    return {"history": chat_sessions[session_id]}
+    return {"message": f"Session {session_id} cleared"}
+
+
+@router.get("/session/{session_id}/history")
+async def get_history(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Return chat history + query list for a session."""
+    history = await get_session_history(db, session_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await touch_session(db, session_id)
+    return {"history": history}
