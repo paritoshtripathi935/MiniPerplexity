@@ -27,3 +27,11 @@ backend/venv
 backend/.env
 # Local Netlify folder
 .netlify
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local push token — never commit
+.env.git
