@@ -76,18 +76,33 @@ class CloudflareChat:
         return {"Authorization": f"Bearer {self.api_key}"}
 
     def _format_context(self, search_results: List[Dict]) -> str:
-        """Format search results into a context string."""
-        context_parts = []
-        
-        for result in search_results:
-            if result.get('source') == 'custom_url':
-                context_parts.append(
-                    f"Content from provided URL ({result['url']}):\n{result['search_content']}"
-                )
+        """Format search results into a numbered context string.
+
+        Each source is prefixed with `[N]` so the model can cite it inline as
+        `[N]` (1-indexed). The frontend uses the same indices to render
+        anchored citation pills next to the source strip.
+        """
+        parts: List[str] = []
+
+        for idx, result in enumerate(search_results, start=1):
+            title = (result.get("title") or "").strip()
+            url = (result.get("url") or "").strip()
+            content = (result.get("search_content") or result.get("snippet") or "").strip()
+
+            header_bits: List[str] = [f"[{idx}]"]
+            if title:
+                header_bits.append(title)
+            if url:
+                header_bits.append(f"({url})")
+            header = " ".join(header_bits)
+
+            if result.get("source") == "custom_url":
+                # Custom URL fetches don't have a separate title; keep the URL header.
+                parts.append(f"{header}\n{content}")
             else:
-                context_parts.append(result['search_content'])
-        
-        return "\n\n".join(context_parts)
+                parts.append(f"{header}\n{content}" if content else header)
+
+        return "\n\n".join(parts)
 
     def _call_for_prompt(self, messages: List[Dict[str, str]]) -> Dict:
         """Call the Cloudflare API with the messages list.
