@@ -14,6 +14,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Computed,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
@@ -27,7 +28,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -194,6 +195,12 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Generated column — Postgres maintains this from `content`. We never write it.
+    content_tsv: Mapped[Optional[str]] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('english', coalesce(content, ''))", persisted=True),
+        nullable=True,
+    )
 
     session: Mapped[Session] = relationship(back_populates="messages")
     query: Mapped[Optional[Query]] = relationship(back_populates="messages")
@@ -207,6 +214,11 @@ class Message(Base):
             "idx_messages_query",
             "query_id",
             postgresql_where=text("query_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_messages_content_tsv",
+            "content_tsv",
+            postgresql_using="gin",
         ),
     )
 

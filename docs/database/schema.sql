@@ -7,6 +7,7 @@
 -- ---------- Extensions -------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS citext;     -- case-insensitive email
+CREATE EXTENSION IF NOT EXISTS pg_trgm;    -- trigram fuzzy match on titles
 
 -- ---------- Enums ------------------------------------------------------------
 DO $$ BEGIN
@@ -71,6 +72,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
     ON sessions (expires_at)
     WHERE is_archived = false;
 
+CREATE INDEX IF NOT EXISTS idx_sessions_title_trgm
+    ON sessions USING GIN (title gin_trgm_ops)
+    WHERE title IS NOT NULL;
+
 -- =============================================================================
 -- queries
 -- =============================================================================
@@ -100,7 +105,8 @@ CREATE TABLE IF NOT EXISTS messages (
     tokens_input  integer,
     tokens_output integer,
     latency_ms    integer,
-    created_at    timestamptz   NOT NULL DEFAULT now()
+    created_at    timestamptz   NOT NULL DEFAULT now(),
+    content_tsv   tsvector      GENERATED ALWAYS AS (to_tsvector('english', coalesce(content, ''))) STORED
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_created
@@ -109,6 +115,9 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_created
 CREATE INDEX IF NOT EXISTS idx_messages_query
     ON messages (query_id)
     WHERE query_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_messages_content_tsv
+    ON messages USING GIN (content_tsv);
 
 -- =============================================================================
 -- search_results

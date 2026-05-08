@@ -3,11 +3,12 @@ import { Brain } from 'lucide-react';
 import { SearchBar } from './components/SearchBar';
 import { ChatMessage } from './components/ChatMessage';
 import { Message } from './types';
-import { fetchAnswer, performSearch, getAnswer } from './services/api';
+import { fetchAnswer, performSearch, getAnswer, getSessionHistory } from './services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { SignIn, SignedIn, SignedOut, UserButton, useAuth } from "@clerk/clerk-react";
 import LoginPage from './components/LoginPage';
 import DeveloperInfo from './components/DeveloperInfo';
+import { SessionsSidebar } from './components/SessionsSidebar';
 import { MessageCircle } from 'lucide-react';
 import { wakeupBackend } from './utils/api';
 
@@ -29,7 +30,12 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(true);
-  const [sessionId] = useState<string>(uuidv4());
+  const [sessionId, setSessionId] = useState<string>(() => uuidv4());
+  // Bumped after each successful answer so the sidebar refreshes its list.
+  const [sidebarRefresh, setSidebarRefresh] = useState(0);
+  // Tracks whether the current sessionId was just created locally (no DB row yet)
+  // so we don't bother fetching /history for a guaranteed 404.
+  const justCreatedRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [devInfoOpen, setDevInfoOpen] = useState<boolean>(false);
   const developerInfo = "Your developer info text goes here";
@@ -45,6 +51,48 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Hydrate the chat from the DB whenever the active session changes to a
+  // pre-existing one (i.e. user clicked a sidebar item).
+  useEffect(() => {
+    if (justCreatedRef.current) {
+      justCreatedRef.current = false;
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getSessionHistory(sessionId, getToken);
+        if (cancelled) return;
+        const history = data?.history?.messages ?? [];
+        const hydrated: Message[] = history.map((m: { role: string; content: string }) => ({
+          id: uuidv4(),
+          type: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+          timestamp: new Date(),
+          search_results: [],
+        }));
+        setMessages(hydrated);
+      } catch {
+        if (!cancelled) setMessages([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, getToken]);
+
+  const handleSelectSession = (id: string) => {
+    if (id === sessionId) return;
+    setSessionId(id);
+  };
+
+  const handleNewChat = () => {
+    justCreatedRef.current = true;
+    setMessages([]);
+    setError(null);
+    setSessionId(uuidv4());
+  };
 
   useEffect(() => {
     if (devInfoOpen) {
@@ -133,8 +181,8 @@ function App() {
 
       // Update final message
       if (answerResponse && answerResponse.answer && Array.isArray(answerResponse.citations)) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === responseMessage.id 
+        setMessages(prev => prev.map(msg =>
+          msg.id === responseMessage.id
             ? {
                 ...msg,
                 content: answerResponse.answer,
@@ -152,6 +200,8 @@ function App() {
               }
             : msg
         ));
+        // Refresh sidebar so the new (or now-titled) session bubbles to top.
+        setSidebarRefresh(n => n + 1);
       }
     } catch (err) {
       console.error(err);
@@ -178,8 +228,17 @@ function App() {
         <LoginPage />
       </SignedOut>
       <SignedIn>
-        <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className={`min-h-screen flex ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+          <div className="hidden md:block h-screen sticky top-0">
+            <SessionsSidebar
+              darkMode={darkMode}
+              activeSessionId={sessionId}
+              onSelectSession={handleSelectSession}
+              onNewChat={handleNewChat}
+              refreshSignal={sidebarRefresh}
+            />
+          </div>
+          <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-2">
                 <Brain className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'} brain-icon`} />
