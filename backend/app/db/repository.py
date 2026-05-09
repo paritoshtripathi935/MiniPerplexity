@@ -428,11 +428,21 @@ async def list_sessions_for_user(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    """Sidebar feed: user's sessions with title, message count, and last activity."""
+    """Sidebar feed: user's sessions with title, message count, last activity,
+    and a short excerpt of the most recent message (for richer recent-chats UI)."""
     msg_count = (
         select(Message.session_id, func.count().label("n"))
         .group_by(Message.session_id)
         .subquery()
+    )
+    # Correlated scalar subquery: most recent message content per session.
+    latest_content = (
+        select(Message.content)
+        .where(Message.session_id == DBSession.id)
+        .order_by(Message.created_at.desc())
+        .limit(1)
+        .correlate(DBSession)
+        .scalar_subquery()
     )
     stmt = (
         select(
@@ -442,6 +452,7 @@ async def list_sessions_for_user(
             DBSession.last_accessed_at,
             DBSession.is_archived,
             func.coalesce(msg_count.c.n, 0).label("message_count"),
+            latest_content.label("last_message_content"),
         )
         .outerjoin(msg_count, msg_count.c.session_id == DBSession.id)
         .where(DBSession.user_id == user_id)
@@ -461,9 +472,27 @@ async def list_sessions_for_user(
             "last_accessed_at": r.last_accessed_at.isoformat(),
             "is_archived": r.is_archived,
             "message_count": int(r.message_count),
+            "last_message_excerpt": _excerpt(r.last_message_content),
         }
         for r in rows
     ]
+
+
+def _excerpt(content: Optional[str], max_len: int = 140) -> Optional[str]:
+    """Trim a message body for list-view previews: collapse whitespace, strip
+    markdown noise, cap at `max_len` chars with an ellipsis."""
+    if not content:
+        return None
+    # Drop leading markdown headings / bullets so the preview reads as prose.
+    text = content.strip()
+    for prefix in ("## ", "# ", "### ", "- ", "* ", "> "):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    text = " ".join(text.split())
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
 
 
 async def update_session(

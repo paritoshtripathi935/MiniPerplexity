@@ -161,6 +161,8 @@ export interface SessionListItem {
   last_accessed_at: string;
   is_archived: boolean;
   message_count: number;
+  /** Short trimmed preview of the most recent message in the session. */
+  last_message_excerpt: string | null;
 }
 
 export interface SearchHit {
