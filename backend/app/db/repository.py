@@ -24,6 +24,7 @@ from app.db.models import (
     SearchSource,
     Session as DBSession,
 )
+from app.services.source_ranker import tag_authority_in_place
 
 
 # TTL for *anonymous* sessions only. Owned (signed-in) sessions never
@@ -136,8 +137,6 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
     so the UI can show the same "authoritative" badge it does on the live flow.
     Without this, videos and source pills disappear when a user reopens a chat.
     """
-    from app.services.source_ranker import authority_for  # local import to avoid cycles
-
     sid = _to_uuid(session_id)
     sess = await db.get(DBSession, sid)
     if sess is None:
@@ -172,17 +171,16 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
             )
         ).scalars().all()
         for r in sr_rows:
-            score = authority_for(r.url)
             sr_by_query.setdefault(r.query_id, []).append(
                 {
                     "title": r.title,
                     "url": r.url,
                     "snippet": r.snippet,
                     "source": r.source.value,
-                    "_authority": score,
-                    "_authoritative": score >= 80,
                 }
             )
+        for results in sr_by_query.values():
+            tag_authority_in_place(results)
 
     messages_out: list[dict] = []
     for m in msg_rows:

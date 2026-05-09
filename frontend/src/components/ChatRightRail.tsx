@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ExternalLink, Sparkles, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { BrandProfile, Play } from '../services/api';
 import type { Message } from '../types';
+import { getDomain } from '../utils/url';
 
 interface Props {
   profile: BrandProfile | null;
@@ -221,12 +222,4 @@ function Row({ label, value }: { label: string; value: string }) {
       <dd className="font-medium text-right truncate text-fg">{value}</dd>
     </div>
   );
-}
-
-function getDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
 }

@@ -4,6 +4,7 @@ import { useUser } from '@clerk/clerk-react';
 import { Check, Copy, ExternalLink, RotateCw, ShieldCheck, Youtube } from 'lucide-react';
 import clsx from 'clsx';
 import type { Message, MessageSearchResult } from '../types';
+import { getDomain } from '../utils/url';
 
 interface ChatMessageProps {
   message: Message;
@@ -386,14 +387,6 @@ function makeMarkdownComponents(anchorPrefix: string, max: number) {
 }
 
 // ---------- Source strip ---------------------------------------------------
-function getDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
-
 interface SourceItem {
   url: string;
   title: string;

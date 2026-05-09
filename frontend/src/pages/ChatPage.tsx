@@ -8,12 +8,19 @@ import { SearchBar, type ComposerHandle } from '../components/SearchBar';
 import { SessionsSidebar } from '../components/SessionsSidebar';
 import { PlayRunModal } from '../components/PlayRunModal';
 import { ChatRightRail } from '../components/ChatRightRail';
+import { ChatEmptyState } from '../components/ChatEmptyState';
 import {
   getBrandProfile, listPlays,
   performSearch, getAnswer, getSessionHistory, runPlay,
   type BrandProfile, type Play,
 } from '../services/api';
-import { Message, MessageSearchResult } from '../types';
+import { Message } from '../types';
+import { useStreamingReveal } from '../hooks/useStreamingReveal';
+import {
+  applyAssistantAnswer,
+  normaliseSearchResults,
+  rehydrateMessages,
+} from '../utils/messageShape';
 
 export interface PendingPlay {
   play: Play;
@@ -26,15 +33,6 @@ interface Props {
   pending: PendingPlay | null;
   clearPending: () => void;
 }
-
-/**
- * Tunables for the client-side streaming reveal. Real SSE will replace this
- * later — for now we accept the full answer and animate it in.
- *   CHARS_PER_TICK ≈ 30 chars × 20 ticks/sec → ~600 chars/s, which lands
- *   squarely between "feels too slow to read" and "snaps in instantly".
- */
-const REVEAL_CHARS_PER_TICK = 30;
-const REVEAL_TICK_MS = 50;
 
 export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const { getToken } = useAuth();
@@ -66,8 +64,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const justCreatedRef = useRef(true);
-  /** Per-message reveal-animation interval handles, keyed by message id. */
-  const revealHandles = useRef<Map<string, number>>(new Map());
+
+  const startStreamingReveal = useStreamingReveal(setMessages, sessionId);
 
   const [showStickyHeader, setShowStickyHeader] = useState(false);
 
@@ -103,14 +101,6 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       cancelled = true;
     };
   }, [getToken]);
-
-  // Clean up any in-flight reveal intervals on unmount or session change.
-  useEffect(() => {
-    return () => {
-      revealHandles.current.forEach(h => window.clearInterval(h));
-      revealHandles.current.clear();
-    };
-  }, [sessionId]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -163,39 +153,6 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       cancelled = true;
     };
   }, [sessionId, getToken, pending]);
-
-  /**
-   * Animate the assistant turn from the "_Thinking…_" placeholder to the
-   * full answer. Replaces the message's content + revealedLength=0 atomically,
-   * then ticks revealedLength up until the full content is shown.
-   */
-  const startStreamingReveal = useCallback(
-    (msgId: string, fullContent: string) => {
-      const existing = revealHandles.current.get(msgId);
-      if (existing) window.clearInterval(existing);
-      const handle = window.setInterval(() => {
-        let done = false;
-        setMessages(prev =>
-          prev.map(m => {
-            if (m.id !== msgId) return m;
-            const current = m.revealedLength ?? 0;
-            const next = current + REVEAL_CHARS_PER_TICK;
-            if (next >= fullContent.length) {
-              done = true;
-              return { ...m, revealedLength: undefined };
-            }
-            return { ...m, revealedLength: next };
-          })
-        );
-        if (done) {
-          window.clearInterval(handle);
-          revealHandles.current.delete(msgId);
-        }
-      }, REVEAL_TICK_MS);
-      revealHandles.current.set(msgId, handle);
-    },
-    []
-  );
 
   // Auto-run a pending Play that was queued on the previous page.
   useEffect(() => {
@@ -509,7 +466,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           <div className="max-w-3xl mx-auto">
             <div ref={messagesTopRef} />
             {messages.length === 0 ? (
-              <EmptyState
+              <ChatEmptyState
                 profile={profile}
                 onPick={text => composerRef.current?.prefill(text)}
               />
@@ -566,183 +523,4 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       )}
     </div>
   );
-}
-
-// ---------- Helpers ------------------------------------------------------
-
-interface ApplyAnswerArgs {
-  messageId: string;
-  answer: string;
-  searchResults: any[];
-  citations: string[];
-  originatingQuery: string;
-  originatingSearchResults: any[];
-  originatingPlayId?: string;
-}
-
-interface ApplyAnswerResult {
-  update: (prev: Message[]) => Message[];
-  messageId: string;
-  fullContent: string;
-}
-
-/**
- * Wraps the message-update for an arrived answer, normalising server fields
- * and seeding the reveal animation state. The host then schedules the tick
- * via `startStreamingReveal`.
- *
- * Returned as a `(prev) => next` updater so the caller can pass it directly
- * into `setMessages` — keeps the live update batched with the searching
- * flag flipping off.
- */
-function applyAssistantAnswer(args: ApplyAnswerArgs): ApplyAnswerResult {
-  const updater = (prev: Message[]) =>
-    prev.map(m =>
-      m.id === args.messageId
-        ? {
-            ...m,
-            content: args.answer,
-            search_results: normaliseSearchResults(args.searchResults) ?? [],
-            sources: args.citations.map((c: string) => ({
-              title: '',
-              url: c,
-              type: 'web',
-            })),
-            isSearching: false,
-            searchingUrls: undefined,
-            revealedLength: 0,
-            originatingQuery: args.originatingQuery,
-            originatingSearchResults: args.originatingSearchResults,
-            originatingPlayId: args.originatingPlayId,
-          }
-        : m
-    );
-  return { update: updater, messageId: args.messageId, fullContent: args.answer };
-}
-
-/** Convert backend search-result shape into the message-level shape the
- * ChatMessage component expects. The backend uses `{ title, url, source: <provider>, ... }`;
- * the frontend stores `{ title, source: <url>, type: <provider>, ... }` for legacy reasons. */
-function normaliseSearchResults(results: any[] | undefined | null): MessageSearchResult[] | undefined {
-  if (!results || !Array.isArray(results)) return undefined;
-  return results.map(r => ({
-    title: r.title ?? '',
-    source: r.url ?? r.source ?? '',
-    type: r.source ?? r.type ?? 'web',
-    snippet: r.snippet,
-    _authoritative: !!r._authoritative,
-    _authority: r._authority,
-  }));
-}
-
-/**
- * Convert the server's history payload into client-side Message[]. Each
- * assistant turn carries the search_results that grounded it (server joins
- * messages → query → search_results → tags via source_ranker).
- */
-function rehydrateMessages(
-  history: { role: string; content: string; search_results?: any[] }[],
-): Message[] {
-  return history.map(h => {
-    if (h.role === 'assistant') {
-      return {
-        id: uuidv4(),
-        type: 'assistant',
-        content: h.content,
-        timestamp: new Date(),
-        search_results: normaliseSearchResults(h.search_results),
-      };
-    }
-    return {
-      id: uuidv4(),
-      type: 'user',
-      content: h.content,
-      timestamp: new Date(),
-    };
-  });
-}
-
-// ---------- Empty state ---------------------------------------------------
-function EmptyState({
-  profile,
-  onPick,
-}: {
-  profile: BrandProfile | null;
-  onPick: (text: string) => void;
-}) {
-  const starters = useMemo(() => starterPrompts(profile), [profile]);
-  const hello = profile?.company_name
-    ? `What can I help with for ${profile.company_name}?`
-    : 'What can I help you ship today?';
-
-  return (
-    <div className="mt-16 sm:mt-24 animate-fade-in">
-      <h2 className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tight text-fg">
-        {hello}
-      </h2>
-      <p className="text-[14px] text-fg-muted mt-2 max-w-xl leading-relaxed">
-        Citations are weighted toward platform docs (Meta, Google, TikTok) and trade
-        press (eMarketer, Adweek, Search Engine Land). Your brand context is applied
-        automatically.
-      </p>
-
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {starters.map((s, i) => (
-          <button
-            key={i}
-            onClick={() => onPick(s.prompt)}
-            className="group text-left rounded-lg border border-border bg-surface hover:bg-surface-sunken hover:border-border-strong transition-colors duration-150 p-4 focus-visible:outline-none focus-visible:shadow-focus"
-          >
-            <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-1.5">
-              {s.tag}
-            </div>
-            <div className="text-[13.5px] text-fg leading-snug">{s.prompt}</div>
-          </button>
-        ))}
-      </div>
-
-      <p className="text-[11px] text-fg-subtle mt-6">
-        Tip: paste a URL inside the composer to get an answer about that page specifically.
-      </p>
-    </div>
-  );
-}
-
-interface Starter {
-  tag: string;
-  prompt: string;
-}
-
-function starterPrompts(profile: BrandProfile | null): Starter[] {
-  const channels = profile?.primary_channels ?? [];
-  const channel = channels[0];
-  const channelLabel: Record<string, string> = {
-    meta: 'Meta',
-    google: 'Google',
-    tiktok: 'TikTok',
-    linkedin: 'LinkedIn',
-  };
-  const ch = channelLabel[channel] || 'Meta';
-
-  const icpHook = profile?.icp_description ? '— for our ICP' : '';
-  const company = profile?.company_name ? ` for ${profile.company_name}` : '';
-
-  return [
-    {
-      tag: 'Benchmark',
-      prompt: `What's a healthy CAC and ROAS range on ${ch} for SaaS in 2026? Cite sources.`,
-    },
-    {
-      tag: 'Creative',
-      prompt: `Give me 5 hook variants for a ${ch} ad ${icpHook}. Vary by emotion (curiosity, contrarian, FOMO, social proof, transformational).`,
-    },
-    {
-      tag: 'Plan',
-      prompt: `Draft a $50K/month channel plan${company}. Pick 2–3 channels, give a budget split with rationale and a KPI per slice.`,
-    },
-    {
-      tag: 'Audit',
-      prompt: `My ${ch} CAC has crept up 30% over the last 4 weeks despite refreshing creative. Walk me through the most likely causes, ranked.`,
-    },
-  ];
 }
