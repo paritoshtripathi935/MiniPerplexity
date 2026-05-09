@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Activity, Beaker, Eye, FileText, PieChart, Play as PlayIcon,
   Search as SearchIcon, Shield, TrendingUp, Users, Zap,
@@ -23,6 +23,7 @@ interface Props {
 
 export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [plays, setPlays] = useState<Play[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
@@ -39,6 +40,21 @@ export function PlaysPage({ onPrepareRun }: Props) {
       }
     })();
   }, []);
+
+  // Deep-link support: `/plays?run=<play_id>` opens the run modal directly.
+  // Used by the home anchor card when it suggests a specific play.
+  useEffect(() => {
+    const runId = searchParams.get('run');
+    if (!runId || plays.length === 0) return;
+    const target = plays.find(p => p.id === runId);
+    if (target) {
+      setActivePlay(target);
+      // Clear so a back-then-forward doesn't reopen unexpectedly.
+      const next = new URLSearchParams(searchParams);
+      next.delete('run');
+      setSearchParams(next, { replace: true });
+    }
+  }, [plays, searchParams, setSearchParams]);
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(plays.map(p => p.category)))],
