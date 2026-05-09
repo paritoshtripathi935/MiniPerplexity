@@ -1,12 +1,13 @@
 import logging
-from dataclasses import dataclass
-from typing import Dict, List, Optional
-from bs4 import BeautifulSoup
-import itertools
 import os
 import random
+import re
 import requests
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+from bs4 import BeautifulSoup
 from app.models.search_model import SearchResult
 from app.utils.rate_limter import rate_limit
 from app.services.youtube_service import YouTubeAPIError
@@ -16,7 +17,10 @@ BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
 GOOGLE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 MAX_CONTENT_LENGTH = 5000
 MAX_PARAGRAPHS = 5
-RESULTS_PER_ENGINE = 2
+# Per-engine web result count. We deliberately overfetch (vs. previous 2)
+# so the LLM reranker has a real candidate set to choose from. The chat UI
+# still trims to a sane number after ranking — this just gives us bench.
+RESULTS_PER_ENGINE = 10
 REQUEST_TIMEOUT = 5
 CALLS_PER_MINUTE = 30
 
@@ -186,55 +190,112 @@ def search_google(query: str) -> List[SearchResult]:
         logger.error(f"Google search error: {str(e)}")
         raise SearchAPIError(f"Google search failed: {str(e)}")
 
+# YouTube-side knobs. Overfetch in search.list so post-hoc shorts filtering
+# still leaves a healthy bench. The chat right rail caps at 6, so 10 long-
+# form returns gives us a comfortable buffer.
+_YT_SEARCH_FETCH = 15
+_YT_RESULT_CAP = 10
+# Shorts are by definition ≤60s. A small buffer lets through edge-case
+# 61-65s "soft shorts" that some marketing channels publish, which are
+# usually fine for our context. Tune via env if needed.
+_SHORTS_THRESHOLD_SECONDS = int(os.getenv("YOUTUBE_SHORTS_MIN_SECONDS", "70"))
+
+_ISO_DURATION_RE = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")
+
+
+def _iso8601_duration_seconds(value: str) -> int:
+    """Parse YouTube's ISO-8601 duration ("PT1M30S") into total seconds.
+    Returns 0 on a missing/unparseable value so callers can default-skip."""
+    m = _ISO_DURATION_RE.match(value or "")
+    if not m:
+        return 0
+    h, mn, s = m.groups()
+    return int(h or 0) * 3600 + int(mn or 0) * 60 + int(s or 0)
+
+
 @rate_limit(calls=CALLS_PER_MINUTE, period=60)
 def search_youtube(query: str) -> List[SearchResult]:
-    """Search YouTube for relevant videos.
-    
-    Args:
-        query: The search query
-        
-    Returns:
-        List of SearchResult objects containing video information
-        
-    Raises:
-        YouTubeAPIError: If the API request fails
+    """Search YouTube for relevant videos, excluding Shorts.
+
+    Two-call flow: search.list to find candidates, then videos.list for
+    contentDetails so we can drop anything under _SHORTS_THRESHOLD_SECONDS.
+    The second call is one HTTP request regardless of candidate count and
+    costs 1 quota unit (vs 100 for search.list), so the overhead is trivial.
+
+    Returns up to _YT_RESULT_CAP non-Shorts videos. Order from search.list
+    is preserved (relevance ranking).
     """
     api_key = os.getenv('YOUTUBE_API_KEY')
     if not api_key:
         raise YouTubeAPIError("YOUTUBE_API_KEY environment variable not set")
 
-    params = {
+    search_params = {
         "key": api_key,
         "q": query,
         "part": "snippet",
         "type": "video",
-        "maxResults": 2,
-        "safeSearch": "strict"
+        "maxResults": _YT_SEARCH_FETCH,
+        "safeSearch": "strict",
     }
 
     try:
-        response = requests.get(
+        search_resp = requests.get(
             "https://www.googleapis.com/youtube/v3/search",
-            params=params,
-            timeout=5
+            params=search_params,
+            timeout=5,
         )
-        response.raise_for_status()
-        
-        results = []
-        for item in response.json().get("items", []):
-            video_id = item["id"]["videoId"]
+        search_resp.raise_for_status()
+        items = search_resp.json().get("items", [])
+        if not items:
+            return []
+
+        # Bulk-fetch durations for the candidate set so we can drop Shorts.
+        # If this call fails we degrade gracefully and return everything —
+        # better to show some Shorts than to surface zero videos.
+        durations: Dict[str, int] = {}
+        try:
+            ids = [it["id"]["videoId"] for it in items if it.get("id", {}).get("videoId")]
+            if ids:
+                details_resp = requests.get(
+                    "https://www.googleapis.com/youtube/v3/videos",
+                    params={
+                        "key": api_key,
+                        "id": ",".join(ids),
+                        "part": "contentDetails",
+                    },
+                    timeout=5,
+                )
+                details_resp.raise_for_status()
+                for d in details_resp.json().get("items", []):
+                    durations[d["id"]] = _iso8601_duration_seconds(
+                        d.get("contentDetails", {}).get("duration", "")
+                    )
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"YouTube duration lookup failed; skipping shorts filter: {e}")
+
+        results: List[SearchResult] = []
+        for item in items:
+            video_id = item.get("id", {}).get("videoId")
+            if not video_id:
+                continue
+            # When durations is empty (lookup failed) skip the filter rather
+            # than return nothing.
+            if durations and durations.get(video_id, 0) < _SHORTS_THRESHOLD_SECONDS:
+                continue
             snippet = item["snippet"]
-            
-            result = SearchResult(
-                question=query,
-                title=snippet["title"],
-                url=f"https://www.youtube.com/watch?v={video_id}",
-                snippet=snippet["description"],
-                search_content=snippet["description"],
-                source="youtube"
+            results.append(
+                SearchResult(
+                    question=query,
+                    title=snippet["title"],
+                    url=f"https://www.youtube.com/watch?v={video_id}",
+                    snippet=snippet["description"],
+                    search_content=snippet["description"],
+                    source="youtube",
+                )
             )
-            results.append(result)
-            
+            if len(results) >= _YT_RESULT_CAP:
+                break
+
         return results
         
     except Exception as e:

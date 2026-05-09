@@ -10,7 +10,7 @@ Algorithm: each source domain gets an authority score; results are sorted by
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from typing import Iterable, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -141,17 +141,29 @@ def tag_authority_in_place(results: Iterable[dict]) -> None:
         r["_authoritative"] = score >= 80
 
 
-def rerank(results: Iterable[dict]) -> list[dict]:
+def rerank(
+    results: Iterable[dict],
+    *,
+    llm_scores: Optional[dict[int, int]] = None,
+) -> list[dict]:
     """Sort by (authority desc, original_index asc), preserving ties.
 
     Tags each result with `_authority` and `_authoritative` (bool, ≥80) so
     the frontend can render an "Authoritative source" badge.
+
+    When `llm_scores` is supplied (mapping the result's original index to a
+    relevance score 0–100), it overrides static domain authority. Static
+    authority is still used as a fallback for results the LLM didn't score,
+    and as the source of truth for the badge threshold.
     """
     enumerated = list(enumerate(results))
     scored = []
     for idx, r in enumerated:
         url = r.get("url", "")
-        score = max(authority_for(url), FLOOR)
+        if llm_scores is not None and idx in llm_scores:
+            score = llm_scores[idx]
+        else:
+            score = max(authority_for(url), FLOOR)
         tagged = dict(r)
         tagged["_authority"] = score
         tagged["_authoritative"] = score >= 80
