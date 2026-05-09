@@ -7,7 +7,7 @@ import React, {
   useState,
   forwardRef,
 } from 'react';
-import { ArrowUp, Link as LinkIcon, X } from 'lucide-react';
+import { ArrowUp, Link as LinkIcon, Sparkles, X } from 'lucide-react';
 import clsx from 'clsx';
 import { SlashMenu } from './SlashMenu';
 import type { Play } from '../services/api';
@@ -20,6 +20,11 @@ interface Props {
   plays?: Play[];
   /** Fired when the user picks a play from the slash menu. */
   onPlaySelect?: (play: Play) => void;
+  /** When set, the composer renders an "active play" chip above the textarea
+   * so the user can see which play context will be applied to the next turn. */
+  activePlay?: Play | null;
+  /** Fired when the user dismisses the active-play chip. */
+  onClearActivePlay?: () => void;
 }
 
 /** Imperative API for prefilling the composer from starter prompts. */
@@ -60,6 +65,8 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
     placeholder = 'Ask anything paid-acquisition…    Tip: type / to run a play',
     plays = [],
     onPlaySelect,
+    activePlay,
+    onClearActivePlay,
   },
   ref
 ) {
@@ -149,6 +156,24 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
             onSelect={handlePlaySelect}
             onDismiss={() => setQuery('')}
           />
+        )}
+        {activePlay && (
+          <div className="px-3 pt-3">
+            <div className="inline-flex items-center gap-2 h-7 pl-2 pr-1 rounded-full bg-brand-subtle text-brand text-[12px] font-medium">
+              <Sparkles className="w-3 h-3" strokeWidth={2.5} />
+              <span className="truncate max-w-[200px]">{activePlay.title}</span>
+              {onClearActivePlay && (
+                <button
+                  type="button"
+                  onClick={onClearActivePlay}
+                  className="grid place-items-center w-5 h-5 rounded-full hover:bg-brand/10 transition-colors"
+                  aria-label="Clear active play"
+                >
+                  <X className="w-3 h-3" strokeWidth={2.5} />
+                </button>
+              )}
+            </div>
+          </div>
         )}
         <textarea
           ref={textareaRef}

@@ -53,9 +53,12 @@ export async function performSearch(
   const searchResults = await response.json();
 
   if (onProgress && searchResults) {
+    // Stagger the progress callbacks so the live "Reading sources" list in
+    // the chat fills in rather than appearing all at once. Kept short so we
+    // don't artificially slow down the path to the /answer call below.
     for (const result of searchResults) {
       onProgress(result.url);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 80));
     }
   }
 

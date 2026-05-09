@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useUser } from '@clerk/clerk-react';
-import { Check, Copy, ExternalLink, RotateCw, Youtube } from 'lucide-react';
+import { Check, Copy, ExternalLink, RotateCw, ShieldCheck, Youtube } from 'lucide-react';
 import clsx from 'clsx';
-import type { Message } from '../types';
+import type { Message, MessageSearchResult } from '../types';
 
 interface ChatMessageProps {
   message: Message;
@@ -11,10 +11,21 @@ interface ChatMessageProps {
   darkMode?: boolean;
   /** Optional regenerate handler — if provided, shows a Regenerate button on assistant turns. */
   onRegenerate?: (msg: Message) => void;
+  /** Whether to render follow-up preset chips below the answer (only for the
+   * latest assistant turn that has finished). */
+  showFollowups?: boolean;
+  /** Fired when a follow-up preset chip is clicked — host prefills the
+   * composer and focuses it. */
+  onFollowupPick?: (text: string) => void;
 }
 
 /** Document-style chat message with inline citation pills + Copy / Regenerate. */
-export function ChatMessage({ message, onRegenerate }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  onRegenerate,
+  showFollowups,
+  onFollowupPick,
+}: ChatMessageProps) {
   const { user } = useUser();
   if (message.type !== 'assistant') {
     return <UserTurn name={user?.fullName || 'You'} content={message.content} />;
@@ -23,6 +34,8 @@ export function ChatMessage({ message, onRegenerate }: ChatMessageProps) {
     <AssistantTurn
       message={message}
       onRegenerate={onRegenerate ? () => onRegenerate(message) : undefined}
+      showFollowups={!!showFollowups}
+      onFollowupPick={onFollowupPick}
     />
   );
 }
@@ -45,12 +58,28 @@ function UserTurn({ name, content }: { name: string; content: string }) {
 function AssistantTurn({
   message,
   onRegenerate,
+  showFollowups,
+  onFollowupPick,
 }: {
   message: Message;
   onRegenerate?: () => void;
+  showFollowups: boolean;
+  onFollowupPick?: (text: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const isSearching = !!message.isSearching;
+  const searchingUrls = message.searchingUrls ?? [];
+
+  // While the streaming reveal is in progress, show only the revealed prefix
+  // of the content. `undefined` means "render everything" (covers historical
+  // messages and the "_Thinking…_" placeholder).
+  const visibleContent = useMemo(() => {
+    if (typeof message.revealedLength !== 'number') return message.content;
+    return message.content.slice(0, message.revealedLength);
+  }, [message.content, message.revealedLength]);
+  const isStreaming =
+    typeof message.revealedLength === 'number' &&
+    message.revealedLength < message.content.length;
 
   const handleCopy = async () => {
     try {
@@ -65,14 +94,27 @@ function AssistantTurn({
   // Source list — preserve search_results order so [N] indices match what
   // the LLM saw in the system prompt's "Sources for this turn" block.
   const orderedSources = useMemo(() => {
-    const out: { url: string; title: string; type?: string }[] = [];
+    const out: {
+      url: string;
+      title: string;
+      type?: string;
+      snippet?: string;
+      authoritative?: boolean;
+    }[] = [];
     for (const r of message.search_results ?? []) {
       if (r.source) {
-        out.push({ url: r.source, title: r.title || r.source, type: r.type });
+        out.push({
+          url: r.source,
+          title: r.title || r.source,
+          type: r.type,
+          snippet: r.snippet,
+          authoritative: !!r._authoritative,
+        });
       }
     }
     if (out.length === 0) {
-      // Fallback: bare citations array (URLs only).
+      // Fallback: bare citations array (URLs only). Loses the badge/snippet
+      // but at least keeps the list non-empty for back-compat with old data.
       for (const s of message.sources ?? []) {
         if (s.url) out.push({ url: s.url, title: s.title || s.url, type: s.type });
       }
@@ -84,7 +126,7 @@ function AssistantTurn({
     () => orderedSources.filter(s => s.type !== 'youtube'),
     [orderedSources]
   );
-  const videos = useMemo(
+  const videos = useMemo<MessageSearchResult[]>(
     () => (message.search_results ?? []).filter(r => r.type === 'youtube'),
     [message.search_results]
   );
@@ -105,8 +147,12 @@ function AssistantTurn({
         <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
           PaidPilot
         </span>
-        {isSearching && <SearchingDot />}
+        {(isSearching || isStreaming) && <SearchingDot label={isSearching ? 'Searching' : 'Writing'} />}
       </div>
+
+      {isSearching && searchingUrls.length > 0 && (
+        <SearchingPanel urls={searchingUrls} />
+      )}
 
       <article
         className="
@@ -131,15 +177,16 @@ function AssistantTurn({
           prose-td:border-border prose-th:border-border
         "
       >
-        <ReactMarkdown components={components}>{message.content}</ReactMarkdown>
+        <ReactMarkdown components={components}>{visibleContent}</ReactMarkdown>
+        {isStreaming && <StreamingCursor />}
       </article>
 
-      {webSources.length > 0 && (
+      {!isStreaming && webSources.length > 0 && (
         <SourceStrip sources={webSources} anchorPrefix={anchorPrefix} />
       )}
-      {videos.length > 0 && <VideoStrip videos={videos} />}
+      {!isStreaming && videos.length > 0 && <VideoStrip videos={videos} />}
 
-      {!isSearching && (
+      {!isSearching && !isStreaming && (
         <div className="mt-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
           <ActionBtn onClick={handleCopy}>
             {copied ? (
@@ -158,6 +205,10 @@ function AssistantTurn({
             </ActionBtn>
           )}
         </div>
+      )}
+
+      {showFollowups && !isSearching && !isStreaming && onFollowupPick && (
+        <FollowupChips onPick={onFollowupPick} />
       )}
     </div>
   );
@@ -180,15 +231,51 @@ function ActionBtn({
   );
 }
 
-function SearchingDot() {
+function SearchingDot({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-[11px] text-fg-subtle">
       <span className="relative flex h-1.5 w-1.5">
         <span className="absolute inset-0 rounded-full bg-brand opacity-60 animate-ping" />
         <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-brand" />
       </span>
-      Searching
+      {label}
     </span>
+  );
+}
+
+function StreamingCursor() {
+  return (
+    <span
+      className="inline-block w-[2px] h-[1em] bg-brand align-text-bottom ml-0.5 animate-pulse"
+      aria-hidden
+    />
+  );
+}
+
+function SearchingPanel({ urls }: { urls: string[] }) {
+  return (
+    <div className="mb-4 p-3 rounded-md bg-surface-sunken border border-border">
+      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
+        Reading sources
+      </div>
+      <ul className="space-y-1.5 max-h-40 overflow-y-auto">
+        {urls.map((url, i) => (
+          <li key={i} className="flex items-center gap-2 text-[12px] text-fg-muted animate-fade-in">
+            <span className="inline-block w-3 h-3 rounded-sm overflow-hidden bg-border shrink-0">
+              <img
+                src={`https://www.google.com/s2/favicons?sz=32&domain=${getDomain(url)}`}
+                alt=""
+                className="w-full h-full object-cover"
+                onError={e => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </span>
+            <span className="truncate flex-1">{getDomain(url)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -243,7 +330,7 @@ function walkCitations(
         .split(',')
         .map(s => parseInt(s.trim(), 10))
         .filter(n => Number.isFinite(n) && n >= 1 && n <= max);
-      if (nums.length === 0) continue; // out-of-range, leave as plain text
+      if (nums.length === 0) continue;
       if (m.index > last) out.push(node.slice(last, m.index));
       nums.forEach((n, i) => {
         out.push(
@@ -264,8 +351,6 @@ function walkCitations(
     ));
   }
   if (React.isValidElement(node)) {
-    // Don't walk into <a> — react-markdown already produced these from real
-    // markdown links and we don't want false-positive `[N]` matches inside.
     if (node.type === 'a') return node;
     const childProps = node.props as { children?: React.ReactNode };
     return React.cloneElement(
@@ -278,7 +363,7 @@ function walkCitations(
 }
 
 function makeMarkdownComponents(anchorPrefix: string, max: number) {
-  if (max === 0) return undefined; // no citations possible — fast path
+  if (max === 0) return undefined;
   const wrap = (Tag: keyof JSX.IntrinsicElements) =>
     function WrappedTag({ children, node, ...rest }: any) {
       return React.createElement(
@@ -309,55 +394,53 @@ function getDomain(url: string): string {
   }
 }
 
+interface SourceItem {
+  url: string;
+  title: string;
+  type?: string;
+  snippet?: string;
+  authoritative?: boolean;
+}
+
 function SourceStrip({
   sources,
   anchorPrefix,
 }: {
-  sources: { url: string; title: string }[];
+  sources: SourceItem[];
   anchorPrefix: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? sources : sources.slice(0, 5);
+  const authoritativeCount = sources.filter(s => s.authoritative).length;
 
   return (
     <div className="mt-5 pt-4 border-t border-border">
-      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
-        Sources · {sources.length}
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
+          Sources · {sources.length}
+        </div>
+        {authoritativeCount > 0 && (
+          <div
+            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] font-semibold text-brand"
+            title={`${authoritativeCount} source${authoritativeCount === 1 ? '' : 's'} from a high-authority marketing domain`}
+          >
+            <ShieldCheck className="w-3 h-3" strokeWidth={2.5} />
+            {authoritativeCount} authoritative
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {visible.map((s, i) => {
           const domain = getDomain(s.url);
           const n = i + 1;
           return (
-            <a
+            <SourcePill
               key={`${anchorPrefix}-${n}`}
-              id={`${anchorPrefix}-${n}`}
-              href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={s.title}
-              className={clsx(
-                'group/src inline-flex items-center gap-1.5 max-w-[260px] h-7 px-2 rounded-md scroll-mt-20',
-                'text-[12px] bg-surface-sunken hover:bg-surface text-fg-muted hover:text-fg',
-                'border border-transparent hover:border-border transition-all duration-150'
-              )}
-            >
-              <span className="inline-block w-3 h-3 rounded-sm overflow-hidden shrink-0 bg-border">
-                <img
-                  src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={e => {
-                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </span>
-              <span className="font-medium tabular-nums text-fg-subtle">
-                {String(n).padStart(2, '0')}
-              </span>
-              <span className="truncate text-fg">{domain}</span>
-              <ExternalLink className="w-3 h-3 shrink-0 opacity-0 group-hover/src:opacity-100 transition-opacity" />
-            </a>
+              anchorId={`${anchorPrefix}-${n}`}
+              n={n}
+              domain={domain}
+              source={s}
+            />
           );
         })}
         {!expanded && sources.length > 5 && (
@@ -373,11 +456,88 @@ function SourceStrip({
   );
 }
 
-function VideoStrip({
-  videos,
+function SourcePill({
+  anchorId,
+  n,
+  domain,
+  source,
 }: {
-  videos: NonNullable<Message['search_results']>;
+  anchorId: string;
+  n: number;
+  domain: string;
+  source: SourceItem;
 }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <span
+      className="relative"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <a
+        id={anchorId}
+        href={source.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={source.title}
+        className={clsx(
+          'group/src inline-flex items-center gap-1.5 max-w-[260px] h-7 px-2 rounded-md scroll-mt-20',
+          'text-[12px] bg-surface-sunken hover:bg-surface text-fg-muted hover:text-fg',
+          'border border-transparent hover:border-border transition-all duration-150',
+          source.authoritative && 'ring-1 ring-brand/30'
+        )}
+      >
+        <span className="inline-block w-3 h-3 rounded-sm overflow-hidden shrink-0 bg-border">
+          <img
+            src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={e => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </span>
+        <span className="font-medium tabular-nums text-fg-subtle">
+          {String(n).padStart(2, '0')}
+        </span>
+        <span className="truncate text-fg">{domain}</span>
+        {source.authoritative && (
+          <ShieldCheck
+            className="w-3 h-3 text-brand shrink-0"
+            strokeWidth={2.5}
+            aria-label="Authoritative source"
+          />
+        )}
+        <ExternalLink className="w-3 h-3 shrink-0 opacity-0 group-hover/src:opacity-100 transition-opacity" />
+      </a>
+      {hover && (source.title || source.snippet) && (
+        <div className="absolute z-30 top-full left-0 mt-1.5 w-72 p-3 rounded-md bg-surface border border-border shadow-popover text-[12px] animate-fade-in pointer-events-none">
+          <div className="flex items-center gap-1.5 text-[11px] text-fg-subtle mb-1">
+            <span className="truncate">{domain}</span>
+            {source.authoritative && (
+              <span className="inline-flex items-center gap-0.5 text-brand font-semibold uppercase tracking-[0.06em] text-[9.5px]">
+                <ShieldCheck className="w-2.5 h-2.5" strokeWidth={2.5} />
+                Authoritative
+              </span>
+            )}
+          </div>
+          {source.title && (
+            <div className="text-fg font-medium leading-snug line-clamp-2 mb-1">
+              {source.title}
+            </div>
+          )}
+          {source.snippet && (
+            <div className="text-fg-muted leading-snug line-clamp-3">
+              {source.snippet}
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function VideoStrip({ videos }: { videos: MessageSearchResult[] }) {
   return (
     <div className="mt-4">
       <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2 flex items-center gap-1.5">
@@ -418,6 +578,35 @@ function VideoStrip({
             </a>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Follow-up presets ---------------------------------------------
+const FOLLOWUPS: { label: string; prompt: string }[] = [
+  { label: 'Make it shorter', prompt: 'Make that answer shorter — keep only what changes a marketer\'s decision.' },
+  { label: 'Add KPIs', prompt: 'Add the KPIs I should track to validate this, with a target range and the math.' },
+  { label: 'Convert to brief', prompt: 'Convert that into a one-page brief I can share with my team — sections: context, recommendation, next steps, owner.' },
+  { label: 'Why these sources?', prompt: 'Walk me through why these specific sources were used and which one carries the most weight here.' },
+];
+
+function FollowupChips({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="mt-4 pt-3 border-t border-border/60">
+      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
+        Follow up
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {FOLLOWUPS.map(f => (
+          <button
+            key={f.label}
+            onClick={() => onPick(f.prompt)}
+            className="inline-flex items-center h-7 px-2.5 rounded-md text-[12px] text-fg-muted bg-surface-sunken hover:bg-brand-subtle hover:text-brand border border-transparent hover:border-brand/30 transition-colors"
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
     </div>
   );
