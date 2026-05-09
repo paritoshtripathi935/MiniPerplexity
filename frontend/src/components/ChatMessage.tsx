@@ -399,6 +399,17 @@ interface SourceItem {
   authoritative?: boolean;
 }
 
+/**
+ * The source strip used to be small pills with hover popovers; now each
+ * source renders as a card with title + snippet visible inline. Cuts the
+ * "hover to see what this is" friction and gives the panel real density.
+ *
+ * Authoritative sources get a left brand-rule for at-a-glance scanning.
+ * Anchor ids are kept on the card root so [N] citation pills still
+ * scroll-flash to the right card.
+ */
+const SOURCE_PREVIEW_COUNT = 4;
+
 function SourceStrip({
   sources,
   anchorPrefix,
@@ -407,12 +418,12 @@ function SourceStrip({
   anchorPrefix: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? sources : sources.slice(0, 5);
+  const visible = expanded ? sources : sources.slice(0, SOURCE_PREVIEW_COUNT);
   const authoritativeCount = sources.filter(s => s.authoritative).length;
 
   return (
     <div className="mt-5 pt-4 border-t border-border">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
           Sources · {sources.length}
         </div>
@@ -426,65 +437,56 @@ function SourceStrip({
           </div>
         )}
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {visible.map((s, i) => {
-          const domain = getDomain(s.url);
-          const n = i + 1;
-          return (
-            <SourcePill
-              key={`${anchorPrefix}-${n}`}
-              anchorId={`${anchorPrefix}-${n}`}
-              n={n}
-              domain={domain}
-              source={s}
-            />
-          );
-        })}
-        {!expanded && sources.length > 5 && (
-          <button
-            onClick={() => setExpanded(true)}
-            className="h-7 px-2 rounded-md text-[12px] text-brand hover:underline"
-          >
-            +{sources.length - 5} more
-          </button>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {visible.map((s, i) => (
+          <SourceCard
+            key={`${anchorPrefix}-${i + 1}`}
+            anchorId={`${anchorPrefix}-${i + 1}`}
+            n={i + 1}
+            source={s}
+          />
+        ))}
       </div>
+      {!expanded && sources.length > SOURCE_PREVIEW_COUNT && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="mt-2 inline-flex items-center gap-1 h-7 px-2 rounded-md text-[12px] text-brand hover:underline"
+        >
+          Show {sources.length - SOURCE_PREVIEW_COUNT} more source{sources.length - SOURCE_PREVIEW_COUNT === 1 ? '' : 's'}
+        </button>
+      )}
     </div>
   );
 }
 
-function SourcePill({
+function SourceCard({
   anchorId,
   n,
-  domain,
   source,
 }: {
   anchorId: string;
   n: number;
-  domain: string;
   source: SourceItem;
 }) {
-  const [hover, setHover] = useState(false);
+  const domain = getDomain(source.url);
   return (
-    <span
-      className="relative"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+    <a
+      id={anchorId}
+      href={source.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={clsx(
+        'group/src relative flex flex-col gap-1.5 p-3 rounded-md scroll-mt-20',
+        'bg-surface border border-border hover:border-border-strong',
+        'transition-colors duration-150 overflow-hidden',
+        source.authoritative && 'ring-1 ring-brand/25 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-brand'
+      )}
     >
-      <a
-        id={anchorId}
-        href={source.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={source.title}
-        className={clsx(
-          'group/src inline-flex items-center gap-1.5 max-w-[260px] h-7 px-2 rounded-md scroll-mt-20',
-          'text-[12px] bg-surface-sunken hover:bg-surface text-fg-muted hover:text-fg',
-          'border border-transparent hover:border-border transition-all duration-150',
-          source.authoritative && 'ring-1 ring-brand/30'
-        )}
-      >
-        <span className="inline-block w-3 h-3 rounded-sm overflow-hidden shrink-0 bg-border">
+      <div className="flex items-center gap-1.5 text-[11px] text-fg-subtle min-w-0">
+        <span className="font-semibold tabular-nums shrink-0">
+          {String(n).padStart(2, '0')}
+        </span>
+        <span className="inline-block w-3.5 h-3.5 rounded-sm overflow-hidden shrink-0 bg-border">
           <img
             src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`}
             alt=""
@@ -494,43 +496,29 @@ function SourcePill({
             }}
           />
         </span>
-        <span className="font-medium tabular-nums text-fg-subtle">
-          {String(n).padStart(2, '0')}
-        </span>
-        <span className="truncate text-fg">{domain}</span>
+        <span className="truncate flex-1">{domain}</span>
         {source.authoritative && (
-          <ShieldCheck
-            className="w-3 h-3 text-brand shrink-0"
-            strokeWidth={2.5}
+          <span
+            className="inline-flex items-center gap-0.5 shrink-0 text-brand font-semibold uppercase tracking-[0.06em] text-[9.5px]"
             aria-label="Authoritative source"
-          />
+          >
+            <ShieldCheck className="w-2.5 h-2.5" strokeWidth={2.5} />
+            Auth
+          </span>
         )}
-        <ExternalLink className="w-3 h-3 shrink-0 opacity-0 group-hover/src:opacity-100 transition-opacity" />
-      </a>
-      {hover && (source.title || source.snippet) && (
-        <div className="absolute z-30 top-full left-0 mt-1.5 w-72 p-3 rounded-md bg-surface border border-border shadow-popover text-[12px] animate-fade-in pointer-events-none">
-          <div className="flex items-center gap-1.5 text-[11px] text-fg-subtle mb-1">
-            <span className="truncate">{domain}</span>
-            {source.authoritative && (
-              <span className="inline-flex items-center gap-0.5 text-brand font-semibold uppercase tracking-[0.06em] text-[9.5px]">
-                <ShieldCheck className="w-2.5 h-2.5" strokeWidth={2.5} />
-                Authoritative
-              </span>
-            )}
-          </div>
-          {source.title && (
-            <div className="text-fg font-medium leading-snug line-clamp-2 mb-1">
-              {source.title}
-            </div>
-          )}
-          {source.snippet && (
-            <div className="text-fg-muted leading-snug line-clamp-3">
-              {source.snippet}
-            </div>
-          )}
+        <ExternalLink className="w-3 h-3 shrink-0 text-fg-subtle opacity-0 group-hover/src:opacity-100 transition-opacity" />
+      </div>
+      {source.title && (
+        <div className="text-[13px] font-medium text-fg leading-snug line-clamp-2">
+          {source.title}
         </div>
       )}
-    </span>
+      {source.snippet && (
+        <div className="text-[12px] text-fg-muted leading-snug line-clamp-2">
+          {source.snippet}
+        </div>
+      )}
+    </a>
   );
 }
 

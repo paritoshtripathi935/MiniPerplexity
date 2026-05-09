@@ -228,6 +228,7 @@ function ActivePlayPanel({ play }: { play: Play }) {
 interface AggregatedSource {
   url: string;
   title: string;
+  snippet?: string;
   domain: string;
   authoritative: boolean;
   count: number;
@@ -254,6 +255,7 @@ function collectSources(messages: Message[]): AggregatedSource[] {
       map.set(url, {
         url,
         title: r.title || url,
+        snippet: r.snippet,
         domain: getDomain(url),
         authoritative: !!r._authoritative,
         count: 1,
@@ -349,7 +351,7 @@ function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
           </span>
         )}
       </div>
-      <ul className="space-y-1 overflow-y-auto pr-1">
+      <ul className="space-y-1.5 overflow-y-auto pr-1">
         {sources.map(s => (
           <li key={s.url}>
             <a
@@ -357,27 +359,41 @@ function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
               target="_blank"
               rel="noopener noreferrer"
               title={s.title}
-              className="group flex items-center gap-2 px-2 py-1.5 -mx-2 rounded-md hover:bg-surface-sunken transition-colors text-[12px]"
-            >
-              <span className="inline-block w-3.5 h-3.5 rounded-sm overflow-hidden bg-border shrink-0">
-                <img
-                  src={`https://www.google.com/s2/favicons?sz=32&domain=${s.domain}`}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={e => {
-                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </span>
-              <span className="truncate text-fg flex-1">{s.domain}</span>
-              {s.authoritative && (
-                <ShieldCheck
-                  className="w-3 h-3 text-brand shrink-0"
-                  strokeWidth={2.5}
-                  aria-label="Authoritative source"
-                />
+              className={clsx(
+                'group flex flex-col gap-1 px-2 py-2 -mx-2 rounded-md',
+                'hover:bg-surface-sunken transition-colors',
+                s.authoritative && 'border-l-2 border-brand pl-2.5'
               )}
-              <ExternalLink className="w-3 h-3 text-fg-subtle opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            >
+              <div className="flex items-center gap-1.5 text-[11px] text-fg-subtle min-w-0">
+                <span className="inline-block w-3 h-3 rounded-sm overflow-hidden bg-border shrink-0">
+                  <img
+                    src={`https://www.google.com/s2/favicons?sz=32&domain=${s.domain}`}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={e => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </span>
+                <span className="truncate flex-1">{s.domain}</span>
+                {s.authoritative && (
+                  <ShieldCheck
+                    className="w-3 h-3 text-brand shrink-0"
+                    strokeWidth={2.5}
+                    aria-label="Authoritative source"
+                  />
+                )}
+                <ExternalLink className="w-3 h-3 text-fg-subtle opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </div>
+              <div className="text-[12px] text-fg font-medium leading-snug line-clamp-2">
+                {s.title || s.domain}
+              </div>
+              {s.snippet && (
+                <div className="text-[11px] text-fg-muted leading-snug line-clamp-2">
+                  {s.snippet}
+                </div>
+              )}
             </a>
           </li>
         ))}
