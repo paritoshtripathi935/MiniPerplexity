@@ -55,6 +55,19 @@ def _to_uuid(session_id: str) -> uuid.UUID:
 
 
 # ---------- Sessions --------------------------------------------------------
+async def update_user_preferred_model(
+    db: AsyncSession, user_id: uuid.UUID, model_id: Optional[str]
+) -> None:
+    """Persist the user's chosen chat model. Pass None to clear the
+    preference (falls back to the backend default on next /answer)."""
+    from app.db.models import User
+    await db.execute(
+        User.__table__.update()
+        .where(User.id == user_id)
+        .values(preferred_chat_model=model_id, updated_at=_now())
+    )
+
+
 async def get_or_create_session(
     db: AsyncSession,
     session_id: str,

@@ -9,10 +9,11 @@ import { SessionsSidebar } from '../components/SessionsSidebar';
 import { PlayRunModal } from '../components/PlayRunModal';
 import { ChatRightRail } from '../components/ChatRightRail';
 import { ChatEmptyState } from '../components/ChatEmptyState';
+import { ModelSelector } from '../components/ModelSelector';
 import {
-  getBrandProfile, getNextSteps, listPlays,
+  getBrandProfile, getMe, getNextSteps, listPlays,
   performSearch, getAnswer, getSessionHistory, runPlay,
-  type BrandProfile, type Play,
+  type BrandProfile, type Play, type UserProfile,
 } from '../services/api';
 import { Message } from '../types';
 import { useStreamingReveal } from '../hooks/useStreamingReveal';
@@ -51,6 +52,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const [loading, setLoading] = useState(false);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [profile, setProfile] = useState<BrandProfile | null>(null);
+  const [me, setMe] = useState<UserProfile | null>(null);
   const [plays, setPlays] = useState<Play[]>([]);
   /** Slash-selected play queued for the run modal. */
   const [slashPlay, setSlashPlay] = useState<Play | null>(null);
@@ -95,6 +97,24 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         if (!cancelled) setProfile(p);
       } catch {
         /* anonymous or first-time — empty state still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getToken]);
+
+  // Pull the user profile so the ModelSelector can preselect the saved
+  // preferred chat model. Anonymous users hit a 401 here — that's fine,
+  // the selector falls back to the catalog default.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const u = await getMe(getToken);
+        if (!cancelled) setMe(u);
+      } catch {
+        /* anonymous — selector silently uses backend default */
       }
     })();
     return () => {
@@ -488,6 +508,18 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-surface relative">
+        {/* Always-visible toolbar — currently just the model selector. The
+            sticky-on-scroll header below absorbs this when the user is deep
+            in a conversation. */}
+        <div className="border-b border-border h-11 px-4 sm:px-6 flex items-center justify-end shrink-0">
+          <ModelSelector
+            value={me?.preferred_chat_model ?? null}
+            onChange={modelId =>
+              setMe(prev => (prev ? { ...prev, preferred_chat_model: modelId } : prev))
+            }
+          />
+        </div>
+
         {showStickyHeader && (
           <div className="absolute top-0 inset-x-0 z-20 border-b border-border bg-surface/85 backdrop-blur supports-[backdrop-filter]:bg-surface/70 animate-fade-in">
             <div className="max-w-3xl mx-auto px-4 sm:px-6 h-11 flex items-center gap-3">
@@ -496,6 +528,12 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                   {conversationTitle}
                 </div>
               </div>
+              <ModelSelector
+                value={me?.preferred_chat_model ?? null}
+                onChange={modelId =>
+                  setMe(prev => (prev ? { ...prev, preferred_chat_model: modelId } : prev))
+                }
+              />
               <button
                 onClick={scrollToTop}
                 className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-fg-muted hover:text-fg hover:bg-surface-sunken transition-colors"
