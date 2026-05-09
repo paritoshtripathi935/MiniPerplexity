@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, List, Dict
 from enum import Enum
+import re
 import requests
 from pydantic import Field
 
@@ -194,6 +195,70 @@ class CloudflareChat:
 
         response = self._call_for_prompt(formatted_messages)
         return response["result"]["response"]
+
+    def score_search_results(self, query: str, results: List[Dict]) -> Dict[int, int]:
+        """Score search results 0–100 for relevance to the user's query.
+
+        Returns `{0_indexed_position: score}`. Empty dict on failure or empty
+        input — caller should fall back to static domain authority. Result
+        snippets are truncated and the candidate set is capped at 20 to keep
+        the prompt cheap; ranks for indices outside the cap are simply absent
+        and the caller can default-skip those.
+
+        Why an LLM call here: static domain authority captures "is this
+        domain trustworthy", but not "does this result answer THIS query".
+        The reranker layers query–result fit on top of the curated list.
+        """
+        if not results:
+            return {}
+        capped = list(results)[:20]
+
+        items_text = "\n".join(
+            f"[{i + 1}] {(r.get('title') or '').strip()} — {(r.get('url') or '').strip()}\n"
+            f"    {(r.get('snippet') or '').strip()[:200]}"
+            for i, r in enumerate(capped)
+        )
+
+        system_prompt = (
+            "You score search results for a paid-acquisition marketing copilot.\n\n"
+            "For each candidate, return a relevance score 0-100 where:\n"
+            "  90-100  Directly answers the query from a high-authority marketing source\n"
+            "          (platform docs, trade press, established marketing publications).\n"
+            "  70-89   Strong, on-topic content from a credible source.\n"
+            "  40-69   Tangentially related or from a less-trusted source.\n"
+            "  0-39    Off-topic, SEO spam, listicle, or untrusted blog.\n\n"
+            "Output exactly one line per candidate using `INDEX=SCORE` (e.g. `1=85`). "
+            "No commentary, no preamble, no trailing summary."
+        )
+        user_msg = (
+            f"Query: {query.strip()[:300]}\n\n"
+            f"Candidates:\n{items_text}\n\n"
+            "Now score each one."
+        )
+        try:
+            response = self._call_for_prompt(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg},
+                ]
+            )
+            raw = response["result"]["response"]
+        except (CloudflareAPIError, KeyError):
+            return {}
+
+        # Tolerant parser — accepts `1=85`, `[1]=85`, `1: 85`, etc. Anything
+        # the LLM throws in that doesn't match is dropped silently.
+        scores: Dict[int, int] = {}
+        line_re = re.compile(r"\[?\s*(\d+)\s*\]?\s*[:=]\s*(\d+)")
+        for line in (raw or "").splitlines():
+            m = line_re.search(line)
+            if not m:
+                continue
+            idx = int(m.group(1)) - 1
+            score = int(m.group(2))
+            if 0 <= idx < len(capped) and 0 <= score <= 100:
+                scores[idx] = score
+        return scores
 
     def generate_next_steps(self, user_query: str, assistant_answer: str) -> List[str]:
         """Generate up to 3 short follow-up questions a marketer might ask next.

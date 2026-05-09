@@ -17,7 +17,10 @@ BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
 GOOGLE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 MAX_CONTENT_LENGTH = 5000
 MAX_PARAGRAPHS = 5
-RESULTS_PER_ENGINE = 2
+# Per-engine web result count. We deliberately overfetch (vs. previous 2)
+# so the LLM reranker has a real candidate set to choose from. The chat UI
+# still trims to a sane number after ranking — this just gives us bench.
+RESULTS_PER_ENGINE = 10
 REQUEST_TIMEOUT = 5
 CALLS_PER_MINUTE = 30
 
