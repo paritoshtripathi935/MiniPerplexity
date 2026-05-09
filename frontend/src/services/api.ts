@@ -309,6 +309,43 @@ export async function listPlays(): Promise<{ plays: Play[] }> {
   return await response.json();
 }
 
+// ---------- Next-step suggestions ----------------------------------------
+
+/**
+ * Generate or fetch cached follow-up suggestions for an assistant message.
+ * The backend persists the result on `messages.next_steps` so subsequent
+ * loads of the same conversation are free.
+ */
+export async function getNextSteps(
+  messageId: string,
+  getToken?: GetToken,
+): Promise<{ items: string[] }> {
+  const response = await fetch(`${API_HOST}/api/v1/messages/${messageId}/next-steps`, {
+    method: 'POST',
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) throw new Error(`Failed to load next steps: ${response.status}`);
+  return await response.json();
+}
+
+// ---------- Plays history -------------------------------------------------
+
+export interface PlayHistoryItem {
+  play_id: string;
+  last_run_at: string;
+  run_count: number;
+}
+
+export async function getPlaysHistory(
+  getToken: GetToken,
+): Promise<{ items: PlayHistoryItem[] }> {
+  const response = await fetch(`${API_HOST}/api/v1/plays/history`, {
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) throw new Error(`Failed to load plays history: ${response.status}`);
+  return await response.json();
+}
+
 /**
  * Run a Play: same as `getAnswer` but tags the request with `play_id` so
  * the backend layers the Play's instructions + output schema onto the

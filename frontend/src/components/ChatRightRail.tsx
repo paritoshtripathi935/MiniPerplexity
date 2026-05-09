@@ -1,107 +1,210 @@
-import React, { useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { ExternalLink, Sparkles, ChevronRight, ShieldCheck } from 'lucide-react';
-import type { BrandProfile, Play } from '../services/api';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronLeft, ChevronRight, ExternalLink, ShieldCheck, Sparkles, Youtube,
+} from 'lucide-react';
+import clsx from 'clsx';
+import type { Play } from '../services/api';
 import type { Message } from '../types';
 import { getDomain } from '../utils/url';
 
 interface Props {
-  profile: BrandProfile | null;
-  /** The play whose `originatingPlayId` is set on the latest assistant turn,
-   * or the slash-selected play queued for the next run. Either is fine —
-   * the rail just labels what context is active. */
+  /** The play whose context is "loaded" — drives the active-play panel. */
   activePlay: Play | null;
   messages: Message[];
 }
 
+type RailMode = 'auto' | 'open' | 'closed';
+
+const STORAGE_KEY = 'paidpilot-chat-rail-mode';
+const AUTO_POP_MS = 10_000;
+const VIDEO_MAX = 6;
+const SOURCE_MAX = 12;
+
 /**
- * Right-side context panel for the chat. Surfaces what's *loaded* — brand
- * profile, the active play (if any), and the aggregated sources cited so far
- * in the conversation. Hidden under `lg:` because the chat already has a
- * left sidebar.
+ * Right-side context panel for the chat. Shows the active play, the latest
+ * videos, and aggregated sources. Auto-collapses; pops open for AUTO_POP_MS
+ * when new sources/videos arrive. Manual toggle persists in localStorage.
+ *
+ * Hidden under `lg:` because the chat already has a left sidebar.
  */
-export function ChatRightRail({ profile, activePlay, messages }: Props) {
+export function ChatRightRail({ activePlay, messages }: Props) {
   const aggregatedSources = useMemo(() => collectSources(messages), [messages]);
+  const aggregatedVideos = useMemo(() => collectVideos(messages), [messages]);
 
-  // Empty rail when there's nothing meaningful to show.
-  if (!profile?.onboarding_completed && !activePlay && aggregatedSources.length === 0) {
-    return (
-      <div className="hidden lg:flex flex-col w-72 shrink-0 border-l border-border bg-surface px-4 py-6 overflow-y-auto">
-        <EmptyRail />
-      </div>
-    );
+  const [mode, setMode] = useState<RailMode>(() => readMode());
+  const expanded = useAutoPop({
+    mode,
+    sourceCount: aggregatedSources.length,
+    videoCount: aggregatedVideos.length,
+  });
+
+  const setUserMode = (next: 'open' | 'closed') => {
+    setMode(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* private mode / quota — fall back to in-memory only */
+    }
+  };
+
+  const totalContent = aggregatedSources.length + aggregatedVideos.length;
+  // Don't render at all when there's nothing to show and no active play —
+  // the rail is purely informational, no point in floating an empty stub.
+  if (!activePlay && totalContent === 0) return null;
+
+  return (
+    <aside
+      className={clsx(
+        'hidden lg:flex flex-col shrink-0 border-l border-border bg-surface',
+        'transition-[width] duration-200 ease-out-quad overflow-hidden',
+        expanded ? 'w-72' : 'w-10'
+      )}
+    >
+      <RailToggle
+        expanded={expanded}
+        onToggle={() => setUserMode(expanded ? 'closed' : 'open')}
+        sourceCount={aggregatedSources.length}
+        videoCount={aggregatedVideos.length}
+      />
+
+      {expanded && (
+        <div className="flex-1 min-h-0 flex flex-col px-4 pb-4 pt-2 gap-4 animate-fade-in">
+          {activePlay && <ActivePlayPanel play={activePlay} />}
+          {aggregatedVideos.length > 0 && (
+            <VideosPanel videos={aggregatedVideos.slice(0, VIDEO_MAX)} />
+          )}
+          {aggregatedSources.length > 0 && (
+            <SourcesPanel sources={aggregatedSources.slice(0, SOURCE_MAX)} />
+          )}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+/* ---------- Auto-pop logic ---------------------------------------------- */
+
+function readMode(): RailMode {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    return v === 'open' || v === 'closed' ? v : 'auto';
+  } catch {
+    return 'auto';
   }
-
-  return (
-    <div className="hidden lg:flex flex-col w-72 shrink-0 border-l border-border bg-surface px-4 py-6 overflow-y-auto gap-5">
-      {profile?.onboarding_completed && <BrandPanel profile={profile} />}
-      {activePlay && <ActivePlayPanel play={activePlay} />}
-      {aggregatedSources.length > 0 && (
-        <SourcesPanel sources={aggregatedSources} />
-      )}
-    </div>
-  );
 }
 
-function EmptyRail() {
+interface AutoPopArgs {
+  mode: RailMode;
+  sourceCount: number;
+  videoCount: number;
+}
+
+/**
+ * Compute the rail's expanded state. In 'auto' mode, the rail pops open
+ * when source/video counts increase, then collapses after AUTO_POP_MS.
+ * In 'open'/'closed' modes (user-locked), the auto behaviour is suppressed.
+ */
+function useAutoPop({ mode, sourceCount, videoCount }: AutoPopArgs): boolean {
+  const [popping, setPopping] = useState(false);
+  const lastCounts = useRef({ sources: sourceCount, videos: videoCount });
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => {
+    const last = lastCounts.current;
+    const grew = sourceCount > last.sources || videoCount > last.videos;
+    lastCounts.current = { sources: sourceCount, videos: videoCount };
+    if (!grew || mode !== 'auto') return;
+    setPopping(true);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setPopping(false), AUTO_POP_MS);
+  }, [sourceCount, videoCount, mode]);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  if (mode === 'open') return true;
+  if (mode === 'closed') return false;
+  return popping;
+}
+
+/* ---------- Sub-components ---------------------------------------------- */
+
+function RailToggle({
+  expanded,
+  onToggle,
+  sourceCount,
+  videoCount,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  sourceCount: number;
+  videoCount: number;
+}) {
   return (
-    <div className="text-[12px] text-fg-subtle leading-relaxed">
-      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
-        Context
-      </div>
-      <p>
-        Brand profile, the active play, and cited sources will appear here as the
-        conversation builds.
-      </p>
-      <Link
-        to="/settings"
-        className="mt-3 inline-flex items-center gap-1 text-brand text-[12px] font-medium hover:underline"
+    <div className="flex items-center justify-between px-2 pt-3 pb-2 border-b border-border/60">
+      <button
+        onClick={onToggle}
+        className="grid place-items-center w-7 h-7 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
+        aria-label={expanded ? 'Collapse context panel' : 'Expand context panel'}
+        title={expanded ? 'Collapse' : 'Expand'}
       >
-        Set up brand profile
-        <ChevronRight className="w-3 h-3" strokeWidth={2.5} />
-      </Link>
+        {expanded ? (
+          <ChevronRight className="w-4 h-4" strokeWidth={2} />
+        ) : (
+          <ChevronLeft className="w-4 h-4" strokeWidth={2} />
+        )}
+      </button>
+      {!expanded && (sourceCount + videoCount > 0) && (
+        <CollapsedBadges sourceCount={sourceCount} videoCount={videoCount} />
+      )}
+      {expanded && (
+        <span className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle pr-1">
+          Context
+        </span>
+      )}
     </div>
   );
 }
 
-function BrandPanel({ profile }: { profile: BrandProfile }) {
+function CollapsedBadges({
+  sourceCount,
+  videoCount,
+}: {
+  sourceCount: number;
+  videoCount: number;
+}) {
   return (
-    <section>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
-          Brand context
-        </h3>
-        <Link
-          to="/settings"
-          className="text-[11px] text-brand hover:underline"
-        >
-          Edit
-        </Link>
-      </div>
-      <dl className="text-[12.5px] space-y-1.5">
-        {profile.company_name && <Row label="Company" value={profile.company_name} />}
-        {profile.primary_channels?.length > 0 && (
-          <Row label="Channels" value={profile.primary_channels.slice(0, 4).join(', ')} />
-        )}
-        {profile.target_cac != null && (
-          <Row label="Target CAC" value={`$${Number(profile.target_cac).toLocaleString()}`} />
-        )}
-        {profile.target_roas != null && (
-          <Row label="Target ROAS" value={`${profile.target_roas}×`} />
-        )}
-      </dl>
-      {profile.icp_description && (
-        <p className="mt-2 pt-2 border-t border-border/60 text-[12px] text-fg-muted leading-relaxed line-clamp-3">
-          {profile.icp_description}
-        </p>
+    <div className="flex flex-col items-center gap-1.5 mt-1 mb-2">
+      {videoCount > 0 && (
+        <Badge icon={<Youtube className="w-3 h-3" strokeWidth={2} />} value={videoCount} />
       )}
-    </section>
+      {sourceCount > 0 && (
+        <Badge icon={<ShieldCheck className="w-3 h-3" strokeWidth={2} />} value={sourceCount} />
+      )}
+    </div>
+  );
+}
+
+function Badge({ icon, value }: { icon: React.ReactNode; value: number }) {
+  return (
+    <span
+      className="grid place-items-center w-7 h-7 rounded-md bg-surface-sunken text-fg-muted text-[10px] font-semibold relative"
+      title={`${value} item${value === 1 ? '' : 's'}`}
+    >
+      {icon}
+      <span className="absolute -top-1 -right-1 grid place-items-center min-w-[14px] h-[14px] px-1 rounded-full bg-brand text-brand-fg text-[9px] font-bold tabular-nums">
+        {value > 99 ? '99+' : value}
+      </span>
+    </span>
   );
 }
 
 function ActivePlayPanel({ play }: { play: Play }) {
   return (
-    <section>
+    <section className="shrink-0">
       <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
         Active play
       </h3>
@@ -128,6 +231,12 @@ interface AggregatedSource {
   domain: string;
   authoritative: boolean;
   count: number;
+}
+
+interface AggregatedVideo {
+  url: string;
+  title: string;
+  videoId: string;
 }
 
 function collectSources(messages: Message[]): AggregatedSource[] {
@@ -158,23 +267,90 @@ function collectSources(messages: Message[]): AggregatedSource[] {
   });
 }
 
+function collectVideos(messages: Message[]): AggregatedVideo[] {
+  const map = new Map<string, AggregatedVideo>();
+  // Walk newest → oldest so the most recent assistant turns surface first
+  // (the auto-pop is most useful for "you just got new videos").
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type !== 'assistant') continue;
+    for (const r of m.search_results ?? []) {
+      if (r.type !== 'youtube' || !r.source) continue;
+      if (map.has(r.source)) continue;
+      const id = parseYouTubeId(r.source);
+      if (!id) continue;
+      map.set(r.source, { url: r.source, title: r.title || r.source, videoId: id });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function parseYouTubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.searchParams.get('v') || u.pathname.split('/').pop() || null;
+  } catch {
+    return null;
+  }
+}
+
+function VideosPanel({ videos }: { videos: AggregatedVideo[] }) {
+  return (
+    <section className="flex-1 min-h-0 flex flex-col">
+      <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2 flex items-center gap-1.5 shrink-0">
+        <Youtube className="w-3 h-3 text-fg-muted" />
+        Videos · {videos.length}
+      </h3>
+      <div className="grid grid-cols-2 gap-2 overflow-y-auto pr-1">
+        {videos.map(v => (
+          <a
+            key={v.url}
+            href={v.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={v.title}
+            className="group block"
+          >
+            <div className="aspect-video rounded-md overflow-hidden bg-surface-sunken border border-border">
+              <img
+                src={`https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`}
+                alt={v.title}
+                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300 ease-out-expo"
+                onError={e => {
+                  (e.currentTarget as HTMLImageElement).src = `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
+                }}
+              />
+            </div>
+            <div className="text-[11px] text-fg mt-1 line-clamp-2 leading-snug">
+              {v.title}
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
   const authoritativeCount = sources.filter(s => s.authoritative).length;
   return (
-    <section>
-      <div className="flex items-center justify-between mb-2">
+    <section className="flex-1 min-h-0 flex flex-col">
+      <div className="flex items-center justify-between mb-2 shrink-0">
         <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
-          Cited sources · {sources.length}
+          Sources · {sources.length}
         </h3>
         {authoritativeCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] font-semibold text-brand">
+          <span
+            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] font-semibold text-brand"
+            title={`${authoritativeCount} authoritative`}
+          >
             <ShieldCheck className="w-3 h-3" strokeWidth={2.5} />
             {authoritativeCount}
           </span>
         )}
       </div>
-      <ul className="space-y-1">
-        {sources.slice(0, 12).map(s => (
+      <ul className="space-y-1 overflow-y-auto pr-1">
+        {sources.map(s => (
           <li key={s.url}>
             <a
               href={s.url}
@@ -205,21 +381,8 @@ function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
             </a>
           </li>
         ))}
-        {sources.length > 12 && (
-          <li className="text-[11px] text-fg-subtle px-2 pt-1">
-            +{sources.length - 12} more in conversation
-          </li>
-        )}
       </ul>
     </section>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-fg-subtle text-[11.5px] shrink-0">{label}</dt>
-      <dd className="font-medium text-right truncate text-fg">{value}</dd>
-    </div>
-  );
-}

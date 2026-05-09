@@ -20,11 +20,15 @@ from app.db.repository import (
     find_or_create_query,
     get_brand_profile,
     get_chat_history,
+    get_message,
     get_or_create_session,
+    get_query_text,
     get_recent_queries,
     get_session_history,
+    list_recent_plays_for_user,
     list_sessions_for_user,
     search_user_messages,
+    set_message_next_steps,
     touch_session,
     update_session,
     upsert_search_results,
@@ -151,6 +155,7 @@ async def get_answer(
             role=MessageRole.assistant,
             content=answer,
             query_id=query_row.id,
+            play_id=play_id,
         )
 
         # Build citation rows mapping cited URLs back to the search_result UUIDs.
@@ -164,6 +169,7 @@ async def get_answer(
             answer=answer,
             citations=citations_text,
             search_results=search_results,
+            message_id=str(assistant_msg.id),
         )
 
     except HTTPException:
@@ -282,3 +288,50 @@ async def get_history(session_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Session not found")
     await touch_session(db, session_id)
     return {"history": history}
+
+
+@router.post("/messages/{message_id}/next-steps")
+async def post_message_next_steps(
+    message_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate (or return cached) follow-up suggestions for an assistant turn.
+
+    Cheap single-shot LLM call. Persisted on the message's `next_steps`
+    JSONB so subsequent loads of the same conversation are free.
+    Returns `{items: string[]}` (possibly empty if generation failed).
+    """
+    msg = await get_message(db, message_id)
+    if msg is None or msg.role != MessageRole.assistant:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    cached = (msg.next_steps or {}).get("items") if isinstance(msg.next_steps, dict) else None
+    if cached:
+        return {"items": cached}
+
+    user_query = (
+        await get_query_text(db, msg.query_id) if msg.query_id is not None else None
+    ) or ""
+
+    cf_chat = CloudflareChat(
+        api_key=CLOUDFLARE_API_KEY,
+        account_id=CLOUDFLARE_ACCOUNT_ID,
+    )
+    items = cf_chat.generate_next_steps(user_query=user_query, assistant_answer=msg.content)
+
+    # Persist even when empty so we don't re-roll an LLM call that produced
+    # garbage on every page revisit. Subsequent loads will short-circuit.
+    await set_message_next_steps(db, msg.id, items)
+    return {"items": items}
+
+
+@router.get("/plays/history")
+async def get_plays_history(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recently used plays for the authenticated user — feeds the Plays page's
+    "Recently used" section. Aggregated from assistant messages with non-null
+    play_id."""
+    items = await list_recent_plays_for_user(db, user.id)
+    return {"items": items}

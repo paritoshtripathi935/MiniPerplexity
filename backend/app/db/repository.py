@@ -136,6 +136,8 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
     answer (joined via the message's query_id), with authority tags re-applied
     so the UI can show the same "authoritative" badge it does on the live flow.
     Without this, videos and source pills disappear when a user reopens a chat.
+    Each assistant message also carries `id`, `play_id`, and any cached
+    `next_steps` so the chat surface can rehydrate fully.
     """
     sid = _to_uuid(session_id)
     sess = await db.get(DBSession, sid)
@@ -159,7 +161,7 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
     ).scalars().all()
 
     # Bulk-load every search_result for every query referenced by this session's
-    # messages, in one round-trip. Group by query_id for O(1) lookup below.
+    # messages in one round-trip. Group by query_id for O(1) lookup below.
     query_ids = {m.query_id for m in msg_rows if m.query_id is not None}
     sr_by_query: dict[uuid.UUID, list[dict]] = {}
     if query_ids:
@@ -179,16 +181,25 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
                     "source": r.source.value,
                 }
             )
-        for results in sr_by_query.values():
-            tag_authority_in_place(results)
+    for results in sr_by_query.values():
+        tag_authority_in_place(results)
 
     messages_out: list[dict] = []
     for m in msg_rows:
-        item: dict = {"role": m.role.value, "content": m.content}
-        if m.role == MessageRole.assistant and m.query_id is not None:
-            results = sr_by_query.get(m.query_id, [])
-            if results:
-                item["search_results"] = results
+        item: dict = {
+            "id": str(m.id),
+            "role": m.role.value,
+            "content": m.content,
+        }
+        if m.role == MessageRole.assistant:
+            if m.play_id:
+                item["play_id"] = m.play_id
+            if m.next_steps:
+                item["next_steps"] = m.next_steps
+            if m.query_id is not None:
+                results = sr_by_query.get(m.query_id, [])
+                if results:
+                    item["search_results"] = results
         messages_out.append(item)
 
     return {
@@ -287,6 +298,67 @@ async def get_recent_queries(
 
 
 # ---------- Messages --------------------------------------------------------
+async def list_recent_plays_for_user(
+    db: AsyncSession, user_id: uuid.UUID, limit: int = 20
+) -> list[dict]:
+    """Aggregate the assistant messages with non-null play_id for this user
+    into a "recently used plays" feed: one row per play_id with the most
+    recent run timestamp and a run count.
+    """
+    stmt = (
+        select(
+            Message.play_id,
+            func.max(Message.created_at).label("last_run_at"),
+            func.count().label("run_count"),
+        )
+        .join(DBSession, Message.session_id == DBSession.id)
+        .where(
+            Message.role == MessageRole.assistant,
+            Message.play_id.is_not(None),
+            DBSession.user_id == user_id,
+        )
+        .group_by(Message.play_id)
+        .order_by(func.max(Message.created_at).desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "play_id": r.play_id,
+            "last_run_at": r.last_run_at.isoformat(),
+            "run_count": int(r.run_count),
+        }
+        for r in rows
+    ]
+
+
+async def get_message(db: AsyncSession, message_id: str) -> Optional[Message]:
+    """Load a single message by id; returns None for invalid ids or unknown rows."""
+    try:
+        mid = _to_uuid(message_id)
+    except ValueError:
+        return None
+    return await db.get(Message, mid)
+
+
+async def set_message_next_steps(
+    db: AsyncSession, message_id: uuid.UUID, items: list[str]
+) -> None:
+    """Persist generated follow-up suggestions on the assistant message."""
+    await db.execute(
+        Message.__table__.update()
+        .where(Message.id == message_id)
+        .values(next_steps={"items": items})
+    )
+
+
+async def get_query_text(db: AsyncSession, query_id: uuid.UUID) -> Optional[str]:
+    """Fetch the user-facing text of a query row, or None if missing."""
+    return (
+        await db.execute(select(Query.query_text).where(Query.id == query_id))
+    ).scalar_one_or_none()
+
+
 async def append_message(
     db: AsyncSession,
     session_id: str,
@@ -298,6 +370,7 @@ async def append_message(
     tokens_input: Optional[int] = None,
     tokens_output: Optional[int] = None,
     latency_ms: Optional[int] = None,
+    play_id: Optional[str] = None,
 ) -> Message:
     sid = _to_uuid(session_id)
     msg = Message(
@@ -309,6 +382,7 @@ async def append_message(
         tokens_input=tokens_input,
         tokens_output=tokens_output,
         latency_ms=latency_ms,
+        play_id=play_id,
     )
     db.add(msg)
     await db.flush()

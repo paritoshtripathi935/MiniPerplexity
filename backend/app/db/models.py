@@ -222,6 +222,13 @@ class Message(Base):
     tokens_input: Mapped[Optional[int]] = mapped_column(Integer)
     tokens_output: Mapped[Optional[int]] = mapped_column(Integer)
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    # Slug of the play that produced this turn (e.g. "weekly_review"), or
+    # NULL for free-form chat. Stored as text — no FK to the in-process Plays
+    # catalog so the catalog can evolve without DDL.
+    play_id: Mapped[Optional[str]] = mapped_column(Text)
+    # Cached LLM-generated follow-up suggestions, shape: {"items": [str, str, str]}.
+    # Lazily populated by the next-steps endpoint on first request.
+    next_steps: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -249,6 +256,12 @@ class Message(Base):
             "idx_messages_content_tsv",
             "content_tsv",
             postgresql_using="gin",
+        ),
+        Index(
+            "idx_messages_play_id_created_at",
+            "play_id",
+            "created_at",
+            postgresql_where=text("play_id IS NOT NULL"),
         ),
     )
 
