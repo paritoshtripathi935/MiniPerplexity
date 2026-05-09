@@ -129,7 +129,15 @@ async def cleanup_expired_sessions(db: AsyncSession) -> int:
 
 
 async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dict]:
-    """Return a JSON-friendly snapshot mirroring the original SessionData shape."""
+    """Return a JSON-friendly snapshot mirroring the original SessionData shape.
+
+    For assistant messages, also returns the search_results that grounded the
+    answer (joined via the message's query_id), with authority tags re-applied
+    so the UI can show the same "authoritative" badge it does on the live flow.
+    Without this, videos and source pills disappear when a user reopens a chat.
+    """
+    from app.services.source_ranker import authority_for  # local import to avoid cycles
+
     sid = _to_uuid(session_id)
     sess = await db.get(DBSession, sid)
     if sess is None:
@@ -151,8 +159,42 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
         )
     ).scalars().all()
 
+    # Bulk-load every search_result for every query referenced by this session's
+    # messages, in one round-trip. Group by query_id for O(1) lookup below.
+    query_ids = {m.query_id for m in msg_rows if m.query_id is not None}
+    sr_by_query: dict[uuid.UUID, list[dict]] = {}
+    if query_ids:
+        sr_rows = (
+            await db.execute(
+                select(SearchResultRow)
+                .where(SearchResultRow.query_id.in_(query_ids))
+                .order_by(SearchResultRow.query_id, SearchResultRow.position.asc())
+            )
+        ).scalars().all()
+        for r in sr_rows:
+            score = authority_for(r.url)
+            sr_by_query.setdefault(r.query_id, []).append(
+                {
+                    "title": r.title,
+                    "url": r.url,
+                    "snippet": r.snippet,
+                    "source": r.source.value,
+                    "_authority": score,
+                    "_authoritative": score >= 80,
+                }
+            )
+
+    messages_out: list[dict] = []
+    for m in msg_rows:
+        item: dict = {"role": m.role.value, "content": m.content}
+        if m.role == MessageRole.assistant and m.query_id is not None:
+            results = sr_by_query.get(m.query_id, [])
+            if results:
+                item["search_results"] = results
+        messages_out.append(item)
+
     return {
-        "messages": [{"role": m.role.value, "content": m.content} for m in msg_rows],
+        "messages": messages_out,
         "queries": list(qry_rows),
         "last_accessed": sess.last_accessed_at.isoformat(),
     }

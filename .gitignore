@@ -35,3 +35,4 @@ __pycache__/
 
 # Local push token — never commit
 .env.git
+frontend/.env

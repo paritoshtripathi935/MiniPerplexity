@@ -1,17 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
+import { ArrowUp } from 'lucide-react';
 import { ChatMessage } from '../components/ChatMessage';
 import { SearchBar, type ComposerHandle } from '../components/SearchBar';
 import { SessionsSidebar } from '../components/SessionsSidebar';
 import { PlayRunModal } from '../components/PlayRunModal';
+import { ChatRightRail } from '../components/ChatRightRail';
 import {
   getBrandProfile, listPlays,
   performSearch, getAnswer, getSessionHistory, runPlay,
   type BrandProfile, type Play,
 } from '../services/api';
-import { Message } from '../types';
+import { Message, MessageSearchResult } from '../types';
 
 export interface PendingPlay {
   play: Play;
@@ -21,10 +23,18 @@ export interface PendingPlay {
 
 interface Props {
   darkMode: boolean;
-  /** When set, the chat page will run this play on mount and clear it. */
   pending: PendingPlay | null;
   clearPending: () => void;
 }
+
+/**
+ * Tunables for the client-side streaming reveal. Real SSE will replace this
+ * later — for now we accept the full answer and animate it in.
+ *   CHARS_PER_TICK ≈ 30 chars × 20 ticks/sec → ~600 chars/s, which lands
+ *   squarely between "feels too slow to read" and "snaps in instantly".
+ */
+const REVEAL_CHARS_PER_TICK = 30;
+const REVEAL_TICK_MS = 50;
 
 export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const { getToken } = useAuth();
@@ -44,12 +54,22 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [plays, setPlays] = useState<Play[]>([]);
-  // When set, the slash-menu picked a play and we need to collect inputs
-  // before running it in the current session.
+  /** Slash-selected play queued for the run modal. */
   const [slashPlay, setSlashPlay] = useState<Play | null>(null);
+  /** The play whose context is "loaded" — visible in the composer chip and
+   * right rail. Stays after the play completes so the user can see what they
+   * just ran; cleared when they start a fresh non-play turn. */
+  const [activePlay, setActivePlay] = useState<Play | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesTopRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const justCreatedRef = useRef(true);
+  /** Per-message reveal-animation interval handles, keyed by message id. */
+  const revealHandles = useRef<Map<string, number>>(new Map());
+
+  const [showStickyHeader, setShowStickyHeader] = useState(false);
 
   // One-time load of the Plays catalog so the composer can offer slash
   // commands. Failure is non-fatal — the user just doesn't get the menu.
@@ -84,12 +104,38 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     };
   }, [getToken]);
 
-  const scrollToBottom = () =>
+  // Clean up any in-flight reveal intervals on unmount or session change.
+  useEffect(() => {
+    return () => {
+      revealHandles.current.forEach(h => window.clearInterval(h));
+      revealHandles.current.clear();
+    };
+  }, [sessionId]);
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+  const scrollToTop = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages.length, scrollToBottom]);
+
+  // Sticky conversation header — show once the first turn has scrolled out
+  // of view. Uses IntersectionObserver against a sentinel above the messages.
+  useEffect(() => {
+    const sentinel = messagesTopRef.current;
+    const root = scrollContainerRef.current;
+    if (!sentinel || !root) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setShowStickyHeader(!entry.isIntersecting),
+      { root, threshold: 0 }
+    );
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [messages.length]);
 
   // Hydrate when the URL session changes — but skip the auto-mint case
   // (where there's nothing to load yet) and the pending-play case.
@@ -106,15 +152,9 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         const data = await getSessionHistory(sessionId, getToken);
         if (cancelled) return;
         const history = data?.history?.messages ?? [];
-        setMessages(
-          history.map((m: { role: string; content: string }) => ({
-            id: uuidv4(),
-            type: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-            timestamp: new Date(),
-            search_results: [],
-          }))
-        );
+        setMessages(rehydrateMessages(history));
+        // No active play known on rehydration (we'd need to persist it).
+        setActivePlay(null);
       } catch {
         if (!cancelled) setMessages([]);
       }
@@ -124,9 +164,43 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     };
   }, [sessionId, getToken, pending]);
 
+  /**
+   * Animate the assistant turn from the "_Thinking…_" placeholder to the
+   * full answer. Replaces the message's content + revealedLength=0 atomically,
+   * then ticks revealedLength up until the full content is shown.
+   */
+  const startStreamingReveal = useCallback(
+    (msgId: string, fullContent: string) => {
+      const existing = revealHandles.current.get(msgId);
+      if (existing) window.clearInterval(existing);
+      const handle = window.setInterval(() => {
+        let done = false;
+        setMessages(prev =>
+          prev.map(m => {
+            if (m.id !== msgId) return m;
+            const current = m.revealedLength ?? 0;
+            const next = current + REVEAL_CHARS_PER_TICK;
+            if (next >= fullContent.length) {
+              done = true;
+              return { ...m, revealedLength: undefined };
+            }
+            return { ...m, revealedLength: next };
+          })
+        );
+        if (done) {
+          window.clearInterval(handle);
+          revealHandles.current.delete(msgId);
+        }
+      }, REVEAL_TICK_MS);
+      revealHandles.current.set(msgId, handle);
+    },
+    []
+  );
+
   // Auto-run a pending Play that was queued on the previous page.
   useEffect(() => {
     if (!pending || pending.sessionId !== sessionId) return;
+    setActivePlay(pending.play);
     (async () => {
       const userMsg: Message = {
         id: uuidv4(),
@@ -140,36 +214,32 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         content: `_Running play: ${pending.play.title}…_\n`,
         timestamp: new Date(),
         search_results: [],
+        searchingUrls: [],
         isSearching: true,
       };
       setMessages([userMsg, responseMsg]);
       setLoading(true);
       try {
         const searchResults = await performSearch(
-          pending.query, pending.sessionId, [], undefined, undefined, getToken
+          pending.query, pending.sessionId, [], undefined,
+          url => appendSearchUrl(responseMsg.id, url),
+          getToken
         );
         const answerResponse = await runPlay(
           pending.play.id, pending.query, pending.sessionId, searchResults, getToken
         );
         if (answerResponse?.answer && Array.isArray(answerResponse.citations)) {
-          setMessages(prev => prev.map(m =>
-            m.id === responseMsg.id
-              ? {
-                  ...m,
-                  content: answerResponse.answer,
-                  search_results: searchResults.map((r: { title: any; url: any; source: any }) => ({
-                    title: r.title, source: r.url, type: r.source,
-                  })),
-                  sources: answerResponse.citations.map((c: string) => ({
-                    title: '', url: c, type: 'web',
-                  })),
-                  isSearching: false,
-                  originatingQuery: pending.query,
-                  originatingSearchResults: searchResults,
-                  originatingPlayId: pending.play.id,
-                }
-              : m
-          ));
+          const reveal = applyAssistantAnswer({
+            messageId: responseMsg.id,
+            answer: answerResponse.answer,
+            searchResults: searchResults,
+            citations: answerResponse.citations,
+            originatingQuery: pending.query,
+            originatingSearchResults: searchResults,
+            originatingPlayId: pending.play.id,
+          });
+          setMessages(reveal.update);
+          startStreamingReveal(reveal.messageId, reveal.fullContent);
           setSidebarRefresh(n => n + 1);
         }
       } catch (e) {
@@ -182,11 +252,22 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, sessionId]);
 
+  /** Append a fetched URL to a message's searchingUrls (deduped). */
+  const appendSearchUrl = useCallback((msgId: string, url: string) => {
+    setMessages(prev =>
+      prev.map(m => {
+        if (m.id !== msgId) return m;
+        const existing = m.searchingUrls ?? [];
+        if (existing.includes(url)) return m;
+        return { ...m, searchingUrls: [...existing, url] };
+      })
+    );
+  }, []);
+
   /**
    * Regenerate an assistant turn in place — same query + same search
-   * results, just re-call /answer (re-running search would change the
-   * underlying sources). Cheaper than a fresh round and mirrors what
-   * ChatGPT/Claude do.
+   * results, just re-call /answer. Cheaper than a fresh round and mirrors
+   * what ChatGPT/Claude do.
    */
   const handleRegenerate = async (msg: Message) => {
     if (!msg.originatingQuery || !msg.originatingSearchResults?.length) return;
@@ -194,7 +275,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     setMessages(prev =>
       prev.map(m =>
         m.id === msg.id
-          ? { ...m, content: '_Regenerating…_\n', isSearching: true }
+          ? { ...m, content: '_Regenerating…_\n', isSearching: true, revealedLength: undefined }
           : m
       )
     );
@@ -216,22 +297,26 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             getToken
           );
       if (answerResponse?.answer) {
+        const fullContent = answerResponse.answer;
         setMessages(prev =>
           prev.map(m =>
             m.id === msg.id
               ? {
                   ...m,
-                  content: answerResponse.answer,
+                  content: fullContent,
                   sources: (answerResponse.citations ?? []).map((c: string) => ({
                     title: '',
                     url: c,
                     type: 'web',
                   })),
+                  search_results: normaliseSearchResults(answerResponse.search_results) ?? m.search_results,
                   isSearching: false,
+                  revealedLength: 0,
                 }
               : m
           )
         );
+        startStreamingReveal(msg.id, fullContent);
       }
     } catch (e) {
       setError(`Regenerate failed: ${e}`);
@@ -244,12 +329,12 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   };
 
   /**
-   * Run a slash-selected play in the *current* session (vs. the /plays page
-   * which spins up a fresh session). Behaviour otherwise matches the
-   * pending-play branch.
+   * Run a slash-selected play in the *current* session. Behaviour matches
+   * the pending-play branch but stays on the same chat.
    */
   const handleSlashPlayRun = async (play: Play, query: string) => {
     setSlashPlay(null);
+    setActivePlay(play);
     setError(null);
     const userMsg: Message = {
       id: uuidv4(),
@@ -263,36 +348,32 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       content: `_Running play: ${play.title}…_\n`,
       timestamp: new Date(),
       search_results: [],
+      searchingUrls: [],
       isSearching: true,
     };
     setMessages(prev => [...prev, userMsg, responseMsg]);
     setLoading(true);
     try {
       const searchResults = await performSearch(
-        query, sessionId, [], undefined, undefined, getToken
+        query, sessionId, [], undefined,
+        url => appendSearchUrl(responseMsg.id, url),
+        getToken
       );
       const answerResponse = await runPlay(
         play.id, query, sessionId, searchResults, getToken
       );
       if (answerResponse?.answer) {
-        setMessages(prev => prev.map(m =>
-          m.id === responseMsg.id
-            ? {
-                ...m,
-                content: answerResponse.answer,
-                search_results: searchResults.map((r: { title: any; url: any; source: any }) => ({
-                  title: r.title, source: r.url, type: r.source,
-                })),
-                sources: (answerResponse.citations ?? []).map((c: string) => ({
-                  title: '', url: c, type: 'web',
-                })),
-                isSearching: false,
-                originatingQuery: query,
-                originatingSearchResults: searchResults,
-                originatingPlayId: play.id,
-              }
-            : m
-        ));
+        const reveal = applyAssistantAnswer({
+          messageId: responseMsg.id,
+          answer: answerResponse.answer,
+          searchResults: searchResults,
+          citations: answerResponse.citations ?? [],
+          originatingQuery: query,
+          originatingSearchResults: searchResults,
+          originatingPlayId: play.id,
+        });
+        setMessages(reveal.update);
+        startStreamingReveal(reveal.messageId, reveal.fullContent);
         setSidebarRefresh(n => n + 1);
       }
     } catch (e) {
@@ -304,6 +385,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
 
   const handleSearch = async (query: string, customUrl?: string) => {
     setError(null);
+    // A fresh, non-play search clears the active-play context.
+    setActivePlay(null);
     const userMsg: Message = {
       id: uuidv4(),
       type: 'user',
@@ -316,6 +399,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       content: '_Thinking…_\n',
       timestamp: new Date(),
       search_results: [],
+      searchingUrls: [],
       isSearching: true,
     };
     setMessages(prev => [...prev, userMsg, responseMsg]);
@@ -327,32 +411,23 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         sessionId,
         previousQueries,
         customUrl,
-        url => {
-          setMessages(prev => prev.map(m =>
-            m.id === responseMsg.id
-              ? { ...m, content: m.content + `\n› ${url}\n` }
-              : m
-          ));
-        },
+        url => appendSearchUrl(responseMsg.id, url),
         getToken
       );
-      const answerResponse = await getAnswer(query, sessionId, searchResults, previousQueries, getToken);
+      const answerResponse = await getAnswer(
+        query, sessionId, searchResults, previousQueries, getToken
+      );
       if (answerResponse?.answer && Array.isArray(answerResponse.citations)) {
-        setMessages(prev => prev.map(m =>
-          m.id === responseMsg.id
-            ? {
-                ...m,
-                content: answerResponse.answer,
-                search_results: searchResults.map((r: { title: any; url: any; source: any }) => ({
-                  title: r.title, source: r.url, type: r.source,
-                })),
-                sources: answerResponse.citations.map((c: string) => ({ title: '', url: c, type: 'web' })),
-                isSearching: false,
-                originatingQuery: query,
-                originatingSearchResults: searchResults,
-              }
-            : m
-        ));
+        const reveal = applyAssistantAnswer({
+          messageId: responseMsg.id,
+          answer: answerResponse.answer,
+          searchResults: searchResults,
+          citations: answerResponse.citations,
+          originatingQuery: query,
+          originatingSearchResults: searchResults,
+        });
+        setMessages(reveal.update);
+        startStreamingReveal(reveal.messageId, reveal.fullContent);
         setSidebarRefresh(n => n + 1);
       }
     } catch (err) {
@@ -367,10 +442,36 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const handleNewChat = () => {
     justCreatedRef.current = true;
     setMessages([]);
+    setActivePlay(null);
     navigate(`/chat/${uuidv4()}`);
   };
 
-  // Total height of nav (h-14 = 56px). The chat container fills the rest.
+  const handleFollowupPick = useCallback((text: string) => {
+    composerRef.current?.prefill(text);
+  }, []);
+
+  // Most recent assistant turn that has finished — drives the follow-up chips.
+  const lastFinishedAssistantId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (
+        m.type === 'assistant' &&
+        !m.isSearching &&
+        typeof m.revealedLength !== 'number'
+      ) {
+        return m.id;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const conversationTitle = useMemo(() => {
+    const firstUser = messages.find(m => m.type === 'user');
+    if (!firstUser) return 'New chat';
+    const t = firstUser.content.replace(/^▸\s+/, '').split('\n')[0].trim();
+    return t.length > 80 ? t.slice(0, 79).trim() + '…' : t;
+  }, [messages]);
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
       <div className="hidden md:block h-full">
@@ -385,9 +486,28 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         </aside>
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-surface">
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-8">
+      <div className="flex-1 flex flex-col min-w-0 bg-surface relative">
+        {showStickyHeader && (
+          <div className="absolute top-0 inset-x-0 z-20 border-b border-border bg-surface/85 backdrop-blur supports-[backdrop-filter]:bg-surface/70 animate-fade-in">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 h-11 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-fg truncate">
+                  {conversationTitle}
+                </div>
+              </div>
+              <button
+                onClick={scrollToTop}
+                className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-fg-muted hover:text-fg hover:bg-surface-sunken transition-colors"
+              >
+                <ArrowUp className="w-3 h-3" /> Top
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-8">
           <div className="max-w-3xl mx-auto">
+            <div ref={messagesTopRef} />
             {messages.length === 0 ? (
               <EmptyState
                 profile={profile}
@@ -405,6 +525,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                         ? handleRegenerate
                         : undefined
                     }
+                    showFollowups={message.id === lastFinishedAssistantId}
+                    onFollowupPick={handleFollowupPick}
                   />
                 ))}
               </div>
@@ -426,10 +548,14 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               loading={loading}
               plays={plays}
               onPlaySelect={p => setSlashPlay(p)}
+              activePlay={activePlay}
+              onClearActivePlay={() => setActivePlay(null)}
             />
           </div>
         </div>
       </div>
+
+      <ChatRightRail profile={profile} activePlay={activePlay} messages={messages} />
 
       {slashPlay && (
         <PlayRunModal
@@ -442,6 +568,100 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   );
 }
 
+// ---------- Helpers ------------------------------------------------------
+
+interface ApplyAnswerArgs {
+  messageId: string;
+  answer: string;
+  searchResults: any[];
+  citations: string[];
+  originatingQuery: string;
+  originatingSearchResults: any[];
+  originatingPlayId?: string;
+}
+
+interface ApplyAnswerResult {
+  update: (prev: Message[]) => Message[];
+  messageId: string;
+  fullContent: string;
+}
+
+/**
+ * Wraps the message-update for an arrived answer, normalising server fields
+ * and seeding the reveal animation state. The host then schedules the tick
+ * via `startStreamingReveal`.
+ *
+ * Returned as a `(prev) => next` updater so the caller can pass it directly
+ * into `setMessages` — keeps the live update batched with the searching
+ * flag flipping off.
+ */
+function applyAssistantAnswer(args: ApplyAnswerArgs): ApplyAnswerResult {
+  const updater = (prev: Message[]) =>
+    prev.map(m =>
+      m.id === args.messageId
+        ? {
+            ...m,
+            content: args.answer,
+            search_results: normaliseSearchResults(args.searchResults) ?? [],
+            sources: args.citations.map((c: string) => ({
+              title: '',
+              url: c,
+              type: 'web',
+            })),
+            isSearching: false,
+            searchingUrls: undefined,
+            revealedLength: 0,
+            originatingQuery: args.originatingQuery,
+            originatingSearchResults: args.originatingSearchResults,
+            originatingPlayId: args.originatingPlayId,
+          }
+        : m
+    );
+  return { update: updater, messageId: args.messageId, fullContent: args.answer };
+}
+
+/** Convert backend search-result shape into the message-level shape the
+ * ChatMessage component expects. The backend uses `{ title, url, source: <provider>, ... }`;
+ * the frontend stores `{ title, source: <url>, type: <provider>, ... }` for legacy reasons. */
+function normaliseSearchResults(results: any[] | undefined | null): MessageSearchResult[] | undefined {
+  if (!results || !Array.isArray(results)) return undefined;
+  return results.map(r => ({
+    title: r.title ?? '',
+    source: r.url ?? r.source ?? '',
+    type: r.source ?? r.type ?? 'web',
+    snippet: r.snippet,
+    _authoritative: !!r._authoritative,
+    _authority: r._authority,
+  }));
+}
+
+/**
+ * Convert the server's history payload into client-side Message[]. Each
+ * assistant turn carries the search_results that grounded it (server joins
+ * messages → query → search_results → tags via source_ranker).
+ */
+function rehydrateMessages(
+  history: { role: string; content: string; search_results?: any[] }[],
+): Message[] {
+  return history.map(h => {
+    if (h.role === 'assistant') {
+      return {
+        id: uuidv4(),
+        type: 'assistant',
+        content: h.content,
+        timestamp: new Date(),
+        search_results: normaliseSearchResults(h.search_results),
+      };
+    }
+    return {
+      id: uuidv4(),
+      type: 'user',
+      content: h.content,
+      timestamp: new Date(),
+    };
+  });
+}
+
 // ---------- Empty state ---------------------------------------------------
 function EmptyState({
   profile,
@@ -450,7 +670,6 @@ function EmptyState({
   profile: BrandProfile | null;
   onPick: (text: string) => void;
 }) {
-  // Tailor starter prompts to the user's brand profile when we have it.
   const starters = useMemo(() => starterPrompts(profile), [profile]);
   const hello = profile?.company_name
     ? `What can I help with for ${profile.company_name}?`
