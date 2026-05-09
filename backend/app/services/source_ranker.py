@@ -125,6 +125,22 @@ def authority_for(url: str) -> int:
     return DEFAULT_AUTHORITY
 
 
+def tag_authority_in_place(results: Iterable[dict]) -> None:
+    """Stamp each result with `_authority` (raw score) and `_authoritative`.
+
+    Used to re-attach badges on flows that don't go through `rerank` — e.g.
+    rehydrating saved chats, or /answer when the client dropped the tags
+    on the round-trip. Existing `_authority` values are preserved so we
+    don't accidentally downgrade a result that was already scored upstream.
+    """
+    for r in results:
+        score = r.get("_authority")
+        if score is None:
+            score = authority_for(r.get("url", ""))
+            r["_authority"] = score
+        r["_authoritative"] = score >= 80
+
+
 def rerank(results: Iterable[dict]) -> list[dict]:
     """Sort by (authority desc, original_index asc), preserving ties.
 

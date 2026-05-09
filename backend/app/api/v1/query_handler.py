@@ -30,7 +30,7 @@ from app.db.repository import (
     upsert_search_results,
 )
 from app.plays import get_play
-from app.services.source_ranker import rerank
+from app.services.source_ranker import rerank, tag_authority_in_place
 from app.services.system_prompt import compose_system_prompt
 from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
 from app.services import CloudflareChat, fetch_content_from_custom_url, perform_search
@@ -109,13 +109,7 @@ async def get_answer(
         search_results = [r.model_dump() for r in query_request.search_results]
         # Belt-and-suspenders: re-attach authority tags so the chat UI's
         # "authoritative" badge renders even if the client dropped them.
-        for r in search_results:
-            score = r.get("_authority")
-            if score is None:
-                from app.services.source_ranker import authority_for
-                score = authority_for(r.get("url", ""))
-                r["_authority"] = score
-                r["_authoritative"] = score >= 80
+        tag_authority_in_place(search_results)
 
         chat_history = await get_chat_history(db, session_id)
         previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)

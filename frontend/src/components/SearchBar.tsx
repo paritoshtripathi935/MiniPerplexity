@@ -12,6 +12,7 @@ import { ArrowUp, Link as LinkIcon, Sparkles, X } from 'lucide-react';
 import clsx from 'clsx';
 import { SlashMenu } from './SlashMenu';
 import type { Play } from '../services/api';
+import { getDomain, isValidUrl } from '../utils/url';
 
 interface Props {
   onSearch: (query: string, customUrl?: string) => void;
@@ -42,23 +43,6 @@ const PURE_URL_PASTE_RE = /^\s*(https?:\/\/\S+)\s*$/i;
 
 function isMac() {
   return typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-}
-
-function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function urlHostname(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
 }
 
 export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
@@ -195,7 +179,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
               <Chip
                 tone="neutral"
                 icon={<LinkIcon className="w-3 h-3" strokeWidth={2.5} />}
-                label={urlHostname(customUrl)}
+                label={getDomain(customUrl)}
                 title={customUrl}
                 onClear={clearUrl}
                 clearLabel="Remove URL"
