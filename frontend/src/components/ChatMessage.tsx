@@ -12,12 +12,12 @@ interface ChatMessageProps {
   darkMode?: boolean;
   /** Optional regenerate handler — if provided, shows a Regenerate button on assistant turns. */
   onRegenerate?: (msg: Message) => void;
-  /** Whether to render follow-up preset chips below the answer (only for the
-   * latest assistant turn that has finished). */
+  /** Whether to render the next-step suggestion chips below the answer (only
+   * the latest finished assistant turn shows them — older turns stay quiet). */
   showFollowups?: boolean;
-  /** Fired when a follow-up preset chip is clicked — host prefills the
-   * composer and focuses it. */
-  onFollowupPick?: (text: string) => void;
+  /** Fired when a suggestion chip is clicked. The host submits the question
+   * directly (no prefill-and-edit step) so the user can keep moving. */
+  onFollowupSubmit?: (text: string) => void;
 }
 
 /** Document-style chat message with inline citation pills + Copy / Regenerate. */
@@ -25,7 +25,7 @@ export function ChatMessage({
   message,
   onRegenerate,
   showFollowups,
-  onFollowupPick,
+  onFollowupSubmit,
 }: ChatMessageProps) {
   const { user } = useUser();
   if (message.type !== 'assistant') {
@@ -36,7 +36,7 @@ export function ChatMessage({
       message={message}
       onRegenerate={onRegenerate ? () => onRegenerate(message) : undefined}
       showFollowups={!!showFollowups}
-      onFollowupPick={onFollowupPick}
+      onFollowupSubmit={onFollowupSubmit}
     />
   );
 }
@@ -60,12 +60,12 @@ function AssistantTurn({
   message,
   onRegenerate,
   showFollowups,
-  onFollowupPick,
+  onFollowupSubmit,
 }: {
   message: Message;
   onRegenerate?: () => void;
   showFollowups: boolean;
-  onFollowupPick?: (text: string) => void;
+  onFollowupSubmit?: (text: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const isSearching = !!message.isSearching;
@@ -208,8 +208,12 @@ function AssistantTurn({
         </div>
       )}
 
-      {showFollowups && !isSearching && !isStreaming && onFollowupPick && (
-        <FollowupChips onPick={onFollowupPick} />
+      {showFollowups && !isSearching && !isStreaming && onFollowupSubmit && (
+        <NextStepChips
+          items={message.nextSteps}
+          loading={!!message.nextStepsLoading}
+          onSubmit={onFollowupSubmit}
+        />
       )}
     </div>
   );
@@ -576,30 +580,53 @@ function VideoStrip({ videos }: { videos: MessageSearchResult[] }) {
   );
 }
 
-// ---------- Follow-up presets ---------------------------------------------
-const FOLLOWUPS: { label: string; prompt: string }[] = [
-  { label: 'Make it shorter', prompt: 'Make that answer shorter — keep only what changes a marketer\'s decision.' },
-  { label: 'Add KPIs', prompt: 'Add the KPIs I should track to validate this, with a target range and the math.' },
-  { label: 'Convert to brief', prompt: 'Convert that into a one-page brief I can share with my team — sections: context, recommendation, next steps, owner.' },
-  { label: 'Why these sources?', prompt: 'Walk me through why these specific sources were used and which one carries the most weight here.' },
-];
+function SuggestionShimmer() {
+  return (
+    <div
+      className="h-9 rounded-md bg-surface-sunken overflow-hidden relative"
+      aria-hidden
+    >
+      <div
+        className="absolute inset-0 -translate-x-full animate-shimmer"
+        style={{
+          background:
+            'linear-gradient(90deg, transparent 0%, rgb(var(--fg-subtle) / 0.08) 50%, transparent 100%)',
+          backgroundSize: '200% 100%',
+        }}
+      />
+    </div>
+  );
+}
 
-function FollowupChips({ onPick }: { onPick: (text: string) => void }) {
+// ---------- Next-step suggestion chips -----------------------------------
+function NextStepChips({
+  items,
+  loading,
+  onSubmit,
+}: {
+  items?: string[];
+  loading: boolean;
+  onSubmit: (text: string) => void;
+}) {
+  if (!loading && (!items || items.length === 0)) return null;
   return (
     <div className="mt-4 pt-3 border-t border-border/60">
       <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
-        Follow up
+        Next steps
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {FOLLOWUPS.map(f => (
-          <button
-            key={f.label}
-            onClick={() => onPick(f.prompt)}
-            className="inline-flex items-center h-7 px-2.5 rounded-md text-[12px] text-fg-muted bg-surface-sunken hover:bg-brand-subtle hover:text-brand border border-transparent hover:border-brand/30 transition-colors"
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-col gap-1.5">
+        {loading && (!items || items.length === 0)
+          ? [0, 1, 2].map(i => <SuggestionShimmer key={i} />)
+          : (items ?? []).map(text => (
+              <button
+                key={text}
+                onClick={() => onSubmit(text)}
+                className="text-left inline-flex items-start gap-1.5 px-3 py-2 rounded-md text-[13px] text-fg-muted bg-surface-sunken hover:bg-brand-subtle hover:text-brand border border-transparent hover:border-brand/30 transition-colors"
+              >
+                <span className="text-fg-subtle">→</span>
+                <span className="leading-snug">{text}</span>
+              </button>
+            ))}
       </div>
     </div>
   );

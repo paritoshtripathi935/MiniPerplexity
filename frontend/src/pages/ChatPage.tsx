@@ -10,7 +10,7 @@ import { PlayRunModal } from '../components/PlayRunModal';
 import { ChatRightRail } from '../components/ChatRightRail';
 import { ChatEmptyState } from '../components/ChatEmptyState';
 import {
-  getBrandProfile, listPlays,
+  getBrandProfile, getNextSteps, listPlays,
   performSearch, getAnswer, getSessionHistory, runPlay,
   type BrandProfile, type Play,
 } from '../services/api';
@@ -194,9 +194,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             originatingQuery: pending.query,
             originatingSearchResults: searchResults,
             originatingPlayId: pending.play.id,
+            dbId: answerResponse.message_id,
           });
           setMessages(reveal.update);
           startStreamingReveal(reveal.messageId, reveal.fullContent);
+          fetchNextSteps(responseMsg.id, answerResponse.message_id);
           setSidebarRefresh(n => n + 1);
         }
       } catch (e) {
@@ -220,6 +222,34 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       })
     );
   }, []);
+
+  /**
+   * Fire-and-forget next-step suggestion fetch. Runs in parallel with the
+   * streaming reveal so suggestions appear as soon as they're ready without
+   * delaying the answer. Failures are silent — the chips just stay hidden.
+   */
+  const fetchNextSteps = useCallback(
+    (clientMsgId: string, dbMessageId: string | undefined) => {
+      if (!dbMessageId) return;
+      (async () => {
+        try {
+          const { items } = await getNextSteps(dbMessageId, getToken);
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === clientMsgId
+                ? { ...m, nextSteps: items, nextStepsLoading: false }
+                : m
+            )
+          );
+        } catch {
+          setMessages(prev =>
+            prev.map(m => (m.id === clientMsgId ? { ...m, nextStepsLoading: false } : m))
+          );
+        }
+      })();
+    },
+    [getToken]
+  );
 
   /**
    * Regenerate an assistant turn in place — same query + same search
@@ -328,9 +358,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           originatingQuery: query,
           originatingSearchResults: searchResults,
           originatingPlayId: play.id,
+          dbId: answerResponse.message_id,
         });
         setMessages(reveal.update);
         startStreamingReveal(reveal.messageId, reveal.fullContent);
+        fetchNextSteps(responseMsg.id, answerResponse.message_id);
         setSidebarRefresh(n => n + 1);
       }
     } catch (e) {
@@ -382,9 +414,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           citations: answerResponse.citations,
           originatingQuery: query,
           originatingSearchResults: searchResults,
+          dbId: answerResponse.message_id,
         });
         setMessages(reveal.update);
         startStreamingReveal(reveal.messageId, reveal.fullContent);
+        fetchNextSteps(responseMsg.id, answerResponse.message_id);
         setSidebarRefresh(n => n + 1);
       }
     } catch (err) {
@@ -403,9 +437,19 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     navigate(`/chat/${uuidv4()}`);
   };
 
-  const handleFollowupPick = useCallback((text: string) => {
-    composerRef.current?.prefill(text);
-  }, []);
+  /**
+   * Click on a generated next-step chip → submit the follow-up question
+   * directly. The user said "we continue the question" — no editing step,
+   * just send. Bails if a turn is in flight to avoid concurrent submits.
+   */
+  const handleFollowupSubmit = useCallback(
+    (text: string) => {
+      if (loading) return;
+      handleSearch(text);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [loading]
+  );
 
   // Most recent assistant turn that has finished — drives the follow-up chips.
   const lastFinishedAssistantId = useMemo(() => {
@@ -483,7 +527,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                         : undefined
                     }
                     showFollowups={message.id === lastFinishedAssistantId}
-                    onFollowupPick={handleFollowupPick}
+                    onFollowupSubmit={handleFollowupSubmit}
                   />
                 ))}
               </div>
@@ -512,7 +556,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         </div>
       </div>
 
-      <ChatRightRail profile={profile} activePlay={activePlay} messages={messages} />
+      <ChatRightRail activePlay={activePlay} messages={messages} />
 
       {slashPlay && (
         <PlayRunModal

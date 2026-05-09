@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import {
-  Activity, Beaker, Eye, FileText, PieChart, Play as PlayIcon,
+  Activity, Beaker, Eye, FileText, History, PieChart, Play as PlayIcon,
   Search as SearchIcon, Shield, TrendingUp, Users, Zap,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
-import { listPlays, type Play } from '../services/api';
+import {
+  getPlaysHistory, listPlays,
+  type Play, type PlayHistoryItem,
+} from '../services/api';
 import { PageHeader } from '../components/AppLayout';
 import { Card } from '../components/ui/Card';
 import { PlayRunModal } from '../components/PlayRunModal';
@@ -23,8 +27,10 @@ interface Props {
 
 export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
+  const { getToken, isSignedIn } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [plays, setPlays] = useState<Play[]>([]);
+  const [history, setHistory] = useState<PlayHistoryItem[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [activePlay, setActivePlay] = useState<Play | null>(null);
@@ -40,6 +46,20 @@ export function PlaysPage({ onPrepareRun }: Props) {
       }
     })();
   }, []);
+
+  // Plays history is signed-in only — anonymous users don't have one. Failure
+  // is non-fatal: the section just stays hidden.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    (async () => {
+      try {
+        const { items } = await getPlaysHistory(getToken);
+        setHistory(items);
+      } catch {
+        /* leave empty — section won't render */
+      }
+    })();
+  }, [isSignedIn, getToken]);
 
   // Deep-link support: `/plays?run=<play_id>` opens the run modal directly.
   // Used by the home anchor card when it suggests a specific play.
@@ -74,12 +94,38 @@ export function PlaysPage({ onPrepareRun }: Props) {
     navigate(`/chat/${sid}`);
   };
 
+  // Recently-used plays the user has actually run, joined to the catalog so
+  // we can render full play metadata for the run modal. History entries
+  // referencing plays no longer in the catalog are filtered out silently.
+  const recentPlays = useMemo<RecentPlay[]>(() => {
+    if (history.length === 0 || plays.length === 0) return [];
+    const byId = new Map(plays.map(p => [p.id, p]));
+    return history
+      .map(h => {
+        const play = byId.get(h.play_id);
+        return play ? { play, lastRunAt: h.last_run_at, runCount: h.run_count } : null;
+      })
+      .filter((x): x is RecentPlay => x !== null)
+      .slice(0, 6);
+  }, [history, plays]);
+
   return (
     <>
       <PageHeader
         title="Plays"
         subtitle="Pre-baked playbooks for the most common asks. Pick one, fill a few inputs, get a marketer-grade output."
       />
+
+      {recentPlays.length > 0 && (
+        <RecentlyUsedSection
+          recentPlays={recentPlays}
+          onPick={p => setActivePlay(p)}
+        />
+      )}
+
+      <h2 className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-3">
+        All plays
+      </h2>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1 max-w-md">
@@ -158,4 +204,74 @@ export function PlaysPage({ onPrepareRun }: Props) {
       )}
     </>
   );
+}
+
+/* ---------- Recently used ---------------------------------------------- */
+
+interface RecentPlay {
+  play: Play;
+  lastRunAt: string;
+  runCount: number;
+}
+
+function RecentlyUsedSection({
+  recentPlays,
+  onPick,
+}: {
+  recentPlays: RecentPlay[];
+  onPick: (play: Play) => void;
+}) {
+  return (
+    <section className="mb-8">
+      <h2 className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-3 flex items-center gap-1.5">
+        <History className="w-3 h-3" />
+        Recently used
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {recentPlays.map(({ play, lastRunAt, runCount }) => {
+          const Icon = ICONS[play.icon ?? ''] ?? PlayIcon;
+          return (
+            <button
+              key={play.id}
+              onClick={() => onPick(play)}
+              className="group text-left focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
+            >
+              <Card interactive className="p-4 h-full">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="grid place-items-center w-8 h-8 rounded-md bg-brand-subtle text-brand">
+                    <Icon className="w-4 h-4" strokeWidth={2} />
+                  </div>
+                  <span className="text-[11px] text-fg-subtle tabular-nums">
+                    {runCount} run{runCount === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <h3 className="font-display font-semibold text-[14px] tracking-tight mb-1">
+                  {play.title}
+                </h3>
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <span className="text-[12px] text-fg-subtle">
+                    {relativeTime(lastRunAt)}
+                  </span>
+                  <span className="text-[12px] text-brand font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                    Run again →
+                  </span>
+                </div>
+              </Card>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
 }

@@ -36,7 +36,12 @@ export interface MessageSearchResult {
 }
 
 export interface Message {
+  /** Client-side React key. Stable for the lifetime of the message in the UI. */
   id: string;
+  /** Server-side database id of the persisted assistant message. Used to call
+   * `/messages/:id/next-steps` and to attach future operations to the right
+   * turn. Only present on assistant turns that have been persisted. */
+  dbId?: string;
   type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
@@ -46,6 +51,13 @@ export interface Message {
     type: string;
   }[];
   search_results?: MessageSearchResult[];
+  /** LLM-generated follow-up suggestions for this turn (cached server-side
+   * after first generation). Up to 3 short questions a marketer would
+   * naturally ask next. Driven by /messages/:id/next-steps. */
+  nextSteps?: string[];
+  /** When true, the next-steps fetch is in flight — the UI shows shimmer
+   * placeholders for the chips. */
+  nextStepsLoading?: boolean;
   /**
    * True while the assistant turn is still resolving (search → answer).
    * Drives the inline "Searching" indicator.

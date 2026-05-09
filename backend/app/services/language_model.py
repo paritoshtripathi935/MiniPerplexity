@@ -194,3 +194,51 @@ class CloudflareChat:
 
         response = self._call_for_prompt(formatted_messages)
         return response["result"]["response"]
+
+    def generate_next_steps(self, user_query: str, assistant_answer: str) -> List[str]:
+        """Generate up to 3 short follow-up questions a marketer might ask next.
+
+        Cheap, single-shot LLM call. Returns clean strings — no numbering, no
+        leading punctuation, no quotes. The caller persists these to the
+        message's `next_steps` JSONB column so re-renders are free.
+        """
+        # Truncate the assistant answer hard — past ~1.5k chars adds nothing
+        # to the suggestions and burns tokens. Same for the user query.
+        ans = (assistant_answer or "").strip()[:1500]
+        q = (user_query or "").strip()[:400]
+
+        system_prompt = (
+            "You are a paid-acquisition marketing copilot. Given a user's "
+            "question and your previous answer, suggest 3 short follow-up "
+            "questions the user is most likely to ask next.\n\n"
+            "Rules:\n"
+            "- Each question stands on its own (a stranger could read it cold).\n"
+            "- Each is under 90 characters.\n"
+            "- No preamble, no numbering, no quotes — return ONE question per line.\n"
+            "- Skip generic 'tell me more' filler; favour concrete next moves "
+            "(channels, KPIs, benchmarks, creative angles, time horizons)."
+        )
+        user_msg = (
+            f"User asked: {q}\n\n"
+            f"Your answer (truncated): {ans}\n\n"
+            "Now write the 3 follow-up questions, one per line."
+        )
+        formatted = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_msg},
+        ]
+        try:
+            response = self._call_for_prompt(formatted)
+            raw = response["result"]["response"]
+        except (CloudflareAPIError, KeyError):
+            return []
+
+        # Strip numbering, bullets, quotes, surrounding whitespace.
+        cleaned: List[str] = []
+        for line in (raw or "").splitlines():
+            stripped = line.strip().lstrip("-*•0123456789.) \"'").strip().strip('"').strip()
+            if 6 <= len(stripped) <= 200:
+                cleaned.append(stripped)
+            if len(cleaned) == 3:
+                break
+        return cleaned

@@ -21,22 +21,34 @@ export function normaliseSearchResults(
   }));
 }
 
+interface ServerHistoryMessage {
+  id?: string;
+  role: string;
+  content: string;
+  search_results?: any[];
+  next_steps?: { items?: string[] } | null;
+}
+
 /**
  * Convert the server's history payload into client-side Message[]. Each
  * assistant turn carries the search_results that grounded it (server joins
- * messages → query → search_results → tags via source_ranker).
+ * messages → query → search_results → tags via source_ranker), the db id
+ * (so the client can call /messages/:id/next-steps later), and any cached
+ * next-step suggestions.
  */
-export function rehydrateMessages(
-  history: { role: string; content: string; search_results?: any[] }[],
-): Message[] {
+export function rehydrateMessages(history: ServerHistoryMessage[]): Message[] {
   return history.map(h => {
     if (h.role === 'assistant') {
+      const cachedSteps = h.next_steps?.items;
       return {
         id: uuidv4(),
+        dbId: h.id,
         type: 'assistant',
         content: h.content,
         timestamp: new Date(),
         search_results: normaliseSearchResults(h.search_results),
+        nextSteps:
+          Array.isArray(cachedSteps) && cachedSteps.length > 0 ? cachedSteps : undefined,
       };
     }
     return {
@@ -56,6 +68,9 @@ interface ApplyAnswerArgs {
   originatingQuery: string;
   originatingSearchResults: any[];
   originatingPlayId?: string;
+  /** Server-side message id returned by /answer. The next-steps endpoint
+   * uses this to attach suggestions to the right turn. */
+  dbId?: string;
 }
 
 interface ApplyAnswerResult {
@@ -76,6 +91,7 @@ export function applyAssistantAnswer(args: ApplyAnswerArgs): ApplyAnswerResult {
       m.id === args.messageId
         ? {
             ...m,
+            dbId: args.dbId,
             content: args.answer,
             search_results: normaliseSearchResults(args.searchResults) ?? [],
             sources: args.citations.map((c: string) => ({
@@ -86,6 +102,9 @@ export function applyAssistantAnswer(args: ApplyAnswerArgs): ApplyAnswerResult {
             isSearching: false,
             searchingUrls: undefined,
             revealedLength: 0,
+            // Mark next-steps as in-flight only when we have a dbId to fetch
+            // against — otherwise the chips would shimmer indefinitely.
+            nextStepsLoading: !!args.dbId,
             originatingQuery: args.originatingQuery,
             originatingSearchResults: args.originatingSearchResults,
             originatingPlayId: args.originatingPlayId,

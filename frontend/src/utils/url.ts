@@ -1,7 +1,7 @@
 /**
  * Strip protocol + leading `www.` from a URL, returning a clean hostname for
- * display. Falls back to the raw input on a parse failure so chips/lists never
- * render an empty string.
+ * display. Falls back to the raw input on a parse failure so chips/lists
+ * never render an empty string.
  */
 export function getDomain(url: string): string {
   try {
