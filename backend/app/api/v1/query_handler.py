@@ -78,8 +78,26 @@ async def search(
 
         # Persist results so /answer can resolve citation_number → search_result_id.
         normalised = [r if isinstance(r, dict) else r.model_dump() for r in results]
-        # Re-rank toward authoritative marketing domains before saving + returning.
-        ranked = rerank(normalised)
+
+        # LLM-driven relevance scoring layered on top of the static domain
+        # authority. Skipped for custom-URL fetches (single result) and when
+        # there are no results — both are no-op cases for ranking.
+        llm_scores: dict[int, int] = {}
+        if not (custom_url and custom_url.strip()) and len(normalised) > 1:
+            try:
+                cf_chat = CloudflareChat(
+                    api_key=CLOUDFLARE_API_KEY,
+                    account_id=CLOUDFLARE_ACCOUNT_ID,
+                )
+                llm_scores = cf_chat.score_search_results(
+                    query=search_request.query, results=normalised
+                )
+            except Exception:
+                # Reranking is a quality boost, not a correctness requirement.
+                # Static authority alone is fine when the LLM call fails.
+                logger.warning("LLM rerank failed; falling back to static authority", exc_info=True)
+
+        ranked = rerank(normalised, llm_scores=llm_scores or None)
         await upsert_search_results(db, query_row.id, ranked)
 
         return ranked
