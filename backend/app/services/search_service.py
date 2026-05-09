@@ -302,24 +302,22 @@ def search_youtube(query: str) -> List[SearchResult]:
         raise YouTubeAPIError(f"YouTube search failed: {str(e)}")
 
 def perform_search(query: str) -> List[SearchResult]:
-    """Perform parallel searches on Google, Bing, and YouTube APIs.
-    
-    Args:
-        query: The search query to run
-    
-    Returns:
-        Combined list of unique SearchResult objects
+    """Perform parallel searches on Google + YouTube and merge results.
+
+    Bing was removed in 2026-05 — Microsoft permanently retired the Bing
+    Search API on 2025-08-11; every call returned `410 Gone`. Keeping the
+    future in the pool meant ~3s of pointless wait + log noise on every
+    /search, contributing to gunicorn worker timeouts on /answer. The
+    `search_bing` function is retained for now as dead code in case we
+    swap a different provider in via the same shape — see PR #1 (Tavily).
     """
     try:
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            bing_future = executor.submit(search_bing, query)
+        with ThreadPoolExecutor(max_workers=2) as executor:
             google_future = executor.submit(search_google, query)
             youtube_future = executor.submit(search_youtube, query)
-            
+
             results = []
-            
-            # Gather results, handling potential failures
-            for future in [bing_future, google_future, youtube_future]:
+            for future in [google_future, youtube_future]:
                 try:
                     results.extend(future.result())
                 except (SearchAPIError, YouTubeAPIError) as e:
