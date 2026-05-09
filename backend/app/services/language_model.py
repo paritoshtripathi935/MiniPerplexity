@@ -26,14 +26,131 @@ DEFAULT_MAX_TOKENS = 4096
 SHORT_CALL_MAX_TOKENS = 512
 
 
-class CloudflareModel(Enum):
-    """Available Cloudflare AI models"""
-    LLAMA_3_70B_INSTRUCT = "@cf/meta/llama-3.1-70b-instruct"
+class CloudflareModel(str, Enum):
+    """Cloudflare Workers AI models we use.
+
+    All values are smoke-tested against the Cloudflare endpoint to confirm
+    the slug actually resolves before being added here. Llama 3.1 70B is on
+    Cloudflare's deprecation list — newer requests should not select it.
+    """
+    GPT_OSS_120B = "@cf/openai/gpt-oss-120b"
+    GPT_OSS_20B = "@cf/openai/gpt-oss-20b"
+    MISTRAL_SMALL_3_1_24B = "@cf/mistralai/mistral-small-3.1-24b-instruct"
+    QWEN3_30B = "@cf/qwen/qwen3-30b-a3b-fp8"
+    QWQ_32B = "@cf/qwen/qwq-32b"
+    LLAMA_3_2_3B = "@cf/meta/llama-3.2-3b-instruct"
+    # Kept for back-compat with messages persisted before the migration.
+    # Do not select for new turns — Cloudflare has deprecated it.
+    LLAMA_3_1_70B_LEGACY = "@cf/meta/llama-3.1-70b-instruct"
 
     @classmethod
     def list_models(cls) -> List[str]:
-        """Returns a list of available models"""
         return [model.name for model in cls]
+
+
+# Default model when a user has no preference saved. Tuned for marketing
+# long-form answers — quality > speed. Users can pick alternatives in the UI.
+DEFAULT_CHAT_MODEL = CloudflareModel.GPT_OSS_120B
+# Auxiliary calls don't expose a UI — pick fast, structured-output friendly
+# models so re-ranking and follow-up generation don't dominate latency.
+DEFAULT_RERANK_MODEL = CloudflareModel.QWEN3_30B
+DEFAULT_NEXT_STEPS_MODEL = CloudflareModel.LLAMA_3_2_3B
+
+
+@dataclass(frozen=True)
+class ChatModelOption:
+    """A model exposed in the UI selector. The slug is what gets persisted on
+    `users.preferred_chat_model` and sent to Cloudflare."""
+    id: str             # the @cf/... slug
+    label: str          # human-readable name shown in the dropdown
+    description: str    # one-line tradeoff hint
+    recommended: bool = False
+
+
+# Curated set of models the UI is allowed to pick. Any slug not in this list
+# is rejected at the API layer — keeps users from sending arbitrary strings
+# to Cloudflare and surprises us with an unbounded model surface.
+CHAT_MODEL_CATALOG: List[ChatModelOption] = [
+    ChatModelOption(
+        id=CloudflareModel.GPT_OSS_120B.value,
+        label="GPT-OSS 120B",
+        description="Best quality. Reasoning + agentic. Recommended default.",
+        recommended=True,
+    ),
+    ChatModelOption(
+        id=CloudflareModel.GPT_OSS_20B.value,
+        label="GPT-OSS 20B",
+        description="Faster GPT-OSS. Good middle ground for quick answers.",
+    ),
+    ChatModelOption(
+        id=CloudflareModel.MISTRAL_SMALL_3_1_24B.value,
+        label="Mistral Small 3.1 24B",
+        description="Fast, no chain-of-thought overhead. Vision-capable.",
+    ),
+    ChatModelOption(
+        id=CloudflareModel.QWEN3_30B.value,
+        label="Qwen3 30B",
+        description="Multilingual; strong on instruction-following.",
+    ),
+    ChatModelOption(
+        id=CloudflareModel.QWQ_32B.value,
+        label="QwQ 32B (thinking)",
+        description="Reasoning specialist. Slower; use for hard problems.",
+    ),
+]
+
+_CHAT_MODEL_IDS = {opt.id for opt in CHAT_MODEL_CATALOG}
+
+
+def is_valid_chat_model(slug: Optional[str]) -> bool:
+    """Whitelist check before persisting a user's preferred_chat_model."""
+    return isinstance(slug, str) and slug in _CHAT_MODEL_IDS
+
+
+def resolve_chat_model(slug: Optional[str]) -> CloudflareModel:
+    """Map a stored slug to a CloudflareModel enum, defaulting safely.
+
+    Used by /answer to materialise the user's saved preference. Unknown or
+    NULL slugs (legacy users, deprecated models) silently fall back to
+    DEFAULT_CHAT_MODEL — we never error a chat request on a stale preference.
+    """
+    if slug:
+        for m in CloudflareModel:
+            if m.value == slug:
+                return m
+    return DEFAULT_CHAT_MODEL
+
+
+def _extract_response_text(payload: Dict) -> str:
+    """Pull the assistant's text out of a Cloudflare AI response.
+
+    Two response shapes are in the wild:
+
+      * Legacy (Llama 3.x, Mistral): `{"result": {"response": "..."}}`.
+      * OpenAI-compatible (gpt-oss, qwen3, qwq): the same chat-completion
+        envelope with `result.choices[0].message.content`. These models also
+        carry a `reasoning_content` field with the chain-of-thought, which
+        we deliberately discard — the UI only renders the final answer.
+
+    Returns "" on a missing/malformed payload rather than raising; callers
+    handle empties as a soft failure.
+    """
+    if not isinstance(payload, dict):
+        return ""
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return ""
+    legacy = result.get("response")
+    if isinstance(legacy, str):
+        return legacy
+    choices = result.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+    return ""
 
 
 @dataclass
@@ -47,10 +164,10 @@ class CloudflareChat:
     """CloudflareChat class to interact with Cloudflare's AI workers."""
 
     def __init__(
-        self, 
+        self,
         api_key: str,
         account_id: str,
-        model: CloudflareModel = CloudflareModel.LLAMA_3_70B_INSTRUCT
+        model: CloudflareModel = DEFAULT_CHAT_MODEL,
     ) -> None:
         """Initialize the CloudflareChat instance.
         
@@ -76,8 +193,11 @@ class CloudflareChat:
 
     @property
     def full_url(self) -> str:
-        """Returns the complete URL with the specified model."""
-        return f"{BASE_URL.format(account_id=self.account_id)}{self.model.value}"
+        """Returns the complete URL with the instance's default model."""
+        return self._url_for(self.model)
+
+    def _url_for(self, model: CloudflareModel) -> str:
+        return f"{BASE_URL.format(account_id=self.account_id)}{model.value}"
 
     def _get_headers(self) -> Dict[str, str]:
         """Returns the headers with the API key."""
@@ -116,6 +236,7 @@ class CloudflareChat:
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        model: Optional[CloudflareModel] = None,
     ) -> Dict:
         """Call the Cloudflare API with the messages list.
 
@@ -123,12 +244,17 @@ class CloudflareChat:
         short for real marketing answers. Pass a larger `max_tokens` for the
         long-form path; short structured calls can pass SHORT_CALL_MAX_TOKENS.
 
+        `model` overrides the instance's default for this single call — used
+        when the user has selected a specific chat model in the UI, or when
+        an auxiliary call wants a smaller/faster model than the chat default.
+
         Raises:
             CloudflareAPIError: If the API call fails
         """
+        url = self._url_for(model) if model is not None else self.full_url
         try:
             response = requests.post(
-                self.full_url,
+                url,
                 headers=self._get_headers(),
                 json={"messages": messages, "max_tokens": max_tokens},
             )
@@ -144,21 +270,14 @@ class CloudflareChat:
         query: Optional[str] = None,
         previous_queries: Optional[List[str]] = None,
         system_override: Optional[str] = None,
+        model: Optional[CloudflareModel] = None,
     ) -> str:
         """Generate an answer using context and chat history.
 
-        Args:
-            search_results: Search results to provide context (can be empty)
-            chat_history: Previous conversation messages
-            query: Current query
-            previous_queries: List of previous queries in the session
-            system_override: Marketing-tuned system prompt composed by
-                app.services.system_prompt.compose_system_prompt. When set,
-                overrides the default helpful-assistant prompt and gets the
-                search-result context appended.
-
-        Returns:
-            The generated answer
+        `model` overrides the instance default for this call — used when the
+        signed-in user has picked a specific chat model in the UI. When None,
+        falls back to the instance's configured model (DEFAULT_CHAT_MODEL by
+        default).
         """
 
         # Build message list
@@ -202,8 +321,8 @@ class CloudflareChat:
             for msg in messages
         ]
 
-        response = self._call_for_prompt(formatted_messages)
-        return response["result"]["response"]
+        response = self._call_for_prompt(formatted_messages, model=model)
+        return _extract_response_text(response)
 
     def score_search_results(self, query: str, results: List[Dict]) -> Dict[int, int]:
         """Score search results 0–100 for relevance to the user's query.
@@ -251,9 +370,10 @@ class CloudflareChat:
                     {"role": "user", "content": user_msg},
                 ],
                 max_tokens=SHORT_CALL_MAX_TOKENS,
+                model=DEFAULT_RERANK_MODEL,
             )
-            raw = response["result"]["response"]
-        except (CloudflareAPIError, KeyError):
+            raw = _extract_response_text(response)
+        except CloudflareAPIError:
             return {}
 
         # Tolerant parser — accepts `1=85`, `[1]=85`, `1: 85`, etc. Anything
@@ -303,9 +423,13 @@ class CloudflareChat:
             {"role": "user", "content": user_msg},
         ]
         try:
-            response = self._call_for_prompt(formatted, max_tokens=SHORT_CALL_MAX_TOKENS)
-            raw = response["result"]["response"]
-        except (CloudflareAPIError, KeyError):
+            response = self._call_for_prompt(
+                formatted,
+                max_tokens=SHORT_CALL_MAX_TOKENS,
+                model=DEFAULT_NEXT_STEPS_MODEL,
+            )
+            raw = _extract_response_text(response)
+        except CloudflareAPIError:
             return []
 
         # Strip numbering, bullets, quotes, surrounding whitespace.

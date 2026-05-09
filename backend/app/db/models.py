@@ -78,6 +78,10 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # User's chosen Cloudflare model slug for chat answers (e.g.
+    # "@cf/openai/gpt-oss-120b"). NULL → fall back to DEFAULT_CHAT_MODEL.
+    # Validated against the curated catalog at the API layer before write.
+    preferred_chat_model: Mapped[Optional[str]] = mapped_column(Text)
 
 
 # ---------- brand_profiles -------------------------------------------------

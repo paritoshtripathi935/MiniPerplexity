@@ -31,6 +31,7 @@ from app.db.repository import (
     set_message_next_steps,
     touch_session,
     update_session,
+    update_user_preferred_model,
     upsert_search_results,
 )
 from app.plays import get_play
@@ -38,6 +39,12 @@ from app.services.source_ranker import rerank, tag_authority_in_place
 from app.services.system_prompt import compose_system_prompt
 from app.models.query_model import QueryRequest, QueryResponse, SearchRequest
 from app.services import CloudflareChat, fetch_content_from_custom_url, perform_search
+from app.services.language_model import (
+    CHAT_MODEL_CATALOG,
+    DEFAULT_CHAT_MODEL,
+    is_valid_chat_model,
+    resolve_chat_model,
+)
 from app.utils.citation_tracker import track_citations
 
 logger = logging.getLogger(__name__)
@@ -145,12 +152,16 @@ async def get_answer(
             api_key=CLOUDFLARE_API_KEY,
             account_id=CLOUDFLARE_ACCOUNT_ID,
         )
+        # Honour the signed-in user's chosen chat model when present.
+        # Anonymous turns use the backend default.
+        chosen_model = resolve_chat_model(user.preferred_chat_model if user else None)
         answer = cf_chat.generate_answer(
             search_results=search_results,
             chat_history=chat_history,
             query=query_request.query,
             previous_queries=previous_queries + [query_request.query],
             system_override=system_override,
+            model=chosen_model,
         )
 
         # Track this turn: reuse the query row from /search if it's still the
@@ -286,6 +297,46 @@ async def me(user: User = Depends(get_current_user)):
         "email": user.email,
         "display_name": user.display_name,
         "image_url": user.image_url,
+        # Materialise the preference so the UI dropdown can preselect even when
+        # the user hasn't chosen one (NULL → backend default).
+        "preferred_chat_model": user.preferred_chat_model or DEFAULT_CHAT_MODEL.value,
+    }
+
+
+class PreferredModelUpdate(BaseModel):
+    model_id: str = Field(..., min_length=3, max_length=200)
+
+
+@router.patch("/me/preferred-model")
+async def set_preferred_model(
+    payload: PreferredModelUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persist the user's chat-model preference. Whitelist-validated against
+    the curated catalog so we never write an arbitrary slug to the DB."""
+    if not is_valid_chat_model(payload.model_id):
+        raise HTTPException(status_code=400, detail="Unknown model")
+    await update_user_preferred_model(db, user.id, payload.model_id)
+    return {"preferred_chat_model": payload.model_id}
+
+
+@router.get("/models")
+async def list_chat_models():
+    """Catalog of models the chat surface can choose from. Public — the UI
+    fetches this to populate the model selector. Stable IDs match what
+    `/me/preferred-model` accepts."""
+    return {
+        "models": [
+            {
+                "id": m.id,
+                "label": m.label,
+                "description": m.description,
+                "recommended": m.recommended,
+            }
+            for m in CHAT_MODEL_CATALOG
+        ],
+        "default": DEFAULT_CHAT_MODEL.value,
     }
 
 

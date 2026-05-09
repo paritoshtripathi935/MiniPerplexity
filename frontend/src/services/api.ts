@@ -142,16 +142,60 @@ export async function getSessionHistory(sessionId: string, getToken?: GetToken) 
   return await response.json();
 }
 
+export interface UserProfile {
+  id: string;
+  clerk_user_id: string | null;
+  email: string | null;
+  display_name: string | null;
+  image_url: string | null;
+  /** Chosen chat-model slug. Always populated — backend substitutes its
+   * default when the user hasn't picked one. */
+  preferred_chat_model: string;
+}
+
 /**
  * Fetch the current user's profile. Requires a valid Clerk token.
  */
-export async function getMe(getToken: GetToken) {
+export async function getMe(getToken: GetToken): Promise<UserProfile> {
   const response = await fetch(`${API_HOST}/api/v1/me`, {
     headers: { ...(await authHeaders(getToken)) },
   });
   if (!response.ok) {
     throw new Error(`Failed to load profile: ${response.status} ${response.statusText}`);
   }
+  return await response.json();
+}
+
+// ---------- Chat model catalog -------------------------------------------
+
+export interface ChatModelOption {
+  id: string;
+  label: string;
+  description: string;
+  recommended: boolean;
+}
+
+/** Public — no auth required. Populates the model selector dropdown. */
+export async function listChatModels(): Promise<{
+  models: ChatModelOption[];
+  default: string;
+}> {
+  const response = await fetch(`${API_HOST}/api/v1/models`);
+  if (!response.ok) throw new Error(`Failed to load models: ${response.status}`);
+  return await response.json();
+}
+
+/** Persist the user's chat-model preference. */
+export async function setPreferredChatModel(
+  modelId: string,
+  getToken: GetToken,
+): Promise<{ preferred_chat_model: string }> {
+  const response = await fetch(`${API_HOST}/api/v1/me/preferred-model`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    body: JSON.stringify({ model_id: modelId }),
+  });
+  if (!response.ok) throw new Error(`Failed to save model preference: ${response.status}`);
   return await response.json();
 }
 
