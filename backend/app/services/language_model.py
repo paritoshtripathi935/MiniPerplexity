@@ -18,6 +18,13 @@ class ConfigurationError(Exception):
 BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
 SYSTEM_PROMPT = "You are a helpful AI assistant. Use the following context to answer questions:\n\n{context}"
 
+# Cloudflare Workers AI defaults `max_tokens` to 256 for chat models, which
+# truncates real marketing answers (a channel plan or weekly review easily
+# wants 800–2000 tokens). Lift the cap so the model can finish its thought.
+DEFAULT_MAX_TOKENS = 4096
+# Tighter cap for short structured calls (next-step suggestions, scoring).
+SHORT_CALL_MAX_TOKENS = 512
+
 
 class CloudflareModel(Enum):
     """Available Cloudflare AI models"""
@@ -105,15 +112,17 @@ class CloudflareChat:
 
         return "\n\n".join(parts)
 
-    def _call_for_prompt(self, messages: List[Dict[str, str]]) -> Dict:
+    def _call_for_prompt(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> Dict:
         """Call the Cloudflare API with the messages list.
-        
-        Args:
-            messages: List of message dictionaries with 'role' and 'content'
-            
-        Returns:
-            API response dictionary
-            
+
+        Cloudflare's chat API caps output at 256 tokens by default — too
+        short for real marketing answers. Pass a larger `max_tokens` for the
+        long-form path; short structured calls can pass SHORT_CALL_MAX_TOKENS.
+
         Raises:
             CloudflareAPIError: If the API call fails
         """
@@ -121,7 +130,7 @@ class CloudflareChat:
             response = requests.post(
                 self.full_url,
                 headers=self._get_headers(),
-                json={"messages": messages}
+                json={"messages": messages, "max_tokens": max_tokens},
             )
             response.raise_for_status()
             return response.json()
@@ -240,7 +249,8 @@ class CloudflareChat:
                 [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg},
-                ]
+                ],
+                max_tokens=SHORT_CALL_MAX_TOKENS,
             )
             raw = response["result"]["response"]
         except (CloudflareAPIError, KeyError):
@@ -293,7 +303,7 @@ class CloudflareChat:
             {"role": "user", "content": user_msg},
         ]
         try:
-            response = self._call_for_prompt(formatted)
+            response = self._call_for_prompt(formatted, max_tokens=SHORT_CALL_MAX_TOKENS)
             raw = response["result"]["response"]
         except (CloudflareAPIError, KeyError):
             return []
