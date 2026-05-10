@@ -1,14 +1,20 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-10 · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 · branch: `main` (everything below is merged)
 
 ## Where we are
 
-V1 is shipped. The chat surface had a major iteration this session (right
-rail, streaming reveal, LLM-driven source ranking, per-user model selector,
-etc.). All work from today is on `main`. Render auto-deploys from main; the
-Neon prod DB has migrations through 006 applied.
+V1 is shipped. The 2026-05-09 session reshaped the chat surface (right
+rail, streaming reveal, LLM-driven source ranking, per-user model
+selector). 2026-05-10 patched a few small chat regressions (PAI-5, PAI-8,
+PAI-12). 2026-05-11 turned the Calculators page into the **Growth
+Decision Engine** (PAI-9, four PRs) and shipped a one-line prod fix for
+the gunicorn timeout that was a no-op since #20.
+
+All work is on `main`. Render auto-deploys from main; the Neon prod DB
+has migrations through 006 applied (no new migrations from PAI-9 — it's
+client-only and uses localStorage for scenarios).
 
 ### V1 scope
 
@@ -18,7 +24,7 @@ Neon prod DB has migrations through 006 applied.
 | 2 | Brand profile per Clerk user | ✅ | Migration 003. `/brand-profile` GET/PUT. 4-step onboarding wizard. Editable from Settings. |
 | 3 | Plays catalog (read-only) | ✅ | 10 plays in `backend/app/plays/catalog.py`. `/api/v1/plays`. Plus a "Recently used" section on the Plays page driven by `messages.play_id`. |
 | 4 | Structured outputs | ⚠️ partial | Markdown via Tailwind Typography. Schema-typed render components + PDF export still deferred to V2. |
-| 5 | Calculators | ✅ | CAC payback, ROAS→margin, A/B sample size (Acklam invNormal), blended channel efficiency. |
+| 5 | Calculators | ✅ | Now a **Growth Decision Engine** (PAI-9): CAC payback, ROAS→margin, A/B sample size, blended channel efficiency, each with Insight verdicts, reverse-mode targeting, scenario save/compare with deltas, recommendations engine, sliders, and SaaS/D2C/Marketplace presets. |
 | — | Branding | ✅ | All UI / package / OpenAPI. **GitHub repo not renamed yet** — still `MiniPerplexity`. |
 
 ### Beyond the plan
@@ -47,7 +53,19 @@ PRs in chronological order. Each is on `main`.
 
 | PR | Topic |
 |---|---|
-| (open) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to existing `messages.latency_ms` (no migration), renders "⧗ Answered in 4.2s" hint under each assistant turn (rehydrates on history reload) |
+| [#21](https://github.com/paritoshtripathi935/MiniPerplexity/pull/21) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to existing `messages.latency_ms` (no migration), renders "⧗ Answered in 4.2s" hint under each assistant turn (rehydrates on history reload) |
+| [#22](https://github.com/paritoshtripathi935/MiniPerplexity/pull/22) | **PAI-5** — render markdown tables via `remark-gfm` |
+| [#23](https://github.com/paritoshtripathi935/MiniPerplexity/pull/23) | **PAI-12** — load chat history when arriving at `/chat/:id` from Home |
+
+### Shipped this session (2026-05-11)
+
+| PR | Topic |
+|---|---|
+| [#24](https://github.com/paritoshtripathi935/MiniPerplexity/pull/24) | Rename `gunicorn_config.py` → `gunicorn.conf.py` so auto-discovery actually loads `timeout=120` (the #20 fix was a no-op because Render's start command doesn't pass `-c`) |
+| [#25](https://github.com/paritoshtripathi935/MiniPerplexity/pull/25) | **PAI-9 §1** — split monolithic `Calculators.tsx` into per-file modules under `components/calculators/`, add `benchmarks.ts` thresholds + `<Insight>` banner (good / warn / bad) on every calc |
+| [#26](https://github.com/paritoshtripathi935/MiniPerplexity/pull/26) | **PAI-9 §2** — forward / reverse toggle on every calc; each calc supports entering a target outcome and computes the required input (bisection for sample size) |
+| [#27](https://github.com/paritoshtripathi935/MiniPerplexity/pull/27) | **PAI-9 §3** — scenario save / load / duplicate / delete + inline compare table with arrow + percent delta highlighting; localStorage-backed, cross-tab synced |
+| [#28](https://github.com/paritoshtripathi935/MiniPerplexity/pull/28) | **PAI-9 §4–§6** — recommendations engine (ranked next-step actions per calc), sensitivity sliders on the main lever per calc, industry presets (SaaS / D2C / Marketplace) broadcast via React context |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -84,6 +102,23 @@ User-selectable models (UI dropdown at the top of chat):
   Compare against `git rev-parse HEAD | cut -c1-8`. Wait ~10s after the
   final push before invoking `gh pr merge`. Recovery: cherry-pick the missing
   commits onto a follow-up branch.
+- **Worktree branch-creation can land in the wrong worktree.** Chained
+  `cd .. && git checkout -b ...` from the elastic worktree once landed
+  the new branch on the *main* worktree (which then blocked subsequent
+  pushes with "branch already used by worktree"). Recovery: stash WIP,
+  `git -C <main-worktree-path> checkout main && git branch -D <stray>`,
+  recreate the branch in the elastic worktree, `git stash pop`. Prefer
+  unchained `git -C` for cross-worktree ops.
+- **`gunicorn.conf.py`, not `gunicorn_config.py`.** Gunicorn's config
+  auto-discovery only matches the dotted name. Render's start command
+  doesn't pass `-c`, so the file name is the only thing keeping
+  `timeout=120` alive. Fixed in #24 — don't rename it back.
+- **macOS filesystem case-collisions silently break vite.** `tsc` is
+  case-insensitive on darwin; rollup is case-strict. Don't ship two
+  files in the same dir whose names differ only in case
+  (e.g. `recommendations.ts` + `Recommendations.tsx`) — `vite build`
+  fails even though `tsc --noEmit` passes. Fixed by renaming the
+  component (now `RecommendationsList.tsx`).
 - **Cloudflare model docs lie.** Three slugs from the docs (`llama-3.3-70b`,
   `kimi-k2.6`, `deepseek-r1-distill-qwen-32b`) returned 404 on this account.
   Always smoke-test before adding to `CHAT_MODEL_CATALOG`.
@@ -110,19 +145,29 @@ Real candidates, ranked by leverage:
    `gh api -X PATCH /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`
    then update README badges. Old URLs auto-redirect.
 
-3. **Mobile right rail fallback** — ~45 min. The right rail is `lg:` only,
+3. **PAI-9 follow-ups** — three deferred items from the Growth Decision
+   Engine epic:
+   - **Benchmark stages** (Seed / Growth / Enterprise) overlaid on the
+     existing thresholds in `frontend/src/components/calculators/benchmarks.ts`.
+     ~1 hr; same shape as PR #25.
+   - **Calculators UX restructure** (progressive disclosure / primary
+     calc focus / secondary minimised). Its own design pass — not a
+     code-only PR.
+   - **Mobile preset bar + slider polish** for the calculators page.
+
+4. **Mobile right rail fallback** — ~45 min. The chat right rail is `lg:` only,
    so phones/tablets currently see no source list at all (sources are out
    of the chat thread). Either show a slide-up sheet on mobile or
    conditionally render an inline strip below `lg`.
 
-4. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
+5. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
    `darkMode: boolean` prop they don't use; only `AppLayout` actually reads
    it for the theme toggle. Frontend agent flagged it as a design-system
    violation.
 
-5. **Bundle size pass** — JS bundle grew 209 → 460 kB (gzip 64 → 137 kB)
-   over the session. `React.lazy`-splitting the chat route would help the
-   home/plays initial load.
+6. **Bundle size pass** — `React.lazy`-splitting the chat route would
+   trim the home/plays initial load. Current bundle holds at 210 kB /
+   65 kB gzip after PAI-9 (no growth over four PRs).
 
 V2 lever (multi-day): **Meta Ad Library integration** — the differentiator
 that justifies the rebrand. Schema can lean on existing sessions /
@@ -195,6 +240,27 @@ frontend/
       SessionsSidebar.tsx
       Onboarding.tsx
       LoginPage.tsx
+      calculators/         # Growth Decision Engine (PAI-9)
+        index.tsx          # <Calculators> + PresetProvider/PresetBar exports
+        CalcCard.tsx       # Card chrome + Field, Result, inputCls
+        Insight.tsx        # good/warn/bad banner under each calc's results
+        ModeToggle.tsx     # Forward / Reverse segmented control
+        ScenarioBar.tsx    # Save / load / duplicate / delete chips + Compare
+        ScenarioCompare.tsx# Inline delta table (baseline = first column)
+        useScenarios.ts    # localStorage-backed hook keyed by calcId
+        Slider.tsx         # Range input on the brand-accent track
+        RecommendationsList.tsx # Numbered next-step list under Insight
+        PresetBar.tsx      # SaaS / D2C / Marketplace chip selector
+        PresetContext.tsx  # apply()-tick broadcast (no clobber on mount)
+        benchmarks.ts      # Healthy/warn/bad thresholds + classifiers
+        recommendations.ts # Per-calc ranked next-step generators
+        presets.ts         # Industry default values
+        formatters.ts      # fmtMoney / fmtMonths / fmtPct
+        stats.ts           # invNormal (Acklam)
+        CACPaybackCalc.tsx
+        ROASToMarginCalc.tsx
+        SampleSizeCalc.tsx
+        BlendedEfficiencyCalc.tsx
     hooks/
       useStreamingReveal.ts # Per-message reveal animation (ref-based progress)
     utils/
