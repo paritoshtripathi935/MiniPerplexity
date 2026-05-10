@@ -10,18 +10,23 @@ export function CalcCard({
   children,
   results,
   insight,
+  headerRight,
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
   results: React.ReactNode;
   insight?: React.ReactNode;
+  headerRight?: React.ReactNode;
 }) {
   return (
     <Card className="p-5">
-      <div className="mb-4">
-        <h3 className="font-display font-semibold text-[14px] tracking-tight">{title}</h3>
-        <p className="text-[12px] text-fg-muted mt-0.5 leading-relaxed">{description}</p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-display font-semibold text-[14px] tracking-tight">{title}</h3>
+          <p className="text-[12px] text-fg-muted mt-0.5 leading-relaxed">{description}</p>
+        </div>
+        {headerRight && <div className="shrink-0">{headerRight}</div>}
       </div>
       <div className="space-y-3">{children}</div>
       <div className="mt-4 pt-3 border-t border-border space-y-1.5">{results}</div>
