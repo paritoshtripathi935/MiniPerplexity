@@ -224,7 +224,7 @@ docs/
   Worth deleting the root one.
 - **Render deploy** runs Python 3.11 even though `render.yaml` says
   `python3.9`. Worth aligning.
-- **`render.yaml` + `Procfile` + `gunicorn_config.py`** all start uvicorn
+- **`render.yaml` + `Procfile` + `gunicorn.conf.py`** all start uvicorn
   slightly differently. Procfile is what Render actually uses on free tier.
 - **`backend/app/__pycache__`** etc. are gitignored, but some `.pyc` files
   still appear modified. `find . -name __pycache__ -exec rm -rf {} +` for a

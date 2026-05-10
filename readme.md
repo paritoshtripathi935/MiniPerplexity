@@ -150,7 +150,7 @@ MiniPerplexity/
 ├── backend/
 │   ├── Procfile
 │   ├── render.yaml
-│   ├── gunicorn_config.py
+│   ├── gunicorn.conf.py
 │   ├── requirements.txt
 │   ├── pytest.ini
 │   ├── tests/
