@@ -1,12 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CalcCard, Field, Result, inputCls } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
 import { ScenarioBar } from './ScenarioBar';
 import { ScenarioCompare, type CompareField } from './ScenarioCompare';
 import { useScenarios, type Scenario } from './useScenarios';
+import { Recommendations } from './RecommendationsList';
 import { fmtMoney } from './formatters';
 import { blendedCacInsight } from './benchmarks';
+import { blendedCacRecommendations } from './recommendations';
+import { usePreset } from './PresetContext';
+import { PRESETS } from './presets';
 
 const CALC_ID = 'blended-efficiency';
 
@@ -24,6 +28,14 @@ export function BlendedEfficiencyCalc() {
     { name: 'TikTok', spend: '5000', conversions: '60' },
   ]);
   const [targetCac, setTargetCac] = useState('80');
+
+  const { preset, applyTick } = usePreset();
+  useEffect(() => {
+    if (!preset) return;
+    setRows(PRESETS[preset].blended.map(r => ({ ...r })));
+    setMode('forward');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyTick]);
 
   const forward = useMemo(() => {
     const totals = rows.reduce(
@@ -63,6 +75,11 @@ export function BlendedEfficiencyCalc() {
       ? (forward && isFinite(forward.blendedCAC) ? forward.blendedCAC : null)
       : (Number(targetCac) || null);
   const insight = insightValue != null ? blendedCacInsight(insightValue) : null;
+
+  const recs = useMemo(() => {
+    if (mode !== 'forward' || !forward || !isFinite(forward.blendedCAC)) return [];
+    return blendedCacRecommendations(forward.blendedCAC, forward.perChannel);
+  }, [mode, forward]);
 
   const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -136,7 +153,12 @@ export function BlendedEfficiencyCalc() {
           </>
         )
       }
-      insight={<Insight insight={insight} />}
+      insight={
+        <>
+          <Insight insight={insight} />
+          <Recommendations items={recs} />
+        </>
+      }
       footer={
         <>
           <ScenarioBar

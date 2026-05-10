@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculators } from '../components/calculators';
+import { Calculators, PresetBar, PresetProvider } from '../components/calculators';
 import { PageHeader } from '../components/AppLayout';
 
 interface Props {
@@ -13,14 +13,17 @@ interface Props {
  */
 export function CalculatorsPage({}: Props) {
   return (
-    <>
+    <PresetProvider>
       <PageHeader
         title="Calculators"
         subtitle="The four numbers performance marketers reach for daily. All client-side — no telemetry, no roundtrips."
       />
+      <div className="mb-4">
+        <PresetBar />
+      </div>
       <div className="lg:columns-2 lg:gap-4 space-y-4 lg:space-y-0 [&>div]:break-inside-avoid [&>div]:mb-4">
         <Calculators darkMode={false} />
       </div>
-    </>
+    </PresetProvider>
   );
 }

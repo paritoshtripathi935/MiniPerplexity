@@ -1,12 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CalcCard, Field, Result } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
 import { ScenarioBar } from './ScenarioBar';
 import { ScenarioCompare, type CompareField } from './ScenarioCompare';
 import { useScenarios, type Scenario } from './useScenarios';
+import { Slider } from './Slider';
+import { Recommendations } from './RecommendationsList';
 import { fmtMoney, fmtMonths } from './formatters';
 import { cacPaybackInsight } from './benchmarks';
+import { cacPaybackRecommendations } from './recommendations';
+import { usePreset } from './PresetContext';
+import { PRESETS } from './presets';
 
 const CALC_ID = 'cac-payback';
 
@@ -16,6 +21,17 @@ export function CACPaybackCalc() {
   const [targetMonths, setTargetMonths] = useState('4');
   const [arpu, setArpu] = useState('25');
   const [margin, setMargin] = useState('70');
+
+  const { preset, applyTick } = usePreset();
+  useEffect(() => {
+    if (!preset) return;
+    const cfg = PRESETS[preset].cacPayback;
+    setCac(cfg.cac);
+    setArpu(cfg.arpu);
+    setMargin(cfg.margin);
+    setMode('forward');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyTick]);
 
   const forward = useMemo(() => {
     const c = Number(cac);
@@ -40,6 +56,11 @@ export function CACPaybackCalc() {
       : (Number(targetMonths) || null);
   const insight = insightValue != null ? cacPaybackInsight(insightValue) : null;
 
+  const recs = useMemo(() => {
+    if (mode !== 'forward' || forward == null || !isFinite(forward)) return [];
+    return cacPaybackRecommendations(forward, Number(cac), Number(arpu), Number(margin));
+  }, [mode, forward, cac, arpu, margin]);
+
   const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
   const [compareOpen, setCompareOpen] = useState(false);
 
@@ -48,10 +69,10 @@ export function CACPaybackCalc() {
 
   const loadScenario = (s: Scenario) => {
     setMode(s.mode);
-    setCac(s.inputs.cac ?? cac);
-    setTargetMonths(s.inputs.targetMonths ?? targetMonths);
-    setArpu(s.inputs.arpu ?? arpu);
-    setMargin(s.inputs.margin ?? margin);
+    setCac((s.inputs.cac as string) ?? cac);
+    setTargetMonths((s.inputs.targetMonths as string) ?? targetMonths);
+    setArpu((s.inputs.arpu as string) ?? arpu);
+    setMargin((s.inputs.margin as string) ?? margin);
   };
 
   const compareFields: CompareField[] = [
@@ -75,7 +96,12 @@ export function CACPaybackCalc() {
           <Result label="Required CAC" value={fmtMoney(reverse)} emphasised />
         )
       }
-      insight={<Insight insight={insight} />}
+      insight={
+        <>
+          <Insight insight={insight} />
+          <Recommendations items={recs} />
+        </>
+      }
       footer={
         <>
           <ScenarioBar
@@ -100,6 +126,17 @@ export function CACPaybackCalc() {
         <Field label="ARPU/mo ($)" value={arpu} onChange={setArpu} />
         <Field label="Gross margin %" value={margin} onChange={setMargin} />
       </div>
+      {mode === 'forward' && (
+        <Slider
+          label="Drag CAC"
+          min={0}
+          max={Math.max(500, Number(cac) * 1.5 || 500)}
+          step={5}
+          value={Number(cac) || 0}
+          onChange={v => setCac(String(v))}
+          format={v => fmtMoney(v)}
+        />
+      )}
     </CalcCard>
   );
 }

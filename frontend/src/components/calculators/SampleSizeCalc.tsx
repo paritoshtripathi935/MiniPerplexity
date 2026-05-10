@@ -1,12 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CalcCard, Field, Result } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
 import { ScenarioBar } from './ScenarioBar';
 import { ScenarioCompare, type CompareField } from './ScenarioCompare';
 import { useScenarios, type Scenario } from './useScenarios';
+import { Slider } from './Slider';
+import { Recommendations } from './RecommendationsList';
 import { invNormal } from './stats';
 import { sampleSizeInsight } from './benchmarks';
+import { sampleSizeRecommendations } from './recommendations';
+import { usePreset } from './PresetContext';
+import { PRESETS } from './presets';
 
 const CALC_ID = 'sample-size';
 
@@ -48,6 +53,16 @@ export function SampleSizeCalc() {
   const [alpha, setAlpha] = useState('0.05');
   const [power, setPower] = useState('0.8');
 
+  const { preset, applyTick } = usePreset();
+  useEffect(() => {
+    if (!preset) return;
+    const cfg = PRESETS[preset].sampleSize;
+    setBaseline(cfg.baseline);
+    setMde(cfg.mde);
+    setMode('forward');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyTick]);
+
   const forward = useMemo(() => {
     const p1 = Number(baseline) / 100;
     const lift = Number(mde) / 100;
@@ -75,6 +90,11 @@ export function SampleSizeCalc() {
       : (Number(targetN) || null);
   const insight = insightValue != null ? sampleSizeInsight(insightValue) : null;
 
+  const recs = useMemo(() => {
+    if (mode !== 'forward' || !forward) return [];
+    return sampleSizeRecommendations(forward.nPerArm, Number(alpha), Number(power));
+  }, [mode, forward, alpha, power]);
+
   const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
   const [compareOpen, setCompareOpen] = useState(false);
 
@@ -86,11 +106,11 @@ export function SampleSizeCalc() {
 
   const loadScenario = (s: Scenario) => {
     setMode(s.mode);
-    setBaseline(s.inputs.baseline ?? baseline);
-    setMde(s.inputs.mde ?? mde);
-    setTargetN(s.inputs.targetN ?? targetN);
-    setAlpha(s.inputs.alpha ?? alpha);
-    setPower(s.inputs.power ?? power);
+    setBaseline((s.inputs.baseline as string) ?? baseline);
+    setMde((s.inputs.mde as string) ?? mde);
+    setTargetN((s.inputs.targetN as string) ?? targetN);
+    setAlpha((s.inputs.alpha as string) ?? alpha);
+    setPower((s.inputs.power as string) ?? power);
   };
 
   const compareFields: CompareField[] = [
@@ -133,7 +153,12 @@ export function SampleSizeCalc() {
           </>
         )
       }
-      insight={<Insight insight={insight} />}
+      insight={
+        <>
+          <Insight insight={insight} />
+          <Recommendations items={recs} />
+        </>
+      }
       footer={
         <>
           <ScenarioBar
@@ -159,6 +184,17 @@ export function SampleSizeCalc() {
         <Field label="α (two-sided)" value={alpha} onChange={setAlpha} />
         <Field label="Power" value={power} onChange={setPower} />
       </div>
+      {mode === 'forward' && (
+        <Slider
+          label="Drag MDE"
+          min={1}
+          max={50}
+          step={0.5}
+          value={Number(mde) || 0}
+          onChange={v => setMde(String(v))}
+          format={v => `${v.toFixed(1)}%`}
+        />
+      )}
     </CalcCard>
   );
 }
