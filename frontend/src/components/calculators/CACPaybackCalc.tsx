@@ -2,8 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { CalcCard, Field, Result } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
+import { ScenarioBar } from './ScenarioBar';
+import { ScenarioCompare, type CompareField } from './ScenarioCompare';
+import { useScenarios, type Scenario } from './useScenarios';
 import { fmtMoney, fmtMonths } from './formatters';
 import { cacPaybackInsight } from './benchmarks';
+
+const CALC_ID = 'cac-payback';
 
 export function CACPaybackCalc() {
   const [mode, setMode] = useState<CalcMode>('forward');
@@ -35,6 +40,29 @@ export function CACPaybackCalc() {
       : (Number(targetMonths) || null);
   const insight = insightValue != null ? cacPaybackInsight(insightValue) : null;
 
+  const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const inputs = { cac, targetMonths, arpu, margin };
+  const outputs = { months: forward, requiredCac: reverse };
+
+  const loadScenario = (s: Scenario) => {
+    setMode(s.mode);
+    setCac(s.inputs.cac ?? cac);
+    setTargetMonths(s.inputs.targetMonths ?? targetMonths);
+    setArpu(s.inputs.arpu ?? arpu);
+    setMargin(s.inputs.margin ?? margin);
+  };
+
+  const compareFields: CompareField[] = [
+    { key: 'mode', label: 'Mode', get: s => s.mode, format: v => (v === 'forward' ? 'Forward' : 'Reverse') },
+    { key: 'cac', label: 'CAC', get: s => s.inputs.cac, format: v => fmtMoney(Number(v)), lowerIsBetter: true },
+    { key: 'arpu', label: 'ARPU/mo', get: s => s.inputs.arpu, format: v => fmtMoney(Number(v)) },
+    { key: 'margin', label: 'Margin %', get: s => s.inputs.margin, format: v => `${v}%`, lowerIsBetter: false },
+    { key: 'months', label: 'Payback (months)', get: s => s.outputs.months, format: v => fmtMonths(v as number | null), lowerIsBetter: true },
+    { key: 'requiredCac', label: 'Required CAC', get: s => s.outputs.requiredCac, format: v => fmtMoney(v as number | null), lowerIsBetter: true },
+  ];
+
   return (
     <CalcCard
       title="CAC payback"
@@ -48,6 +76,20 @@ export function CACPaybackCalc() {
         )
       }
       insight={<Insight insight={insight} />}
+      footer={
+        <>
+          <ScenarioBar
+            scenarios={scenarios}
+            onSave={name => save({ name, mode, inputs, outputs })}
+            onLoad={loadScenario}
+            onRemove={remove}
+            onDuplicate={duplicate}
+            onCompareToggle={() => setCompareOpen(o => !o)}
+            compareOpen={compareOpen}
+          />
+          {compareOpen && <ScenarioCompare scenarios={scenarios} fields={compareFields} />}
+        </>
+      }
     >
       <div className="grid grid-cols-3 gap-2">
         {mode === 'forward' ? (

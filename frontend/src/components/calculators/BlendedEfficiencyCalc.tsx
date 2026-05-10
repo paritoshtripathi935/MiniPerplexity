@@ -2,8 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { CalcCard, Field, Result, inputCls } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
+import { ScenarioBar } from './ScenarioBar';
+import { ScenarioCompare, type CompareField } from './ScenarioCompare';
+import { useScenarios, type Scenario } from './useScenarios';
 import { fmtMoney } from './formatters';
 import { blendedCacInsight } from './benchmarks';
+
+const CALC_ID = 'blended-efficiency';
 
 interface ChannelRow {
   name: string;
@@ -59,6 +64,38 @@ export function BlendedEfficiencyCalc() {
       : (Number(targetCac) || null);
   const insight = insightValue != null ? blendedCacInsight(insightValue) : null;
 
+  const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const inputs = { rows, targetCac };
+  const outputs = {
+    blendedCAC: forward?.blendedCAC ?? null,
+    totalSpend: forward?.total ?? null,
+    totalConversions: forward?.conversions ?? null,
+    requiredTotalSpend: reverse?.total ?? null,
+  };
+
+  const loadScenario = (s: Scenario) => {
+    setMode(s.mode);
+    if (Array.isArray(s.inputs.rows)) setRows(s.inputs.rows as ChannelRow[]);
+    if (typeof s.inputs.targetCac === 'string') setTargetCac(s.inputs.targetCac);
+  };
+
+  const compareFields: CompareField[] = [
+    { key: 'mode', label: 'Mode', get: s => s.mode, format: v => (v === 'forward' ? 'Forward' : 'Reverse') },
+    {
+      key: 'channels',
+      label: 'Channels',
+      get: s => (s.inputs.rows as ChannelRow[] | undefined)?.length ?? 0,
+      format: v => `${v}`,
+    },
+    { key: 'targetCac', label: 'Target CAC', get: s => s.inputs.targetCac, format: v => fmtMoney(Number(v)), lowerIsBetter: true },
+    { key: 'totalSpend', label: 'Total spend', get: s => s.outputs.totalSpend, format: v => fmtMoney(v as number | null) },
+    { key: 'totalConversions', label: 'Total conversions', get: s => s.outputs.totalConversions, format: v => v == null ? '—' : (v as number).toLocaleString() },
+    { key: 'blendedCAC', label: 'Blended CAC', get: s => s.outputs.blendedCAC, format: v => fmtMoney(v as number | null), lowerIsBetter: true },
+    { key: 'requiredTotalSpend', label: 'Required spend', get: s => s.outputs.requiredTotalSpend, format: v => fmtMoney(v as number | null), lowerIsBetter: true },
+  ];
+
   const updateRow = (i: number, patch: Partial<ChannelRow>) =>
     setRows(rs => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const addRow = () => setRows(rs => [...rs, { name: 'Channel', spend: '0', conversions: '0' }]);
@@ -100,6 +137,20 @@ export function BlendedEfficiencyCalc() {
         )
       }
       insight={<Insight insight={insight} />}
+      footer={
+        <>
+          <ScenarioBar
+            scenarios={scenarios}
+            onSave={name => save({ name, mode, inputs, outputs })}
+            onLoad={loadScenario}
+            onRemove={remove}
+            onDuplicate={duplicate}
+            onCompareToggle={() => setCompareOpen(o => !o)}
+            compareOpen={compareOpen}
+          />
+          {compareOpen && <ScenarioCompare scenarios={scenarios} fields={compareFields} />}
+        </>
+      }
     >
       {mode === 'reverse' && (
         <Field label="Target blended CAC ($)" value={targetCac} onChange={setTargetCac} />

@@ -2,8 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { CalcCard, Field, Result } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
+import { ScenarioBar } from './ScenarioBar';
+import { ScenarioCompare, type CompareField } from './ScenarioCompare';
+import { useScenarios, type Scenario } from './useScenarios';
 import { invNormal } from './stats';
 import { sampleSizeInsight } from './benchmarks';
+
+const CALC_ID = 'sample-size';
 
 function nPerArm(p1: number, lift: number, alpha: number, power: number): number | null {
   const p2 = p1 * (1 + lift);
@@ -19,12 +24,11 @@ function nPerArm(p1: number, lift: number, alpha: number, power: number): number
 function solveLift(p1: number, alpha: number, power: number, target: number): number | null {
   let lo = 0.001;
   let hi = 5.0;
-  // n decreases monotonically with lift; clamp to detectable bounds.
   const nLo = nPerArm(p1, lo, alpha, power);
   const nHi = nPerArm(p1, hi, alpha, power);
   if (nLo == null || nHi == null) return null;
-  if (target >= nLo) return lo; // any small lift; target larger than n@tiny lift
-  if (target <= nHi) return hi; // even huge lift needs more samples; hopeless
+  if (target >= nLo) return lo;
+  if (target <= nHi) return hi;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
     const n = nPerArm(p1, mid, alpha, power);
@@ -71,6 +75,35 @@ export function SampleSizeCalc() {
       : (Number(targetN) || null);
   const insight = insightValue != null ? sampleSizeInsight(insightValue) : null;
 
+  const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const inputs = { baseline, mde, targetN, alpha, power };
+  const outputs = {
+    nPerArm: forward?.nPerArm ?? null,
+    minDetectableLift: reverse?.liftPct ?? null,
+  };
+
+  const loadScenario = (s: Scenario) => {
+    setMode(s.mode);
+    setBaseline(s.inputs.baseline ?? baseline);
+    setMde(s.inputs.mde ?? mde);
+    setTargetN(s.inputs.targetN ?? targetN);
+    setAlpha(s.inputs.alpha ?? alpha);
+    setPower(s.inputs.power ?? power);
+  };
+
+  const compareFields: CompareField[] = [
+    { key: 'mode', label: 'Mode', get: s => s.mode, format: v => (v === 'forward' ? 'Forward' : 'Reverse') },
+    { key: 'baseline', label: 'Baseline %', get: s => s.inputs.baseline, format: v => `${v}%` },
+    { key: 'mde', label: 'MDE %', get: s => s.inputs.mde, format: v => `${v}%`, lowerIsBetter: true },
+    { key: 'targetN', label: 'Target N / arm', get: s => s.inputs.targetN, format: v => Number(v).toLocaleString() },
+    { key: 'alpha', label: 'α', get: s => s.inputs.alpha, format: v => String(v) },
+    { key: 'power', label: 'Power', get: s => s.inputs.power, format: v => String(v) },
+    { key: 'nPerArm', label: 'N / arm', get: s => s.outputs.nPerArm, format: v => v == null ? '—' : (v as number).toLocaleString(), lowerIsBetter: true },
+    { key: 'minDetectableLift', label: 'Min detectable lift', get: s => s.outputs.minDetectableLift, format: v => v == null ? '—' : `${(v as number).toFixed(1)}%`, lowerIsBetter: true },
+  ];
+
   return (
     <CalcCard
       title="A/B sample size"
@@ -101,6 +134,20 @@ export function SampleSizeCalc() {
         )
       }
       insight={<Insight insight={insight} />}
+      footer={
+        <>
+          <ScenarioBar
+            scenarios={scenarios}
+            onSave={name => save({ name, mode, inputs, outputs })}
+            onLoad={loadScenario}
+            onRemove={remove}
+            onDuplicate={duplicate}
+            onCompareToggle={() => setCompareOpen(o => !o)}
+            compareOpen={compareOpen}
+          />
+          {compareOpen && <ScenarioCompare scenarios={scenarios} fields={compareFields} />}
+        </>
+      }
     >
       <div className="grid grid-cols-2 gap-2">
         <Field label="Baseline %" value={baseline} onChange={setBaseline} />
