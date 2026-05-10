@@ -69,6 +69,11 @@ export default {
         },
         success: {
           DEFAULT: 'rgb(var(--success) / <alpha-value>)',
+          subtle: 'rgb(var(--success-subtle) / <alpha-value>)',
+        },
+        warning: {
+          DEFAULT: 'rgb(var(--warning) / <alpha-value>)',
+          subtle: 'rgb(var(--warning-subtle) / <alpha-value>)',
         },
       },
       boxShadow: {

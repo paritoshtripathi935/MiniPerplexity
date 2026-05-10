@@ -37,6 +37,9 @@
     --danger: 220 38 38;
     --danger-subtle: 254 226 226;
     --success: 16 163 74;
+    --success-subtle: 220 252 231;
+    --warning: 180 83 9;
+    --warning-subtle: 254 243 199;
   }
 
   /* Dark theme — Linear-flavoured neutrals (cooler, never #000). */
@@ -60,6 +63,9 @@
     --danger: 248 113 113;
     --danger-subtle: 60 24 24;
     --success: 52 211 153;
+    --success-subtle: 18 49 36;
+    --warning: 251 191 36;
+    --warning-subtle: 60 42 18;
   }
 
   html, body {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculators } from '../components/Calculators';
+import { Calculators } from '../components/calculators';
 import { PageHeader } from '../components/AppLayout';
 
 interface Props {
