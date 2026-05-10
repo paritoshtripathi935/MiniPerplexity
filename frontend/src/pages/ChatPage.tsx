@@ -42,7 +42,12 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
 
   // If no sessionId in URL, mint one and redirect (so refresh keeps the chat).
   useEffect(() => {
-    if (!routeSessionId) navigate(`/chat/${uuidv4()}`, { replace: true });
+    if (!routeSessionId) {
+      // Skip the history-load effect on the upcoming sessionId change: this
+      // ID was just minted on the client, there's nothing in the DB yet.
+      justCreatedRef.current = true;
+      navigate(`/chat/${uuidv4()}`, { replace: true });
+    }
   }, [routeSessionId, navigate]);
 
   const sessionId = routeSessionId ?? '';
@@ -65,7 +70,12 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const messagesTopRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
-  const justCreatedRef = useRef(true);
+  // True only when a fresh session was just minted on the client (auto-mint
+  // on `/chat`, or "New chat" from the sidebar) — tells the history-load
+  // effect to skip the upcoming fetch since there's nothing persisted yet.
+  // Defaults to false so arrivals to `/chat/:id` from anywhere (Home, deep
+  // link, refresh) actually load the conversation.
+  const justCreatedRef = useRef(false);
 
   const startStreamingReveal = useStreamingReveal(setMessages, sessionId);
 
