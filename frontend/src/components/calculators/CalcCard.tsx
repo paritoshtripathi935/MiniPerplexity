@@ -11,6 +11,7 @@ export function CalcCard({
   results,
   insight,
   headerRight,
+  footer,
 }: {
   title: string;
   description: string;
@@ -18,6 +19,7 @@ export function CalcCard({
   results: React.ReactNode;
   insight?: React.ReactNode;
   headerRight?: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
     <Card className="p-5">
@@ -31,6 +33,7 @@ export function CalcCard({
       <div className="space-y-3">{children}</div>
       <div className="mt-4 pt-3 border-t border-border space-y-1.5">{results}</div>
       {insight}
+      {footer}
     </Card>
   );
 }
