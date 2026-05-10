@@ -209,6 +209,8 @@ async def get_session_history(db: AsyncSession, session_id: str) -> Optional[dic
                 item["play_id"] = m.play_id
             if m.next_steps:
                 item["next_steps"] = m.next_steps
+            if m.latency_ms is not None:
+                item["latency_ms"] = m.latency_ms
             if m.query_id is not None:
                 results = sr_by_query.get(m.query_id, [])
                 if results:

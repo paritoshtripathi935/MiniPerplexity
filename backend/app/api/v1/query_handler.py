@@ -1,4 +1,5 @@
 import logging
+import time
 import traceback
 from typing import Optional
 
@@ -155,6 +156,10 @@ async def get_answer(
         # Honour the signed-in user's chosen chat model when present.
         # Anonymous turns use the backend default.
         chosen_model = resolve_chat_model(user.preferred_chat_model if user else None)
+        # Time only the LLM call: it's the dominant + most variable cost and
+        # the number is directly attributable to the chosen model. DB writes
+        # below are excluded so the surfaced metric stays a clean signal.
+        t0 = time.perf_counter()
         answer = cf_chat.generate_answer(
             search_results=search_results,
             chat_history=chat_history,
@@ -163,6 +168,7 @@ async def get_answer(
             system_override=system_override,
             model=chosen_model,
         )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
 
         # Track this turn: reuse the query row from /search if it's still the
         # latest, otherwise create one. Search results upsert is idempotent.
@@ -185,6 +191,8 @@ async def get_answer(
             content=answer,
             query_id=query_row.id,
             play_id=play_id,
+            latency_ms=latency_ms,
+            model_name=chosen_model,
         )
 
         # Build citation rows mapping cited URLs back to the search_result UUIDs.
@@ -199,6 +207,7 @@ async def get_answer(
             citations=citations_text,
             search_results=search_results,
             message_id=str(assistant_msg.id),
+            latency_ms=latency_ms,
         )
 
     except HTTPException:

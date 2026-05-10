@@ -27,6 +27,7 @@ interface ServerHistoryMessage {
   content: string;
   search_results?: any[];
   next_steps?: { items?: string[] } | null;
+  latency_ms?: number | null;
 }
 
 /**
@@ -49,6 +50,7 @@ export function rehydrateMessages(history: ServerHistoryMessage[]): Message[] {
         search_results: normaliseSearchResults(h.search_results),
         nextSteps:
           Array.isArray(cachedSteps) && cachedSteps.length > 0 ? cachedSteps : undefined,
+        latencyMs: typeof h.latency_ms === 'number' ? h.latency_ms : undefined,
       };
     }
     return {
@@ -71,6 +73,9 @@ interface ApplyAnswerArgs {
   /** Server-side message id returned by /answer. The next-steps endpoint
    * uses this to attach suggestions to the right turn. */
   dbId?: string;
+  /** Server-measured LLM latency (ms) for this turn, surfaced as a small
+   * "Answered in Xs" line beneath the message. */
+  latencyMs?: number;
 }
 
 interface ApplyAnswerResult {
@@ -108,6 +113,7 @@ export function applyAssistantAnswer(args: ApplyAnswerArgs): ApplyAnswerResult {
             originatingQuery: args.originatingQuery,
             originatingSearchResults: args.originatingSearchResults,
             originatingPlayId: args.originatingPlayId,
+            latencyMs: args.latencyMs,
           }
         : m
     );

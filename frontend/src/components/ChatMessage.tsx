@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useUser } from '@clerk/clerk-react';
-import { Check, Copy, RotateCw } from 'lucide-react';
+import { Check, Clock, Copy, RotateCw } from 'lucide-react';
 import type { Message } from '../types';
 import { getDomain } from '../utils/url';
 
@@ -153,23 +153,28 @@ function AssistantTurn({
 
 
       {!isSearching && !isStreaming && (
-        <div className="mt-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
-          <ActionBtn onClick={handleCopy}>
-            {copied ? (
-              <>
-                <Check className="w-3 h-3 text-success" /> Copied
-              </>
-            ) : (
-              <>
-                <Copy className="w-3 h-3" /> Copy
-              </>
-            )}
-          </ActionBtn>
-          {onRegenerate && (
-            <ActionBtn onClick={onRegenerate}>
-              <RotateCw className="w-3 h-3" /> Regenerate
-            </ActionBtn>
+        <div className="mt-3 flex items-center gap-2">
+          {typeof message.latencyMs === 'number' && (
+            <LatencyHint ms={message.latencyMs} />
           )}
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+            <ActionBtn onClick={handleCopy}>
+              {copied ? (
+                <>
+                  <Check className="w-3 h-3 text-success" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> Copy
+                </>
+              )}
+            </ActionBtn>
+            {onRegenerate && (
+              <ActionBtn onClick={onRegenerate}>
+                <RotateCw className="w-3 h-3" /> Regenerate
+              </ActionBtn>
+            )}
+          </div>
         </div>
       )}
 
@@ -198,6 +203,20 @@ function ActionBtn({
     >
       {children}
     </button>
+  );
+}
+
+function LatencyHint({ ms }: { ms: number }) {
+  const formatted =
+    ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] text-fg-subtle tabular-nums"
+      title={`Answer generated in ${ms}ms`}
+    >
+      <Clock className="w-3 h-3" aria-hidden />
+      Answered in {formatted}
+    </span>
   );
 }
 

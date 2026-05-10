@@ -18,3 +18,7 @@ class QueryResponse(BaseModel):
     # Database id of the persisted assistant message; the frontend uses it to
     # request next-step suggestions and to attach later edits to the right turn.
     message_id: Optional[str] = None
+    # Wall-clock time spent inside `generate_answer` (the LLM call). Surfaced
+    # so the chat UI can show a "Answered in 4.2s" hint — useful for users
+    # comparing model choices via the model selector.
+    latency_ms: Optional[int] = None

@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-09 · branch: `main` (everything below is merged)
+> Last updated: 2026-05-10 · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -42,6 +42,12 @@ PRs in chronological order. Each is on `main`.
 | [#16](https://github.com/paritoshtripathi935/MiniPerplexity/pull/16) | Card-style source strip with title + snippet inline |
 | [#17](https://github.com/paritoshtripathi935/MiniPerplexity/pull/17) | Lifted sources/videos out of chat thread (right rail is canonical); `max_tokens` 256 → 4096 |
 | [#18](https://github.com/paritoshtripathi935/MiniPerplexity/pull/18) | Per-user chat model selector + migrate off deprecated `@cf/meta/llama-3.1-70b-instruct` |
+
+### Shipped this session (2026-05-10)
+
+| PR | Topic |
+|---|---|
+| (open) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to existing `messages.latency_ms` (no migration), renders "⧗ Answered in 4.2s" hint under each assistant turn (rehydrates on history reload) |
 
 ### Migrations applied to prod DB (Neon)
 
