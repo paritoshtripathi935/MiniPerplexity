@@ -215,6 +215,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             originatingSearchResults: searchResults,
             originatingPlayId: pending.play.id,
             dbId: answerResponse.message_id,
+            latencyMs: answerResponse.latency_ms,
           });
           setMessages(reveal.update);
           startStreamingReveal(reveal.messageId, reveal.fullContent);
@@ -319,6 +320,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                   search_results: normaliseSearchResults(answerResponse.search_results) ?? m.search_results,
                   isSearching: false,
                   revealedLength: 0,
+                  latencyMs: answerResponse.latency_ms,
                 }
               : m
           )
@@ -379,6 +381,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           originatingSearchResults: searchResults,
           originatingPlayId: play.id,
           dbId: answerResponse.message_id,
+          latencyMs: answerResponse.latency_ms,
         });
         setMessages(reveal.update);
         startStreamingReveal(reveal.messageId, reveal.fullContent);
@@ -435,6 +438,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           originatingQuery: query,
           originatingSearchResults: searchResults,
           dbId: answerResponse.message_id,
+          latencyMs: answerResponse.latency_ms,
         });
         setMessages(reveal.update);
         startStreamingReveal(reveal.messageId, reveal.fullContent);

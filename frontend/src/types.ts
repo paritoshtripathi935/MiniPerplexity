@@ -83,4 +83,10 @@ export interface Message {
   originatingQuery?: string;
   originatingSearchResults?: any[];
   originatingPlayId?: string;
+  /**
+   * Server-measured time (ms) of the LLM answer generation for this turn.
+   * Rendered as a subtle "Answered in 4.2s" line under finished assistant
+   * messages so users can compare model choices.
+   */
+  latencyMs?: number;
 }
