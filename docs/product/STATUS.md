@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-10 · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -43,11 +43,19 @@ PRs in chronological order. Each is on `main`.
 | [#17](https://github.com/paritoshtripathi935/MiniPerplexity/pull/17) | Lifted sources/videos out of chat thread (right rail is canonical); `max_tokens` 256 → 4096 |
 | [#18](https://github.com/paritoshtripathi935/MiniPerplexity/pull/18) | Per-user chat model selector + migrate off deprecated `@cf/meta/llama-3.1-70b-instruct` |
 
-### Shipped this session (2026-05-10)
+### Shipped 2026-05-10
 
 | PR | Topic |
 |---|---|
-| (open) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to existing `messages.latency_ms` (no migration), renders "⧗ Answered in 4.2s" hint under each assistant turn (rehydrates on history reload) |
+| [#21](https://github.com/paritoshtripathi935/MiniPerplexity/pull/21) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to the existing `messages.latency_ms` column (no migration). Frontend renders a subtle "⧗ Answered in 4.2s" hint under each assistant turn; rehydrates on history reload. |
+
+### Shipped 2026-05-11
+
+| PR | Topic |
+|---|---|
+| [#22](https://github.com/paritoshtripathi935/MiniPerplexity/pull/22) | **PAI-5** — markdown tables were rendering as raw `\| col \| col \|` text. Added `remark-gfm` to `<ReactMarkdown>`. Side benefit: strikethrough, task lists, and autolinks now render too. Bundle +11 kB gzip. |
+| [#23](https://github.com/paritoshtripathi935/MiniPerplexity/pull/23) | **PAI-12** — clicking a chat row on Home opened the URL but rendered an empty conversation; the second click in the sidebar finally loaded it. Root cause: `justCreatedRef` defaulted to `true`, so the very first mount of ChatPage always skipped the history fetch. Flipped the default and moved the `true` assignment into the auto-mint effect — ref now means what it claims. |
+| — (config) | **PAI-6** — Google CSE was returning only Wikipedia. Code was fine; the existing CSE (`cx=0024…yjhm9na8hr0`) was a "Search specific sites" engine locked to wikipedia.org, owned by a Google account the user no longer had access to. Diagnosed by hitting the API directly (385 total results worldwide for any query = giveaway). Fix is dashboard-only: created a fresh CSE with a curated 48-pattern allowlist derived from `source_ranker.py`'s authority dict (marketing-authoritative subdomains like `business.linkedin.com`, `ads.google.com`, plus `*.searchengineland.com` / `*.digiday.com` / etc.). New CX: `02dc5502c7d6b459f`. **Still needs:** `GOOGLE_SEARCH_CX` updated in `backend/.env` (local) and Render env vars (prod) once the CSE site list is finalised. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -100,29 +108,42 @@ User-selectable models (UI dropdown at the top of chat):
 
 Real candidates, ranked by leverage:
 
-1. **Real SSE streaming** — 1–2 hr backend + ~30 min frontend. The
+0. **Finish PAI-6** — once the new CSE's site list is locked in, update
+   `GOOGLE_SEARCH_CX=02dc5502c7d6b459f` in `backend/.env` (local) and in
+   Render's environment variables (prod), then re-probe with the API to
+   confirm a real domain mix. ~2 min.
+
+1. **Finish gunicorn rename** — carried over from 2026-05-09. PR #20
+   added `timeout = 120` to `backend/gunicorn_config.py`, but the Render
+   start command (`gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app`)
+   doesn't reference a config file and gunicorn auto-discovers
+   `gunicorn.conf.py` (with a dot), not the underscore variant — so the
+   fix is currently a no-op. Push-only fix: `git mv backend/gunicorn_config.py
+   backend/gunicorn.conf.py`. No Render dashboard change needed.
+
+2. **Real SSE streaming** — 1–2 hr backend + ~30 min frontend. The
    client-side reveal hook in `frontend/src/hooks/useStreamingReveal.ts` is
    already shaped to swap `setInterval` → `EventSource`. Backend would change
    `/answer` to stream Cloudflare tokens. Kills the "post-fetch reveal"
    illusion in favour of real first-token latency.
 
-2. **GitHub repo rename** — 5 min. Still on `paritoshtripathi935/MiniPerplexity`.
+3. **GitHub repo rename** — 5 min. Still on `paritoshtripathi935/MiniPerplexity`.
    `gh api -X PATCH /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`
    then update README badges. Old URLs auto-redirect.
 
-3. **Mobile right rail fallback** — ~45 min. The right rail is `lg:` only,
+4. **Mobile right rail fallback** — ~45 min. The right rail is `lg:` only,
    so phones/tablets currently see no source list at all (sources are out
    of the chat thread). Either show a slide-up sheet on mobile or
    conditionally render an inline strip below `lg`.
 
-4. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
+5. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
    `darkMode: boolean` prop they don't use; only `AppLayout` actually reads
    it for the theme toggle. Frontend agent flagged it as a design-system
    violation.
 
-5. **Bundle size pass** — JS bundle grew 209 → 460 kB (gzip 64 → 137 kB)
-   over the session. `React.lazy`-splitting the chat route would help the
-   home/plays initial load.
+6. **Bundle size pass** — JS bundle now ~500 kB (gzip 149 kB) after the
+   `remark-gfm` add for PAI-5. `React.lazy`-splitting the chat route would
+   help the home/plays initial load most.
 
 V2 lever (multi-day): **Meta Ad Library integration** — the differentiator
 that justifies the rebrand. Schema can lean on existing sessions /
