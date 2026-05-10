@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useUser } from '@clerk/clerk-react';
 import { Check, Clock, Copy, RotateCw } from 'lucide-react';
 import type { Message } from '../types';
@@ -147,7 +148,9 @@ function AssistantTurn({
           prose-td:border-border prose-th:border-border
         "
       >
-        <ReactMarkdown components={components}>{visibleContent}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+          {visibleContent}
+        </ReactMarkdown>
         {isStreaming && <StreamingCursor />}
       </article>
 
