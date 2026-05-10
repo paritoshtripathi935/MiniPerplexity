@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { CalcCard, Result, inputCls } from './CalcCard';
+import { CalcCard, Field, Result, inputCls } from './CalcCard';
 import { Insight } from './Insight';
+import { ModeToggle, type CalcMode } from './ModeToggle';
 import { fmtMoney } from './formatters';
 import { blendedCacInsight } from './benchmarks';
 
@@ -11,13 +12,15 @@ interface ChannelRow {
 }
 
 export function BlendedEfficiencyCalc() {
+  const [mode, setMode] = useState<CalcMode>('forward');
   const [rows, setRows] = useState<ChannelRow[]>([
     { name: 'Meta', spend: '20000', conversions: '350' },
     { name: 'Google', spend: '15000', conversions: '210' },
     { name: 'TikTok', spend: '5000', conversions: '60' },
   ]);
+  const [targetCac, setTargetCac] = useState('80');
 
-  const result = useMemo(() => {
+  const forward = useMemo(() => {
     const totals = rows.reduce(
       (acc, r) => ({
         spend: acc.spend + (Number(r.spend) || 0),
@@ -38,9 +41,23 @@ export function BlendedEfficiencyCalc() {
     };
   }, [rows]);
 
-  const insight = result && isFinite(result.blendedCAC)
-    ? blendedCacInsight(result.blendedCAC)
-    : null;
+  const reverse = useMemo(() => {
+    const tgt = Number(targetCac);
+    if (!tgt) return null;
+    const perChannel = rows.map(r => {
+      const c = Number(r.conversions) || 0;
+      return { name: r.name, requiredSpend: c * tgt };
+    });
+    const total = perChannel.reduce((s, c) => s + c.requiredSpend, 0);
+    const totalConv = rows.reduce((s, r) => s + (Number(r.conversions) || 0), 0);
+    return { perChannel, total, totalConv };
+  }, [rows, targetCac]);
+
+  const insightValue =
+    mode === 'forward'
+      ? (forward && isFinite(forward.blendedCAC) ? forward.blendedCAC : null)
+      : (Number(targetCac) || null);
+  const insight = insightValue != null ? blendedCacInsight(insightValue) : null;
 
   const updateRow = (i: number, patch: Partial<ChannelRow>) =>
     setRows(rs => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -51,24 +68,57 @@ export function BlendedEfficiencyCalc() {
     <CalcCard
       title="Blended channel efficiency"
       description="Per-channel CAC + the blended number across all channels."
+      headerRight={
+        <ModeToggle mode={mode} onChange={setMode} reverseLabel="Plan budget" />
+      }
       results={
-        <>
-          <Result label="Total spend" value={result ? fmtMoney(result.total) : '—'} />
-          <Result
-            label="Total conversions"
-            value={result ? result.conversions.toLocaleString() : '—'}
-          />
-          <Result label="Blended CAC" value={result ? fmtMoney(result.blendedCAC) : '—'} emphasised />
-        </>
+        mode === 'forward' ? (
+          <>
+            <Result label="Total spend" value={forward ? fmtMoney(forward.total) : '—'} />
+            <Result
+              label="Total conversions"
+              value={forward ? forward.conversions.toLocaleString() : '—'}
+            />
+            <Result
+              label="Blended CAC"
+              value={forward ? fmtMoney(forward.blendedCAC) : '—'}
+              emphasised
+            />
+          </>
+        ) : (
+          <>
+            <Result
+              label="Total conversions"
+              value={reverse ? reverse.totalConv.toLocaleString() : '—'}
+            />
+            <Result
+              label="Required total spend"
+              value={reverse ? fmtMoney(reverse.total) : '—'}
+              emphasised
+            />
+          </>
+        )
       }
       insight={<Insight insight={insight} />}
     >
+      {mode === 'reverse' && (
+        <Field label="Target blended CAC ($)" value={targetCac} onChange={setTargetCac} />
+      )}
       <div className="space-y-1.5">
         <div className="grid grid-cols-12 gap-1 text-[10px] uppercase tracking-[0.06em] font-medium text-fg-subtle px-1">
           <span className="col-span-4">Channel</span>
-          <span className="col-span-3">Spend</span>
-          <span className="col-span-3">Conv</span>
-          <span className="col-span-1 text-right">CAC</span>
+          {mode === 'forward' ? (
+            <>
+              <span className="col-span-3">Spend</span>
+              <span className="col-span-3">Conv</span>
+              <span className="col-span-1 text-right">CAC</span>
+            </>
+          ) : (
+            <>
+              <span className="col-span-3">Target conv</span>
+              <span className="col-span-4 text-right">Required spend</span>
+            </>
+          )}
           <span className="col-span-1" />
         </div>
         {rows.map((r, i) => (
@@ -78,19 +128,34 @@ export function BlendedEfficiencyCalc() {
               onChange={e => updateRow(i, { name: e.target.value })}
               className={`col-span-4 ${inputCls}`}
             />
-            <input
-              value={r.spend}
-              onChange={e => updateRow(i, { spend: e.target.value })}
-              className={`col-span-3 ${inputCls}`}
-            />
-            <input
-              value={r.conversions}
-              onChange={e => updateRow(i, { conversions: e.target.value })}
-              className={`col-span-3 ${inputCls}`}
-            />
-            <span className="col-span-1 text-[11px] font-mono text-fg-muted text-right tabular-nums">
-              {fmtMoney(result?.perChannel[i]?.cac ?? null)}
-            </span>
+            {mode === 'forward' ? (
+              <>
+                <input
+                  value={r.spend}
+                  onChange={e => updateRow(i, { spend: e.target.value })}
+                  className={`col-span-3 ${inputCls}`}
+                />
+                <input
+                  value={r.conversions}
+                  onChange={e => updateRow(i, { conversions: e.target.value })}
+                  className={`col-span-3 ${inputCls}`}
+                />
+                <span className="col-span-1 text-[11px] font-mono text-fg-muted text-right tabular-nums">
+                  {fmtMoney(forward?.perChannel[i]?.cac ?? null)}
+                </span>
+              </>
+            ) : (
+              <>
+                <input
+                  value={r.conversions}
+                  onChange={e => updateRow(i, { conversions: e.target.value })}
+                  className={`col-span-3 ${inputCls}`}
+                />
+                <span className="col-span-4 text-[12px] font-mono text-fg text-right tabular-nums">
+                  {fmtMoney(reverse?.perChannel[i]?.requiredSpend ?? null)}
+                </span>
+              </>
+            )}
             <button
               onClick={() => removeRow(i)}
               className="col-span-1 text-fg-subtle hover:text-danger transition-colors"
