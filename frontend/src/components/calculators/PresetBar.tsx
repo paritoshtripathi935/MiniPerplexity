@@ -1,5 +1,4 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
 import { PRESETS, PRESET_KEYS } from './presets';
 import { usePreset } from './PresetContext';
 
@@ -8,8 +7,7 @@ export function PresetBar() {
   const { preset, apply } = usePreset();
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.06em] font-medium text-fg-subtle">
-        <Sparkles className="w-3 h-3" aria-hidden />
+      <span className="text-label-caps text-on-surface-variant uppercase">
         Preset
       </span>
       {PRESET_KEYS.map(k => {
