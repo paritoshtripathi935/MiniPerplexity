@@ -16,18 +16,43 @@ import { type PendingPlay } from './pages/ChatPage';
 // sidebar — easily 100+ kB on its own. Calculators pulls 4 calc
 // components plus the scenarios panel + compare. Plays + Settings are
 // smaller but still split to keep route-level chunks consistent.
-const ChatPage = lazy(() =>
-  import('./pages/ChatPage').then(m => ({ default: m.ChatPage })),
-);
-const PlaysPage = lazy(() =>
-  import('./pages/PlaysPage').then(m => ({ default: m.PlaysPage })),
-);
+//
+// We keep references to the raw import() promises so we can warm them
+// in the background after first paint — avoids the Suspense flash
+// (and clipped page-enter animation) on subsequent route changes.
+const importChatPage = () => import('./pages/ChatPage');
+const importPlaysPage = () => import('./pages/PlaysPage');
+const importCalculatorsPage = () => import('./pages/CalculatorsPage');
+const importSettingsPage = () => import('./pages/SettingsPage');
+
+const ChatPage = lazy(() => importChatPage().then(m => ({ default: m.ChatPage })));
+const PlaysPage = lazy(() => importPlaysPage().then(m => ({ default: m.PlaysPage })));
 const CalculatorsPage = lazy(() =>
-  import('./pages/CalculatorsPage').then(m => ({ default: m.CalculatorsPage })),
+  importCalculatorsPage().then(m => ({ default: m.CalculatorsPage })),
 );
 const SettingsPage = lazy(() =>
-  import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })),
+  importSettingsPage().then(m => ({ default: m.SettingsPage })),
 );
+
+/** Warm the lazy route chunks shortly after first paint. Runs once on
+ * AppLayout mount; uses requestIdleCallback when available so it doesn't
+ * compete with the home-page render. After this, every nav between
+ * routes finds the chunk already resolved and the Suspense fallback
+ * never paints — so the page-enter animation runs on real content. */
+function preloadRouteChunks() {
+  const warm = () => {
+    importChatPage();
+    importPlaysPage();
+    importCalculatorsPage();
+    importSettingsPage();
+  };
+  if (typeof window === 'undefined') return;
+  const ric = (window as any).requestIdleCallback as
+    | ((cb: () => void, opts?: { timeout?: number }) => number)
+    | undefined;
+  if (ric) ric(warm, { timeout: 2500 });
+  else window.setTimeout(warm, 600);
+}
 
 /** Cross-route shared state lives here; pages get what they need via props. */
 function AuthedShell() {
@@ -53,6 +78,11 @@ function AuthedShell() {
   const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [pendingPlay, setPendingPlay] = useState<PendingPlay | null>(null);
+
+  // Warm the route chunks once first paint has settled. See preloadRouteChunks.
+  useEffect(() => {
+    preloadRouteChunks();
+  }, []);
 
   // Load brand profile so we know whether to show onboarding.
   useEffect(() => {
