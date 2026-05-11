@@ -26,8 +26,8 @@ interface Props {
 }
 
 const inputCls =
-  'w-full px-3 py-2 rounded-md border border-border bg-surface text-[13px] placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
-const labelCls = 'block text-[12px] font-medium mb-1.5 text-fg';
+  'w-full px-3 py-2 rounded-md border border-border bg-surface text-body-sm placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
+const labelCls = 'block text-body-md font-medium mb-1.5 text-fg';
 
 const TOTAL_STEPS = 4;
 
@@ -90,7 +90,7 @@ export function Onboarding({ onComplete }: Props) {
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 backdrop-blur-sm">
-        <div className="px-5 py-3 rounded-lg bg-surface border border-border text-[13px] text-fg-muted">
+        <div className="px-5 py-3 rounded-lg bg-surface border border-border text-body-sm text-fg-muted">
           Loading…
         </div>
       </div>
@@ -130,7 +130,7 @@ export function Onboarding({ onComplete }: Props) {
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
                 Welcome to PaidPilot
               </h2>
-              <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">
+              <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
                 A few quick questions so every chat is grounded in your brand. You can edit these later in Settings.
               </p>
               <div className="space-y-3">
@@ -161,7 +161,7 @@ export function Onboarding({ onComplete }: Props) {
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
                 Who's your customer?
               </h2>
-              <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">
+              <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
                 One paragraph is enough. Roles, company size, geography, what they're trying to do.
               </p>
               <textarea
@@ -179,7 +179,7 @@ export function Onboarding({ onComplete }: Props) {
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
                 Where do you run paid?
               </h2>
-              <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">
+              <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
                 Pick the channels you currently spend on. We'll bias recommendations toward these.
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -191,7 +191,7 @@ export function Onboarding({ onComplete }: Props) {
                       type="button"
                       onClick={() => toggleChannel(c.id)}
                       className={clsx(
-                        'h-8 px-3 rounded-md text-[12px] font-medium transition-colors duration-150',
+                        'h-8 px-3 rounded-md text-body-md font-medium transition-colors duration-150',
                         on
                           ? 'bg-fg text-fg-inverted'
                           : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
@@ -211,7 +211,7 @@ export function Onboarding({ onComplete }: Props) {
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
                 Targets
               </h2>
-              <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">
+              <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
                 Roughly — used as a sanity check when you ask "is this number normal?"
               </p>
               <div className="grid grid-cols-2 gap-3">
@@ -243,7 +243,7 @@ export function Onboarding({ onComplete }: Props) {
           )}
 
           {error && (
-            <div className="mt-4 px-3 py-2 text-[13px] rounded-md bg-danger-subtle text-danger">
+            <div className="mt-4 px-3 py-2 text-body-sm rounded-md bg-danger-subtle text-danger">
               {error}
             </div>
           )}

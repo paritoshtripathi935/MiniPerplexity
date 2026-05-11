@@ -90,7 +90,7 @@ export function ModelSelector({ value, onChange }: Props) {
         onClick={() => setOpen(o => !o)}
         className={clsx(
           'inline-flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-md',
-          'text-[12px] font-medium text-fg-muted hover:text-fg',
+          'text-body-md font-medium text-fg-muted hover:text-fg',
           'border border-border hover:border-border-strong bg-surface',
           'transition-colors duration-150',
         )}
@@ -137,7 +137,7 @@ export function ModelSelector({ value, onChange }: Props) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[13px] font-medium truncate">{m.label}</span>
+                    <span className="text-body-sm font-medium truncate">{m.label}</span>
                     {m.recommended && (
                       <span className="inline-flex items-center gap-0.5 text-[9.5px] uppercase tracking-[0.06em] font-semibold text-brand shrink-0">
                         <Sparkles className="w-2.5 h-2.5" strokeWidth={2.5} />

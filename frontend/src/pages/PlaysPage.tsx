@@ -123,7 +123,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
         />
       )}
 
-      <h2 className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-3">
+      <h2 className="text-label-caps uppercase text-fg-subtle mb-3">
         All plays
       </h2>
 
@@ -134,7 +134,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search plays"
-            className="w-full pl-9 pr-3 h-9 rounded-md text-[13px] bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
+            className="w-full pl-9 pr-3 h-9 rounded-md text-body-sm bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -143,7 +143,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
               key={c}
               onClick={() => setFilter(c)}
               className={clsx(
-                'h-8 px-3 rounded-md text-[12px] font-medium transition-colors duration-150',
+                'h-8 px-3 rounded-md text-body-md font-medium transition-colors duration-150',
                 filter === c
                   ? 'bg-fg text-fg-inverted'
                   : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
@@ -156,7 +156,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
       </div>
 
       {loading ? (
-        <p className="text-[13px] text-fg-muted">Loading plays…</p>
+        <p className="text-body-sm text-fg-muted">Loading plays…</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(p => {
@@ -172,14 +172,14 @@ export function PlaysPage({ onPrepareRun }: Props) {
                     <div className="grid place-items-center w-8 h-8 rounded-md bg-surface-sunken text-fg-muted group-hover:bg-brand-subtle group-hover:text-brand transition-colors">
                       <Icon className="w-4 h-4" strokeWidth={2} />
                     </div>
-                    <span className="text-[10px] uppercase tracking-[0.08em] font-medium text-fg-subtle">
+                    <span className="text-label-caps uppercase text-fg-subtle">
                       {p.category}
                     </span>
                   </div>
-                  <h3 className="font-display font-semibold text-[14px] tracking-tight mb-1">
+                  <h3 className="font-display font-semibold text-body-base tracking-tight mb-1">
                     {p.title}
                   </h3>
-                  <p className="text-[13px] text-fg-muted leading-snug line-clamp-3">
+                  <p className="text-body-sm text-fg-muted leading-snug line-clamp-3">
                     {p.description}
                   </p>
                 </Card>
@@ -187,7 +187,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
             );
           })}
           {filtered.length === 0 && (
-            <p className="text-[13px] text-fg-muted col-span-full">No plays match.</p>
+            <p className="text-body-sm text-fg-muted col-span-full">No plays match.</p>
           )}
         </div>
       )}
@@ -223,7 +223,7 @@ function RecentlyUsedSection({
 }) {
   return (
     <section className="mb-8">
-      <h2 className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-3 flex items-center gap-1.5">
+      <h2 className="text-label-caps uppercase text-fg-subtle mb-3 flex items-center gap-1.5">
         <History className="w-3 h-3" />
         Recently used
       </h2>
@@ -245,14 +245,14 @@ function RecentlyUsedSection({
                     {runCount} run{runCount === 1 ? '' : 's'}
                   </span>
                 </div>
-                <h3 className="font-display font-semibold text-[14px] tracking-tight mb-1">
+                <h3 className="font-display font-semibold text-body-base tracking-tight mb-1">
                   {play.title}
                 </h3>
                 <div className="flex items-center justify-between gap-2 mt-2">
-                  <span className="text-[12px] text-fg-subtle">
+                  <span className="text-body-md text-fg-subtle">
                     {relativeTime(lastRunAt)}
                   </span>
-                  <span className="text-[12px] text-brand font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-body-md text-brand font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                     Run again →
                   </span>
                 </div>

@@ -24,7 +24,7 @@ export function Insight({ insight }: { insight: InsightData | null }) {
       className={`flex gap-2 mt-3 px-2.5 py-2 rounded-md ${TONE[insight.state]}`}
     >
       <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0" aria-hidden />
-      <div className="text-[12px] leading-relaxed">
+      <div className="text-body-md leading-relaxed">
         <div className="font-medium">{insight.headline}</div>
         <div className="text-[11px] opacity-80 mt-0.5">{insight.benchmark}</div>
       </div>

@@ -570,7 +570,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               </div>
             )}
             {error && (
-              <div className="mt-6 p-4 rounded-md bg-danger-subtle text-danger text-[13px]">
+              <div className="mt-6 p-4 rounded-md bg-danger-subtle text-danger text-body-sm">
                 {error}
               </div>
             )}

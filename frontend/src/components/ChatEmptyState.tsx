@@ -51,11 +51,11 @@ export function ChatEmptyState({
 
   return (
     <div className="mt-16 sm:mt-24 animate-fade-in">
-      <h2 className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tight text-fg">
+      <h2 className="font-display text-h1 sm:text-[28px] font-semibold tracking-tight text-fg">
         Start by asking what changed, what to test, or what to scale.
       </h2>
       {profile?.company_name && (
-        <p className="text-[14px] text-fg-muted mt-2 max-w-xl leading-relaxed">
+        <p className="text-body-base text-fg-muted mt-2 max-w-xl leading-relaxed">
           Working on {profile.company_name}. Your brand context is applied automatically.
         </p>
       )}
@@ -67,10 +67,10 @@ export function ChatEmptyState({
             onClick={() => onPick(s.prompt)}
             className="group text-left rounded-lg border border-border bg-surface hover:bg-surface-sunken hover:border-border-strong transition-colors duration-150 p-4 focus-visible:outline-none focus-visible:shadow-focus"
           >
-            <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-1.5">
+            <div className="text-label-caps uppercase text-fg-subtle mb-1.5">
               {s.tag}
             </div>
-            <div className="text-[13.5px] text-fg leading-snug">{s.prompt}</div>
+            <div className="text-body-sm text-fg leading-snug">{s.prompt}</div>
           </button>
         ))}
       </div>

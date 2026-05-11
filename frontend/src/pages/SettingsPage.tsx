@@ -28,8 +28,8 @@ interface Props {
 }
 
 const fieldCls =
-  'w-full px-3 py-2 rounded-md border border-border bg-surface text-[13px] placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
-const labelCls = 'block text-[12px] font-medium mb-1.5 text-fg';
+  'w-full px-3 py-2 rounded-md border border-border bg-surface text-body-sm placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
+const labelCls = 'block text-body-md font-medium mb-1.5 text-fg';
 
 export function SettingsPage({ onUpdate }: Props) {
   const { getToken } = useAuth();
@@ -97,7 +97,7 @@ export function SettingsPage({ onUpdate }: Props) {
     }
   };
 
-  if (loading) return <p className="text-[13px] text-fg-muted">Loading…</p>;
+  if (loading) return <p className="text-body-sm text-fg-muted">Loading…</p>;
 
   return (
     <>
@@ -151,7 +151,7 @@ export function SettingsPage({ onUpdate }: Props) {
                     type="button"
                     onClick={() => toggleChannel(c.id)}
                     className={clsx(
-                      'h-8 px-3 rounded-md text-[12px] font-medium transition-colors duration-150',
+                      'h-8 px-3 rounded-md text-body-md font-medium transition-colors duration-150',
                       on
                         ? 'bg-fg text-fg-inverted'
                         : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
@@ -214,14 +214,14 @@ export function SettingsPage({ onUpdate }: Props) {
           </div>
 
           {error && (
-            <div className="px-3 py-2 text-[13px] rounded-md bg-danger-subtle text-danger">
+            <div className="px-3 py-2 text-body-sm rounded-md bg-danger-subtle text-danger">
               {error}
             </div>
           )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
             {savedAt && Date.now() - savedAt < 4000 && (
-              <span className="text-[12px] text-success inline-flex items-center gap-1">
+              <span className="text-body-md text-success inline-flex items-center gap-1">
                 <Check className="w-3 h-3" /> Saved
               </span>
             )}
@@ -232,10 +232,10 @@ export function SettingsPage({ onUpdate }: Props) {
         </Card>
 
         <Card className="p-5 h-fit">
-          <h2 className="font-display font-semibold text-[14px] tracking-tight mb-3">
+          <h2 className="font-display font-semibold text-body-base tracking-tight mb-3">
             How this is used
           </h2>
-          <ul className="text-[13px] text-fg-muted space-y-2.5 leading-relaxed">
+          <ul className="text-body-sm text-fg-muted space-y-2.5 leading-relaxed">
             <li><span className="text-fg">Every chat</span> gets your brand context in the system prompt.</li>
             <li><span className="text-fg">Plays</span> personalise their output to your channels and ICP.</li>
             <li><span className="text-fg">Targets</span> sanity-check your "is this CAC normal?" questions.</li>

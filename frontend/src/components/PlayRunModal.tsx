@@ -62,7 +62,7 @@ export function PlayRunModal({ play, onClose, onSubmit }: Props) {
   };
 
   const inputCls =
-    'w-full px-3 py-2 rounded-md border border-border bg-surface text-[13px] placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
+    'w-full px-3 py-2 rounded-md border border-border bg-surface text-body-sm placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 backdrop-blur-sm p-4 animate-fade-in">
@@ -75,21 +75,21 @@ export function PlayRunModal({ play, onClose, onSubmit }: Props) {
           <X className="w-4 h-4" />
         </button>
         <div className="p-6">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-1">
+          <div className="flex items-center gap-1.5 text-label-caps uppercase text-fg-subtle mb-1">
             <Sparkles className="w-3 h-3" />
             {play.category}
           </div>
-          <h2 className="font-display text-[18px] font-semibold tracking-tight mb-1">
+          <h2 className="font-display text-h2 font-semibold tracking-tight mb-1">
             {play.title}
           </h2>
-          <p className="text-[13px] text-fg-muted mb-5 leading-relaxed">
+          <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
             {play.description}
           </p>
 
           <div className="space-y-3.5">
             {play.inputs.map((i: PlayInput) => (
               <div key={i.key}>
-                <label className="block text-[12px] font-medium mb-1 text-fg">
+                <label className="block text-body-md font-medium mb-1 text-fg">
                   {i.label}
                   {i.required && <span className="text-danger ml-1">*</span>}
                 </label>
@@ -128,7 +128,7 @@ export function PlayRunModal({ play, onClose, onSubmit }: Props) {
           </div>
 
           {err && (
-            <div className="mt-4 px-3 py-2 text-[13px] rounded-md bg-danger-subtle text-danger">
+            <div className="mt-4 px-3 py-2 text-body-sm rounded-md bg-danger-subtle text-danger">
               {err}
             </div>
           )}

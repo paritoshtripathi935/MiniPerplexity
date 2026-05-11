@@ -53,7 +53,7 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
             <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg">
               <Logo className="w-4 h-4" />
             </span>
-            <span className="font-display font-semibold tracking-tight text-[15px]">
+            <span className="font-display font-semibold tracking-tight text-body-base">
               PaidPilot
             </span>
           </NavLink>
@@ -68,7 +68,7 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
                   end={item.end}
                   className={({ isActive }) =>
                     clsx(
-                      'inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-[13px] font-medium transition-colors duration-150',
+                      'inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-body-sm font-medium transition-colors duration-150',
                       isActive
                         ? 'text-fg bg-surface-sunken'
                         : 'text-fg-subtle hover:text-fg hover:bg-surface-sunken/60'
@@ -90,7 +90,7 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
               title="Open command palette"
             >
               <Search className="w-3.5 h-3.5" />
-              <span className="text-[12px]">Search</span>
+              <span className="text-body-md">Search</span>
               <kbd className="inline-grid place-items-center min-w-[18px] h-[16px] px-1 text-[10px] font-medium text-fg-subtle bg-surface-sunken rounded">
                 {isMac ? '⌘' : 'Ctrl'}
               </kbd>
@@ -149,11 +149,11 @@ export function PageHeader({
   return (
     <div className="mb-8 flex items-start justify-between gap-4">
       <div>
-        <h1 className="font-display text-[28px] font-semibold tracking-tight">
+        <h1 className="font-display text-h1">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-[14px] text-fg-muted mt-1.5 max-w-2xl leading-relaxed">
+          <p className="text-body-base text-fg-muted mt-1.5 max-w-2xl leading-relaxed">
             {subtitle}
           </p>
         )}
