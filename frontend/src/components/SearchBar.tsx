@@ -199,7 +199,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
           disabled={loading}
           className={clsx(
             'block w-full resize-none bg-transparent outline-none px-4 pt-3 pb-2',
-            'text-[15px] leading-[1.5] placeholder:text-fg-subtle',
+            'text-body-base leading-[1.5] placeholder:text-fg-subtle',
             'disabled:opacity-60'
           )}
         />
@@ -210,7 +210,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
               type="button"
               onClick={() => setShowUrlInput(s => !s)}
               className={clsx(
-                'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[12px]',
+                'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-body-md',
                 'transition-colors duration-150',
                 hasUrl || showUrlInput
                   ? 'bg-brand-subtle text-brand'
@@ -266,7 +266,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
             value={customUrl}
             onChange={e => setCustomUrl(e.target.value)}
             placeholder="Paste a URL — PaidPilot will read this page instead of running a search."
-            className="flex-1 px-3 h-8 rounded-md text-[12px] bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
+            className="flex-1 px-3 h-8 rounded-md text-body-md bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
           />
           <button
             onClick={clearUrl}
@@ -304,7 +304,7 @@ function Chip({ tone, icon, label, title, onClear, clearLabel }: ChipProps) {
     <div
       title={title}
       className={clsx(
-        'inline-flex items-center gap-2 h-7 pl-2 pr-1 rounded-full text-[12px] font-medium transition-colors',
+        'inline-flex items-center gap-2 h-7 pl-2 pr-1 rounded-full text-body-md font-medium transition-colors',
         palette
       )}
     >

@@ -57,6 +57,7 @@ export default {
         'h2': ['1.125rem', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '600' }],
         'body-base': ['0.875rem', { lineHeight: '1.5', letterSpacing: '0em', fontWeight: '400' }],
         'body-sm': ['0.8125rem', { lineHeight: '1.4', letterSpacing: '0em', fontWeight: '400' }],
+        'body-md': ['0.75rem', { lineHeight: '1.4', letterSpacing: '0em', fontWeight: '400' }],
         'label-caps': ['0.6875rem', { lineHeight: '1', letterSpacing: '0.05em', fontWeight: '600' }],
       },
       colors: {
@@ -162,10 +163,27 @@ export default {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
+        // Operator-style status indicator: calm 1Hz pulse, only dips to 40%
+        // (Tailwind's default animate-pulse goes to 50% which reads as too
+        // theatrical on a primary-colored dot per CLAUDE.md). Used by the
+        // "Searching" / "Writing" dots, not by any brand icon.
+        'status-blink': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.4' },
+        },
+        // Text cursor blink. Hard on/off rather than fade — the convention
+        // every operator tool uses (Linear, VSCode, terminal). 1Hz so it's
+        // present-but-not-distracting.
+        'cursor-blink': {
+          '0%, 49%': { opacity: '1' },
+          '50%, 100%': { opacity: '0' },
+        },
       },
       animation: {
         'fade-in-up': 'fade-in-up 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
         shimmer: 'shimmer 1.4s linear infinite',
+        'status-blink': 'status-blink 1.4s ease-in-out infinite',
+        'cursor-blink': 'cursor-blink 1s steps(1, end) infinite',
       },
     },
   },

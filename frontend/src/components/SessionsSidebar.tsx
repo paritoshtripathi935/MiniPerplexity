@@ -161,7 +161,7 @@ export function SessionsSidebar({
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Search history"
-              className="w-full pl-8 pr-7 h-8 rounded-md text-[12px] bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
+              className="w-full pl-8 pr-7 h-8 rounded-md text-body-md bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
             />
             {query && (
               <button
@@ -186,7 +186,7 @@ export function SessionsSidebar({
       </div>
 
       <SignedOut>
-        <div className="px-4 py-6 text-[13px] text-fg-muted">
+        <div className="px-4 py-6 text-body-sm text-fg-muted">
           Sign in to keep your investigations across devices.
         </div>
       </SignedOut>
@@ -194,14 +194,14 @@ export function SessionsSidebar({
       <SignedIn>
         <div className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
           {errMsg && (
-            <div className="mb-2 mx-1 px-3 py-2 text-[12px] rounded-md bg-danger-subtle text-danger">
+            <div className="mb-2 mx-1 px-3 py-2 text-body-md rounded-md bg-danger-subtle text-danger">
               {errMsg}
             </div>
           )}
 
           {searchResults !== null ? (
             <div>
-              <div className="px-2 pb-1.5 text-[10px] uppercase tracking-[0.06em] font-medium text-fg-subtle">
+              <div className="px-2 pb-1.5 text-label-caps uppercase text-fg-subtle">
                 {searching ? 'Searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
               </div>
               {searchResults.map(hit => (
@@ -210,7 +210,7 @@ export function SessionsSidebar({
                   onClick={() => onSelectSession(hit.session_id)}
                   className="w-full text-left px-2.5 py-2 rounded-md hover:bg-surface transition-colors"
                 >
-                  <div className="font-medium text-[13px] truncate">{hit.title || 'Untitled'}</div>
+                  <div className="font-medium text-body-sm truncate">{hit.title || 'Untitled'}</div>
                   <div
                     className="text-fg-muted text-[11px] mt-1 line-clamp-2 leading-snug [&_mark]:bg-brand/20 [&_mark]:text-fg [&_mark]:rounded-sm [&_mark]:px-0.5"
                     dangerouslySetInnerHTML={{ __html: hit.snippet }}
@@ -221,16 +221,16 @@ export function SessionsSidebar({
                 </button>
               ))}
               {!searching && searchResults.length === 0 && (
-                <div className="px-3 py-3 text-[13px] text-fg-muted">No matches.</div>
+                <div className="px-3 py-3 text-body-sm text-fg-muted">No matches.</div>
               )}
             </div>
           ) : (
             <ul className="space-y-0.5">
               {loading && sessions.length === 0 && (
-                <li className="px-3 py-2 text-[13px] text-fg-muted">Loading…</li>
+                <li className="px-3 py-2 text-body-sm text-fg-muted">Loading…</li>
               )}
               {!loading && sessions.length === 0 && (
-                <li className="px-3 py-2 text-[13px] text-fg-muted">
+                <li className="px-3 py-2 text-body-sm text-fg-muted">
                   No investigations yet. Start by asking what changed, what to test, or what to scale.
                 </li>
               )}
@@ -248,7 +248,7 @@ export function SessionsSidebar({
                             if (e.key === 'Enter') onRename(s.id);
                             if (e.key === 'Escape') setRenameId(null);
                           }}
-                          className="flex-1 px-2 h-7 rounded-md text-[12px] outline-none border border-border bg-surface focus-visible:shadow-focus"
+                          className="flex-1 px-2 h-7 rounded-md text-body-md outline-none border border-border bg-surface focus-visible:shadow-focus"
                         />
                         <Button size="sm" variant="primary" onClick={() => onRename(s.id)}>
                           Save
@@ -263,7 +263,7 @@ export function SessionsSidebar({
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium text-[13px] truncate">
+                          <div className="font-medium text-body-sm truncate">
                             {s.title || 'Untitled'}
                           </div>
                           <div className="text-fg-subtle text-[10px] shrink-0 tabular-nums">

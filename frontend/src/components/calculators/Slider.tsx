@@ -16,7 +16,7 @@ export function Slider({ label, min, max, step, value, onChange, format }: Props
   const safe = isFinite(value) ? Math.min(Math.max(value, min), max) : min;
   return (
     <div>
-      <div className="flex justify-between items-baseline text-[10px] uppercase tracking-[0.06em] font-medium text-fg-subtle mb-1">
+      <div className="flex justify-between items-baseline text-label-caps uppercase text-fg-subtle mb-1">
         <span>{label}</span>
         <span className="font-mono normal-case tracking-normal text-[11px] text-fg-muted">
           {display}

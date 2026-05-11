@@ -31,7 +31,7 @@ export function ScenarioCompare({ scenarios, fields }: Props) {
 
   return (
     <div className="mt-3 rounded-md border border-border overflow-x-auto">
-      <table className="w-full text-[12px] border-collapse">
+      <table className="w-full text-body-md border-collapse">
         <thead>
           <tr className="bg-surface-sunken">
             <th className="text-left font-medium text-fg-subtle px-3 py-2 border-b border-border">

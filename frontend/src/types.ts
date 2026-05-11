@@ -4,21 +4,6 @@ export interface SearchResult {
   snippet: string;
 }
 
-export interface Answer {
-  text: string;
-  sources: Array<{
-    title: string;
-    url: string;
-    snippet?: string;
-  }>;
-  loading: boolean;
-  search_results?: Array<{
-    source: string;
-    type: string;
-    title?: string;
-  }>;
-}
-
 /**
  * Per-result entry stored on a message. `source` is the URL (legacy field
  * name preserved for back-compat with the existing renderer); `type` carries

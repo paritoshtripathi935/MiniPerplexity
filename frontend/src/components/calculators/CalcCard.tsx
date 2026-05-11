@@ -2,7 +2,7 @@ import React from 'react';
 import { Card } from '../ui/Card';
 
 export const inputCls =
-  'w-full px-2.5 h-9 rounded-md border border-border bg-surface text-[13px] tabular-nums placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
+  'w-full px-2.5 h-9 rounded-md border border-border bg-surface text-body-sm tabular-nums placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
 
 export function CalcCard({
   title,
@@ -25,8 +25,8 @@ export function CalcCard({
     <Card className="p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-display font-semibold text-[14px] tracking-tight">{title}</h3>
-          <p className="text-[12px] text-fg-muted mt-0.5 leading-relaxed">{description}</p>
+          <h3 className="font-display font-semibold text-body-base tracking-tight">{title}</h3>
+          <p className="text-body-md text-fg-muted mt-0.5 leading-relaxed">{description}</p>
         </div>
         {headerRight && <div className="shrink-0">{headerRight}</div>}
       </div>
@@ -49,7 +49,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="block text-[10px] uppercase tracking-[0.06em] font-medium text-fg-subtle mb-1">
+      <span className="block text-label-caps uppercase text-fg-subtle mb-1">
         {label}
       </span>
       <input
@@ -73,9 +73,9 @@ export function Result({
 }) {
   return (
     <div className="flex items-baseline justify-between">
-      <span className="text-[12px] text-fg-subtle">{label}</span>
+      <span className="text-body-md text-fg-subtle">{label}</span>
       <span
-        className={`font-mono ${emphasised ? 'text-[15px] font-semibold text-fg' : 'text-[13px] text-fg'}`}
+        className={`font-mono ${emphasised ? 'text-body-base font-semibold text-fg' : 'text-body-sm text-fg'}`}
       >
         {value}
       </span>

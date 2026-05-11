@@ -158,7 +158,7 @@ export function BlendedEfficiencyCalc({ registerLoadHandler }: CalcProps = {}) {
         <Field label="Target blended CAC ($)" value={targetCac} onChange={setTargetCac} />
       )}
       <div className="space-y-1.5">
-        <div className="grid grid-cols-12 gap-1 text-[10px] uppercase tracking-[0.06em] font-medium text-fg-subtle px-1">
+        <div className="grid grid-cols-12 gap-1 text-label-caps uppercase text-fg-subtle px-1">
           <span className="col-span-4">Channel</span>
           {mode === 'forward' ? (
             <>
@@ -204,7 +204,7 @@ export function BlendedEfficiencyCalc({ registerLoadHandler }: CalcProps = {}) {
                   onChange={e => updateRow(i, { conversions: e.target.value })}
                   className={`col-span-3 ${inputCls}`}
                 />
-                <span className="col-span-4 text-[12px] font-mono text-fg text-right tabular-nums">
+                <span className="col-span-4 text-body-md font-mono text-fg text-right tabular-nums">
                   {fmtMoney(reverse?.perChannel[i]?.requiredSpend ?? null)}
                 </span>
               </>
@@ -220,7 +220,7 @@ export function BlendedEfficiencyCalc({ registerLoadHandler }: CalcProps = {}) {
         ))}
         <button
           onClick={addRow}
-          className="text-[12px] text-brand hover:underline mt-1"
+          className="text-body-md text-brand hover:underline mt-1"
         >
           + Add channel
         </button>

@@ -58,7 +58,7 @@ export function SlashMenu({ plays, query, onSelect, onDismiss }: Props) {
 
   if (filtered.length === 0) {
     return (
-      <div className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-border bg-surface shadow-popover px-3 py-2 text-[13px] text-fg-muted animate-fade-in">
+      <div className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-border bg-surface shadow-popover px-3 py-2 text-body-sm text-fg-muted animate-fade-in">
         No plays match "{query}".
       </div>
     );
@@ -66,7 +66,7 @@ export function SlashMenu({ plays, query, onSelect, onDismiss }: Props) {
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-border bg-surface shadow-popover overflow-hidden animate-fade-in">
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle border-b border-border bg-surface-sunken/60 flex items-center justify-between">
+      <div className="px-3 py-1.5 text-label-caps uppercase text-fg-subtle border-b border-border bg-surface-sunken/60 flex items-center justify-between">
         <span className="inline-flex items-center gap-1.5">
           <Sparkles className="w-3 h-3" />
           Plays
@@ -92,12 +92,12 @@ export function SlashMenu({ plays, query, onSelect, onDismiss }: Props) {
               )}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] font-medium text-fg truncate">{p.title}</span>
-                <span className="text-[10px] uppercase tracking-[0.08em] font-medium text-fg-subtle shrink-0">
+                <span className="text-body-sm font-medium text-fg truncate">{p.title}</span>
+                <span className="text-label-caps uppercase text-fg-subtle shrink-0">
                   {p.category}
                 </span>
               </div>
-              <div className="text-[12px] text-fg-muted line-clamp-1 mt-0.5">{p.description}</div>
+              <div className="text-body-md text-fg-muted line-clamp-1 mt-0.5">{p.description}</div>
             </button>
           </li>
         ))}

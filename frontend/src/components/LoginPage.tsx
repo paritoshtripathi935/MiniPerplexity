@@ -44,7 +44,7 @@ const LoginPage: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-[13px] text-fg-muted mb-5">{developerData.name}</p>
+            <p className="text-body-sm text-fg-muted mb-5">{developerData.name}</p>
             <div className="space-y-1">
               {developerData.links.map((link, index) => (
                 <a
@@ -58,8 +58,8 @@ const LoginPage: React.FC = () => {
                     {link.icon}
                   </span>
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium">{link.label}</div>
-                    <div className="text-[12px] text-fg-subtle truncate">{link.text}</div>
+                    <div className="text-body-sm font-medium">{link.label}</div>
+                    <div className="text-body-md text-fg-subtle truncate">{link.text}</div>
                   </div>
                 </a>
               ))}
@@ -85,12 +85,12 @@ const LoginPage: React.FC = () => {
               <h1 className="font-display text-[36px] sm:text-[44px] leading-[1.05] tracking-[-0.02em] font-semibold">
                 An operating system for growth teams.
               </h1>
-              <p className="text-[15px] text-fg-muted mt-4 max-w-md leading-relaxed">
+              <p className="text-body-base text-fg-muted mt-4 max-w-md leading-relaxed">
                 Benchmarks, briefs, and channel plans without the Slack-and-search slog. Your brand context is baked into every answer. Free while in beta.
               </p>
             </div>
 
-            <ul className="space-y-2.5 text-[14px] text-fg-muted max-w-md">
+            <ul className="space-y-2.5 text-body-base text-fg-muted max-w-md">
               {FEATURE_LIST.map((line, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <span className="mt-2 inline-block w-1 h-1 rounded-full bg-brand shrink-0" />
@@ -101,7 +101,7 @@ const LoginPage: React.FC = () => {
 
             <button
               onClick={() => setShowContact(true)}
-              className="text-[13px] text-fg-muted hover:text-fg transition-colors"
+              className="text-body-sm text-fg-muted hover:text-fg transition-colors"
             >
               Reach the developer →
             </button>
@@ -117,7 +117,7 @@ const LoginPage: React.FC = () => {
       </main>
 
       <footer className="relative z-10 border-t border-border bg-surface/60 backdrop-blur">
-        <div className="max-w-5xl mx-auto px-4 py-4 text-center text-[12px] text-fg-subtle">
+        <div className="max-w-5xl mx-auto px-4 py-4 text-center text-body-md text-fg-subtle">
           <a
             href="https://github.com/paritoshtripathi935/MiniPerplexity"
             target="_blank"

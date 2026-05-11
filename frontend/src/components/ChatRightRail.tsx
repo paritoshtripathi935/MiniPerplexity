@@ -161,7 +161,7 @@ function RailToggle({
         <CollapsedBadges sourceCount={sourceCount} videoCount={videoCount} />
       )}
       {expanded && (
-        <span className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle pr-1">
+        <span className="text-label-caps uppercase text-fg-subtle pr-1">
           Evidence
         </span>
       )}
@@ -205,7 +205,7 @@ function Badge({ icon, value }: { icon: React.ReactNode; value: number }) {
 function ActivePlayPanel({ play }: { play: Play }) {
   return (
     <section className="shrink-0">
-      <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
+      <h3 className="text-label-caps uppercase text-fg-subtle mb-2">
         Active play
       </h3>
       <div className="flex items-start gap-2.5 p-3 rounded-lg bg-brand-subtle/40 border border-brand-subtle">
@@ -213,7 +213,7 @@ function ActivePlayPanel({ play }: { play: Play }) {
           <PlayCircle className="w-3.5 h-3.5" strokeWidth={2} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold text-fg leading-tight">
+          <div className="text-body-sm font-semibold text-fg leading-tight">
             {play.title}
           </div>
           <div className="text-[11px] text-fg-muted mt-0.5 leading-snug line-clamp-2">
@@ -299,7 +299,7 @@ function parseYouTubeId(url: string): string | null {
 function VideosPanel({ videos }: { videos: AggregatedVideo[] }) {
   return (
     <section className="flex-1 min-h-0 flex flex-col">
-      <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2 flex items-center gap-1.5 shrink-0">
+      <h3 className="text-label-caps uppercase text-fg-subtle mb-2 flex items-center gap-1.5 shrink-0">
         <Youtube className="w-3 h-3 text-fg-muted" />
         Videos · {videos.length}
       </h3>
@@ -313,11 +313,11 @@ function VideosPanel({ videos }: { videos: AggregatedVideo[] }) {
             title={v.title}
             className="group block"
           >
-            <div className="aspect-video rounded-md overflow-hidden bg-surface-sunken border border-border">
+            <div className="aspect-video rounded-md overflow-hidden bg-surface-sunken border border-border group-hover:border-outline transition-colors">
               <img
                 src={`https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`}
                 alt={v.title}
-                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300 ease-out-expo"
+                className="w-full h-full object-cover"
                 onError={e => {
                   (e.currentTarget as HTMLImageElement).src = `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
                 }}
@@ -338,12 +338,12 @@ function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
   return (
     <section className="flex-1 min-h-0 flex flex-col">
       <div className="flex items-center justify-between mb-2 shrink-0">
-        <h3 className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
+        <h3 className="text-label-caps uppercase text-fg-subtle">
           Sources · {sources.length}
         </h3>
         {authoritativeCount > 0 && (
           <span
-            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] font-semibold text-brand"
+            className="inline-flex items-center gap-1 text-label-caps uppercase text-brand"
             title={`${authoritativeCount} authoritative`}
           >
             <ShieldCheck className="w-3 h-3" strokeWidth={2.5} />
@@ -386,7 +386,7 @@ function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
                 )}
                 <ExternalLink className="w-3 h-3 text-fg-subtle opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </div>
-              <div className="text-[12px] text-fg font-medium leading-snug line-clamp-2">
+              <div className="text-body-md text-fg font-medium leading-snug line-clamp-2">
                 {s.title || s.domain}
               </div>
               {s.snippet && (

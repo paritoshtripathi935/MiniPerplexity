@@ -45,10 +45,10 @@ export function ChatMessage({
 function UserTurn({ name, content }: { name: string; content: string }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-1.5">
+      <div className="text-label-caps uppercase text-fg-subtle mb-1.5">
         {name}
       </div>
-      <div className="text-[15px] text-fg leading-relaxed whitespace-pre-wrap">
+      <div className="text-body-base text-fg leading-relaxed whitespace-pre-wrap">
         {content}
       </div>
     </div>
@@ -107,7 +107,7 @@ function AssistantTurn({
   return (
     <div className="group">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[11px] uppercase tracking-[0.08em] font-semibold text-fg-subtle">
+        <span className="text-label-caps uppercase text-fg-subtle">
           PaidPilot
         </span>
         {(isSearching || isStreaming) && <SearchingDot label={isSearching ? 'Searching' : 'Writing'} />}
@@ -121,21 +121,21 @@ function AssistantTurn({
         className="
           prose prose-sm max-w-none text-fg
           prose-headings:font-display prose-headings:tracking-tight prose-headings:text-fg
-          prose-h1:text-[20px] prose-h1:mt-0 prose-h2:text-[16px] prose-h3:text-[14px]
-          prose-p:leading-[1.7] prose-p:text-[15px] prose-p:text-fg
+          prose-h1:text-[20px] prose-h1:mt-0 prose-h2:text-[16px] prose-h3:text-body-base
+          prose-p:leading-[1.7] prose-p:text-body-base prose-p:text-fg
           prose-strong:text-fg prose-strong:font-semibold
           prose-a:text-brand prose-a:no-underline hover:prose-a:underline
           prose-code:bg-surface-sunken prose-code:text-fg prose-code:px-1 prose-code:py-0.5
           prose-code:rounded prose-code:text-[0.85em] prose-code:font-mono
           prose-code:before:content-none prose-code:after:content-none
           prose-pre:bg-surface-sunken prose-pre:border prose-pre:border-border
-          prose-pre:rounded-md prose-pre:text-[13px]
-          prose-li:text-[15px] prose-li:leading-relaxed
+          prose-pre:rounded-md prose-pre:text-body-sm
+          prose-li:text-body-base prose-li:leading-relaxed
           prose-blockquote:border-l-2 prose-blockquote:border-brand
           prose-blockquote:bg-brand-subtle/30 prose-blockquote:py-0.5
           prose-blockquote:px-3 prose-blockquote:not-italic
           prose-hr:border-border
-          prose-table:text-[13px]
+          prose-table:text-body-sm
           prose-th:bg-surface-sunken prose-th:font-semibold
           prose-td:border-border prose-th:border-border
         "
@@ -194,7 +194,7 @@ function ActionBtn({
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[12px] text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
+      className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-body-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
     >
       {children}
     </button>
@@ -217,20 +217,23 @@ function LatencyHint({ ms }: { ms: number }) {
 
 function SearchingDot({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-fg-subtle">
-      <span className="relative flex h-1.5 w-1.5">
-        <span className="absolute inset-0 rounded-full bg-brand opacity-60 animate-ping" />
-        <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-brand" />
-      </span>
+    <span className="inline-flex items-center gap-1.5 text-label-caps text-on-surface-variant">
+      {/* Calm 1Hz opacity blink — replaces the radiating animate-ping ring
+       * per PAI-13's calm-motion rule. Single dot, no halo. */}
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-status-blink" />
       {label}
     </span>
   );
 }
 
 function StreamingCursor() {
+  // 1Hz blink at calm contrast — the cursor blink is a UX convention so we
+  // keep the motion, but drop Tailwind's default animate-pulse (which dips
+  // to 50% opacity and is too theatrical on a brand-colored bar per
+  // CLAUDE.md). animate-cursor-blink is defined in tailwind.config.js.
   return (
     <span
-      className="inline-block w-[2px] h-[1em] bg-brand align-text-bottom ml-0.5 animate-pulse"
+      className="inline-block w-[2px] h-[1em] bg-on-surface-variant align-text-bottom ml-0.5 animate-cursor-blink"
       aria-hidden
     />
   );
@@ -239,12 +242,12 @@ function StreamingCursor() {
 function SearchingPanel({ urls }: { urls: string[] }) {
   return (
     <div className="mb-4 p-3 rounded-md bg-surface-sunken border border-border">
-      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
+      <div className="text-label-caps uppercase text-fg-subtle mb-2">
         Reading sources
       </div>
       <ul className="space-y-1.5 max-h-40 overflow-y-auto">
         {urls.map((url, i) => (
-          <li key={i} className="flex items-center gap-2 text-[12px] text-fg-muted animate-fade-in">
+          <li key={i} className="flex items-center gap-2 text-body-md text-fg-muted animate-fade-in">
             <span className="inline-block w-3 h-3 rounded-sm overflow-hidden bg-border shrink-0">
               <img
                 src={`https://www.google.com/s2/favicons?sz=32&domain=${getDomain(url)}`}
@@ -397,7 +400,7 @@ function NextStepChips({
   if (!loading && (!items || items.length === 0)) return null;
   return (
     <div className="mt-4 pt-3 border-t border-border/60">
-      <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle mb-2">
+      <div className="text-label-caps uppercase text-fg-subtle mb-2">
         Next steps
       </div>
       <div className="flex flex-col gap-1.5">
@@ -407,7 +410,7 @@ function NextStepChips({
               <button
                 key={text}
                 onClick={() => onSubmit(text)}
-                className="text-left inline-flex items-start gap-1.5 px-3 py-2 rounded-md text-[13px] text-fg-muted bg-surface-sunken hover:bg-brand-subtle hover:text-brand border border-transparent hover:border-brand/30 transition-colors"
+                className="text-left inline-flex items-start gap-1.5 px-3 py-2 rounded-md text-body-sm text-fg-muted bg-surface-sunken hover:bg-brand-subtle hover:text-brand border border-transparent hover:border-brand/30 transition-colors"
               >
                 <span className="text-fg-subtle">→</span>
                 <span className="leading-snug">{text}</span>
