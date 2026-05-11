@@ -53,7 +53,8 @@ PRs in chronological order. Each is on `main`.
 
 | PR | Topic |
 |---|---|
-| [#29](https://github.com/paritoshtripathi935/MiniPerplexity/pull/29) | **Real SSE streaming for `/answer`** (slices A+B). New `POST /api/v1/answer/{session_id}/stream` returning `text/event-stream`; backend uses async `httpx` against Cloudflare with `stream: true`. Frontend `streamAnswer()` parses SSE frames and appends tokens live — no more `setInterval`-based reveal on the search/play paths. Dual-schema handled (`_extract_stream_delta`). Persistence runs after the stream so a mid-flight drop never half-saves a turn. Smoke-tested against `gpt-oss-120b` + Mistral; both stream word-level chunks. **Regenerate still uses the JSON `/answer`** (Slice C deferred). Merged with a true merge commit (admin bypass of linear-history). |
+| [#29](https://github.com/paritoshtripathi935/MiniPerplexity/pull/29) | **Real SSE streaming for `/answer`** (slices A+B). New `POST /api/v1/answer/{session_id}/stream` returning `text/event-stream`; backend uses async `httpx` against Cloudflare with `stream: true`. Frontend `streamAnswer()` parses SSE frames and appends tokens live — no more `setInterval`-based reveal on the search/play paths. Dual-schema handled (`_extract_stream_delta`). Persistence runs after the stream so a mid-flight drop never half-saves a turn. Smoke-tested against `gpt-oss-120b` + Mistral; both stream word-level chunks. Merged with a true merge commit (admin bypass of linear-history). |
+| [#31](https://github.com/paritoshtripathi935/MiniPerplexity/pull/31) | **Slice C — Regenerate on streaming + cleanup.** Regenerate now uses the same `runAnswerStream` helper; first token replaces "_Regenerating…_" in place. Replaces `Message.revealedLength: number` with `Message.isStreaming: boolean` — the latter is what actually drives the Writing indicator + cursor + Copy/follow-up visibility. Caught a regression on PR #29 along the way: the new SSE path wasn't setting any reveal state, so those signals were silently lost. Deletes `useStreamingReveal.ts` and the now-unused `getAnswer` / `runPlay` / `fetchAnswer` wrappers. Backend JSON `/answer` endpoint is dead code in this repo but kept for now. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -106,11 +107,12 @@ User-selectable models (UI dropdown at the top of chat):
 
 Real candidates, ranked by leverage:
 
-1. **Slice C — migrate Regenerate to streaming** (~20 min). The JSON
-   `/answer` is now only used by `handleRegenerate` in `ChatPage`. Wiring
-   it through `streamAnswer()` would let us delete `useStreamingReveal`
-   and the `revealedLength` field on `Message` entirely. Same shape as
-   the three streaming callers — re-use `runAnswerStream`.
+1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
+   after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
+   `backend/app/api/v1/query_handler.py` and its model imports if no
+   other route uses them. `/answer/{session_id}/stream` remains the only
+   answer path. Keep `CloudflareChat.generate_answer` for now — it's
+   still the non-streaming sibling and may be useful for batch jobs.
 
 2. **GitHub repo rename** — 5 min. Still on `paritoshtripathi935/MiniPerplexity`.
    `gh api -X PATCH /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`
