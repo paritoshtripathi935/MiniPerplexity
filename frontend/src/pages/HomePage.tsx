@@ -1,16 +1,49 @@
-import React, { useEffect, useMemo, useState } from 'react';
+/**
+ * Operational Hub — PaidPilot homepage (PAI-13 / PR D).
+ *
+ * Replaces the passive "Good afternoon, Paritosh" greeting + uniform card
+ * grid with an operational state line + asymmetric three-zone layout:
+ *
+ *   Header           One line of live operational state, tabular numerics.
+ *   Operational feed Stacked rows (left ~60%) — what's in flight right now.
+ *   Continue ...     Top 3 recent investigations (right top).
+ *   Quick actions    Keyboard-shortcutted navigation (right bottom).
+ *
+ * Real data sources: listSessions (investigations), localStorage scenarios
+ * (calculator state), brand profile completion. Meta CAC / campaign rows
+ * stub to "Connect Meta" onramps until V2 ad-library integration lands.
+ */
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth, useUser } from '@clerk/clerk-react';
-import { ArrowRight, ChevronRight, Check } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  getBrandProfile, listSessions, type BrandProfile, type SessionListItem,
+  ArrowUpRight,
+  BarChart3,
+  Calculator,
+  ChevronRight,
+  PlayCircle,
+  Search,
+  Settings,
+  TrendingDown,
+} from 'lucide-react';
+import {
+  getBrandProfile,
+  listSessions,
+  type BrandProfile,
+  type SessionListItem,
 } from '../services/api';
-import { PageHeader } from '../components/AppLayout';
-import { Card } from '../components/ui/Card';
+import { useCommandPalette } from '../components/CommandPalette';
 
 interface Props {
   darkMode: boolean;
+}
+
+const SCENARIO_STORAGE_KEY = 'paidpilot.calc.scenarios.v1';
+
+interface CalcSummary {
+  total: number;
+  byCalc: Record<string, number>;
 }
 
 function relativeTime(iso: string): string {
@@ -24,429 +57,435 @@ function relativeTime(iso: string): string {
   return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
 }
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const ONE_WEEK_MS = 7 * ONE_DAY_MS;
-
-interface PrimaryAction {
-  eyebrow: string;
-  title: string;
-  body: string;
-  to: string;
+function readScenarioCounts(): CalcSummary {
+  if (typeof window === 'undefined') return { total: 0, byCalc: {} };
+  try {
+    const raw = window.localStorage.getItem(SCENARIO_STORAGE_KEY);
+    if (!raw) return { total: 0, byCalc: {} };
+    const store = JSON.parse(raw) as Record<string, unknown[]>;
+    const byCalc: Record<string, number> = {};
+    let total = 0;
+    for (const [k, v] of Object.entries(store)) {
+      const n = Array.isArray(v) ? v.length : 0;
+      byCalc[k] = n;
+      total += n;
+    }
+    return { total, byCalc };
+  } catch {
+    return { total: 0, byCalc: {} };
+  }
 }
 
-/**
- * Choose the single suggested primary action for the home anchor card.
- * Prefers, in order:
- *   1. Resume the most recent active investigation (<24h old, has turns).
- *   2. First-time user nudge: run a foundational play.
- *   3. Day-of-week marketing rituals (Mon = Weekly Review, Fri = Retro).
- *   4. Default: open a fresh investigation.
- */
-function pickPrimaryAction(
-  sessions: SessionListItem[],
-  newChatId: string,
-  hasProfile: boolean,
-): PrimaryAction {
-  const now = Date.now();
-
-  const resumeCandidate = sessions.find(s => {
-    const age = now - new Date(s.last_accessed_at).getTime();
-    return age < ONE_DAY_MS && s.message_count > 0 && !s.is_archived;
-  });
-  if (resumeCandidate) {
-    const title = resumeCandidate.title?.trim() || 'your last investigation';
-    return {
-      eyebrow: 'Pick up where you left off',
-      title: `Resume · ${title}`,
-      body:
-        resumeCandidate.last_message_excerpt ||
-        `${resumeCandidate.message_count} turn${resumeCandidate.message_count === 1 ? '' : 's'}.`,
-      to: `/investigations/${resumeCandidate.id}`,
-    };
-  }
-
-  if (sessions.length === 0 && hasProfile) {
-    return {
-      eyebrow: 'Get started',
-      title: 'Run your first play',
-      body:
-        '10 ready-to-run playbooks tuned for paid acquisition — pick a channel plan or a creative brief to see PaidPilot apply your brand context end-to-end.',
-      to: '/plays',
-    };
-  }
-
-  const dow = new Date().getDay(); // 0 Sun – 6 Sat
-  if (dow === 1) {
-    return {
-      eyebrow: "It's Monday",
-      title: 'Run your Weekly Review',
-      body:
-        "Drop in last week's numbers and PaidPilot writes the structured retro a sharp marketer would write for their boss.",
-      to: '/plays?run=weekly_review',
-    };
-  }
-  if (dow === 5) {
-    return {
-      eyebrow: "It's Friday",
-      title: 'Wrap the week with a channel-mix check',
-      body:
-        'Sanity-check your blended efficiency before the weekend — the calculator pulls everything into one view.',
-      to: '/calc',
-    };
-  }
-  if (dow === 3) {
-    return {
-      eyebrow: 'Mid-week',
-      title: 'Refresh your creative',
-      body:
-        'Generate 5 hook variants for your highest-spend ad — vary by emotion to find what unlocks CTR.',
-      to: '/plays?run=hook_ideation',
-    };
-  }
-
-  return {
-    eyebrow: 'Ready when you are',
-    title: 'Open a new investigation',
-    body:
-      'Ask what changed, what to test, or what to scale. Citations weighted toward platform docs and trade press; your brand context is applied automatically.',
-    to: `/investigations/${newChatId}`,
-  };
-}
+const CALC_LABELS: Record<string, string> = {
+  'cac-payback': 'CAC Payback',
+  'roas-margin': 'ROAS → Margin',
+  'sample-size': 'A/B Sample Size',
+  'blended-efficiency': 'Blended Efficiency',
+};
 
 export function HomePage({}: Props) {
   const { getToken } = useAuth();
-  const { user } = useUser();
+  const { setOpen: setPaletteOpen } = useCommandPalette();
   const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [scenarios, setScenarios] = useState<CalcSummary>(() => readScenarioCounts());
   const [newChatId] = useState(() => uuidv4());
 
   useEffect(() => {
     (async () => {
-      try {
-        const [p, s] = await Promise.all([
-          getBrandProfile(getToken).catch(() => null),
-          listSessions(getToken, { limit: 5 }).catch(
-            () => ({ sessions: [] as SessionListItem[] }),
-          ),
-        ]);
-        if (p) setProfile(p);
-        setSessions(s.sessions);
-      } catch {
-        /* silent */
-      }
+      const [p, s] = await Promise.all([
+        getBrandProfile(getToken).catch(() => null),
+        listSessions(getToken, { limit: 10 }).catch(
+          () => ({ sessions: [] as SessionListItem[] }),
+        ),
+      ]);
+      if (p) setProfile(p);
+      setSessions(s.sessions);
     })();
   }, [getToken]);
 
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    const time =
-      hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
-    const name = user?.firstName ? `, ${user.firstName}` : '';
-    return `Good ${time}${name}`;
-  }, [user?.firstName]);
+  // Pick up scenarios written from /calc in another tab.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SCENARIO_STORAGE_KEY) setScenarios(readScenarioCounts());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
-  const onboarded = !!profile?.onboarding_completed;
-  const action = useMemo(
-    () => pickPrimaryAction(sessions, newChatId, onboarded),
-    [sessions, newChatId, onboarded],
+  const openInvestigations = useMemo(
+    () => sessions.filter(s => !s.is_archived && s.message_count > 0),
+    [sessions],
   );
+  const lastActivity = openInvestigations[0]?.last_accessed_at ?? null;
+  const recentThree = openInvestigations.slice(0, 3);
 
-  // Sessions touched in the past 7 days — used by the bottom "this week" strip.
-  const sessionsThisWeek = useMemo(() => {
-    const cutoff = Date.now() - ONE_WEEK_MS;
-    return sessions.filter(s => new Date(s.last_accessed_at).getTime() >= cutoff).length;
-  }, [sessions]);
+  const brandSetupPct = useMemo(() => {
+    if (!profile) return 0;
+    const items = [
+      !!profile.company_name,
+      !!profile.primary_channels?.length,
+      profile.target_cac != null,
+      !!profile.voice_guidelines,
+    ];
+    return Math.round((items.filter(Boolean).length / items.length) * 100);
+  }, [profile]);
+  const brandIncomplete = profile && !profile.onboarding_completed;
 
   return (
     <>
-      <PageHeader
-        title={greeting}
-        subtitle={
-          onboarded && profile?.company_name
-            ? `Working on ${profile.company_name} — your brand context is baked into every answer.`
-            : 'Open an investigation, run a play, or do the math.'
-        }
-        actions={<BrandChip profile={profile} />}
-      />
+      <header className="mb-8">
+        <h1 className="font-display text-h1 text-on-surface">Operational Hub</h1>
+        <OperationalStateLine
+          openCount={openInvestigations.length}
+          scenarioCount={scenarios.total}
+          lastActivityIso={lastActivity}
+        />
+      </header>
 
-      {/* Anchor card — single primary action. */}
-      <section className="mb-4">
-        <Link
-          to={action.to}
-          className="group block focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
-        >
-          <Card interactive className="p-6 sm:p-7">
-            <div className="flex items-start gap-6">
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.08em] text-fg-subtle font-medium mb-2">
-                  {action.eyebrow}
-                </div>
-                <h2 className="font-display font-semibold text-[20px] sm:text-[22px] tracking-tight mb-2 leading-tight">
-                  {action.title}
-                </h2>
-                <p className="text-[14px] text-fg-muted leading-relaxed max-w-2xl">
-                  {action.body}
-                </p>
-              </div>
-              <div className="shrink-0 grid place-items-center w-10 h-10 rounded-full border border-border text-fg-muted group-hover:border-brand group-hover:text-brand group-hover:bg-brand-subtle transition-colors">
-                <ArrowRight className="w-4 h-4" strokeWidth={2} />
-              </div>
-            </div>
-          </Card>
-        </Link>
-      </section>
-
-      {/* Secondary breadcrumb — replaces the previous three-card row. */}
-      <nav className="mb-10 text-[13px] text-fg-subtle flex items-center gap-2 flex-wrap">
-        <span>Or jump to</span>
-        <span className="text-fg-subtle/60">·</span>
-        <Link to={`/investigations/${newChatId}`} className="hover:text-fg transition-colors">
-          Investigations
-        </Link>
-        <span className="text-fg-subtle/60">·</span>
-        <Link to="/plays" className="hover:text-fg transition-colors">
-          Plays
-        </Link>
-        <span className="text-fg-subtle/60">·</span>
-        <Link to="/calc" className="hover:text-fg transition-colors">
-          Calculators
-        </Link>
-      </nav>
-
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        <Card className="lg:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display font-semibold text-[15px] tracking-tight">
-              Recent investigations
-            </h2>
-            <Link to="/investigations" className="text-[12px] text-brand hover:underline">
-              View all
-            </Link>
-          </div>
-          {sessions.length === 0 ? (
-            <p className="text-[13px] text-fg-muted">
-              No investigations yet.{' '}
-              <Link to={`/investigations/${newChatId}`} className="text-brand hover:underline">
-                Start one →
-              </Link>
-            </p>
-          ) : (
-            <ul className="-mx-2 divide-y divide-border/60">
-              {sessions.map(s => (
-                <li key={s.id}>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* PRIMARY SURFACE — operational feed */}
+        <section className="lg:col-span-3">
+          <SectionLabel>Operational feed</SectionLabel>
+          <div className="rounded-card border border-outline-variant bg-surface-container-low divide-y divide-outline-variant">
+            <FeedRow
+              icon={<Search className="w-4 h-4" />}
+              label={
+                openInvestigations.length === 0
+                  ? 'No investigations open'
+                  : `${openInvestigations.length} investigation${openInvestigations.length === 1 ? '' : 's'} open`
+              }
+              trailing={
+                lastActivity ? (
+                  <span className="text-body-sm text-on-surface-variant tabular-nums">
+                    last activity {relativeTime(lastActivity)}
+                  </span>
+                ) : (
                   <Link
-                    to={`/investigations/${s.id}`}
-                    className="block py-3 px-2 rounded-md hover:bg-surface-sunken transition-colors group"
+                    to={`/investigations/${newChatId}`}
+                    className="text-body-sm text-primary hover:underline"
                   >
-                    <div className="flex items-baseline justify-between gap-3 mb-1">
-                      <div className="text-[14px] font-medium truncate min-w-0 flex-1">
-                        {s.title || 'Untitled investigation'}
-                      </div>
-                      <div className="text-[12px] text-fg-subtle shrink-0 tabular-nums">
-                        {relativeTime(s.last_accessed_at)}
-                      </div>
-                    </div>
-                    {s.last_message_excerpt ? (
-                      <p className="text-[13px] text-fg-muted line-clamp-1 leading-relaxed">
-                        {s.last_message_excerpt}
-                      </p>
-                    ) : (
-                      <p className="text-[12px] text-fg-subtle">
-                        {s.message_count} turn{s.message_count === 1 ? '' : 's'}
-                      </p>
-                    )}
+                    Start one →
                   </Link>
-                </li>
-              ))}
+                )
+              }
+              to={openInvestigations.length > 0 ? '/investigations' : undefined}
+            />
+
+            <FeedRow
+              icon={<Calculator className="w-4 h-4" />}
+              label={
+                <span>
+                  Calculators
+                  <span className="text-on-surface-variant"> · </span>
+                  <span className="text-on-surface-variant">
+                    {scenarios.total === 0
+                      ? 'no scenarios saved yet'
+                      : `${scenarios.total} scenario${scenarios.total === 1 ? '' : 's'} saved`}
+                  </span>
+                </span>
+              }
+              trailing={
+                scenarios.total === 0 ? (
+                  <Link to="/calc" className="text-body-sm text-primary hover:underline">
+                    Open →
+                  </Link>
+                ) : (
+                  <span className="text-body-sm text-on-surface-variant tabular-nums">
+                    {topCalcLabel(scenarios.byCalc)}
+                  </span>
+                )
+              }
+              to="/calc"
+            />
+
+            <FeedRow
+              icon={<TrendingDown className="w-4 h-4" />}
+              label="Meta CAC trend"
+              trailing={
+                <span className="text-body-sm">
+                  <span className="text-on-surface-variant">—</span>{' '}
+                  <Link to="/settings" className="text-primary hover:underline">
+                    Connect Meta
+                  </Link>
+                </span>
+              }
+              dim
+            />
+
+            <FeedRow
+              icon={<BarChart3 className="w-4 h-4" />}
+              label="Channel mix vs. target ROAS"
+              trailing={
+                <span className="text-body-sm">
+                  <span className="text-on-surface-variant">—</span>{' '}
+                  <Link to="/settings" className="text-primary hover:underline">
+                    Connect Google Ads
+                  </Link>
+                </span>
+              }
+              dim
+            />
+
+            {brandIncomplete && (
+              <FeedRow
+                icon={<Settings className="w-4 h-4" />}
+                label={`Brand profile · ${brandSetupPct}% complete`}
+                trailing={
+                  <Link to="/settings" className="text-body-sm text-primary hover:underline">
+                    Finish setup →
+                  </Link>
+                }
+                to="/settings"
+              />
+            )}
+          </div>
+
+          {/* Sub-feed: recent plays / next-step suggestions could land here in
+              future. Empty for now. */}
+        </section>
+
+        {/* SECONDARY SURFACE — right rail */}
+        <aside className="lg:col-span-2 space-y-8">
+          <section>
+            <SectionLabel>Continue investigation</SectionLabel>
+            {recentThree.length === 0 ? (
+              <div className="rounded-card border border-dashed border-outline-variant px-4 py-6 text-body-sm text-on-surface-variant">
+                No active investigations. Start by asking what changed, what to
+                test, or what to scale.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {recentThree.map(s => (
+                  <li key={s.id}>
+                    <Link
+                      to={`/investigations/${s.id}`}
+                      className="block rounded-card border border-outline-variant bg-surface-container-low hover:border-outline transition-colors p-3 group focus-visible:outline-none focus-visible:shadow-focus"
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-1">
+                        <span className="text-body-base text-on-surface font-medium truncate">
+                          {s.title?.trim() || 'Untitled investigation'}
+                        </span>
+                        <span className="text-body-sm text-on-surface-variant shrink-0 tabular-nums">
+                          {relativeTime(s.last_accessed_at)}
+                        </span>
+                      </div>
+                      {s.last_message_excerpt && (
+                        <p className="text-body-sm text-on-surface-variant line-clamp-1 leading-snug">
+                          {s.last_message_excerpt}
+                        </p>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <SectionLabel>Quick actions</SectionLabel>
+            <ul className="space-y-px">
+              <QuickAction
+                label="New investigation"
+                to={`/investigations/${newChatId}`}
+                shortcut={['⌘', 'N']}
+              />
+              <QuickAction
+                label="Open calculators"
+                to="/calc"
+                shortcut={['⌘', 'E']}
+              />
+              <QuickAction
+                label="Run a play"
+                to="/plays"
+                shortcut={['⌘', 'P']}
+                icon={<PlayCircle className="w-3.5 h-3.5" />}
+              />
+              <QuickAction
+                label="Search anything"
+                onClick={() => setPaletteOpen(true)}
+                shortcut={['⌘', 'K']}
+                icon={<Search className="w-3.5 h-3.5" />}
+              />
             </ul>
-          )}
-        </Card>
-
-        <BrandSnapshot profile={profile} />
-      </section>
-
-      <ThisWeekStrip
-        chatsThisWeek={sessionsThisWeek}
-        totalChats={sessions.length}
-        lastActivityIso={sessions[0]?.last_accessed_at ?? null}
-      />
+          </section>
+        </aside>
+      </div>
     </>
   );
 }
 
-/* ---------- subcomponents ------------------------------------------------ */
+/* ----------------------------- Sub-components --------------------------- */
 
-function BrandChip({ profile }: { profile: BrandProfile | null }) {
-  if (!profile?.onboarding_completed) {
-    return (
-      <Link
-        to="/settings"
-        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-brand-subtle text-brand text-[12px] font-medium hover:bg-brand-subtle/80 transition-colors"
-      >
-        Set up brand
-        <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
-      </Link>
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-label-caps text-on-surface-variant uppercase mb-3">
+      {children}
+    </h2>
+  );
+}
+
+function OperationalStateLine({
+  openCount,
+  scenarioCount,
+  lastActivityIso,
+}: {
+  openCount: number;
+  scenarioCount: number;
+  lastActivityIso: string | null;
+}) {
+  const parts: React.ReactNode[] = [];
+  parts.push(
+    <span key="inv" className="tabular-nums">
+      {openCount} open investigation{openCount === 1 ? '' : 's'}
+    </span>,
+  );
+  parts.push(
+    <span key="sc" className="tabular-nums">
+      {scenarioCount} scenario{scenarioCount === 1 ? '' : 's'} pending
+    </span>,
+  );
+  if (lastActivityIso) {
+    parts.push(
+      <span key="last" className="tabular-nums">
+        last active {relativeTime(lastActivityIso)}
+      </span>,
     );
   }
-  const bits: string[] = [];
-  if (profile.company_name) bits.push(profile.company_name);
-  if (profile.primary_channels?.length) {
-    bits.push(profile.primary_channels.slice(0, 2).join(' + '));
-  }
-  if (!bits.length) return null;
+  return (
+    <p className="mt-2 text-body-sm text-on-surface-variant flex items-center gap-2 flex-wrap">
+      <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" aria-hidden />
+      {parts.map((p, i) => (
+        <span key={i} className="contents">
+          {p}
+          {i < parts.length - 1 && (
+            <span className="text-outline-variant" aria-hidden>
+              ·
+            </span>
+          )}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+interface FeedRowProps {
+  icon: React.ReactNode;
+  label: React.ReactNode;
+  trailing?: React.ReactNode;
+  to?: string;
+  /** Mute the row to indicate "stub / not yet connected" data sources. */
+  dim?: boolean;
+}
+
+function FeedRow({ icon, label, trailing, to, dim = false }: FeedRowProps) {
+  const content = (
+    <>
+      <span
+        className={`shrink-0 ${dim ? 'text-outline' : 'text-on-surface-variant'}`}
+      >
+        {icon}
+      </span>
+      <span
+        className={`flex-1 min-w-0 truncate text-body-base ${dim ? 'text-on-surface-variant' : 'text-on-surface'}`}
+      >
+        {label}
+      </span>
+      {trailing}
+      {to && (
+        <ChevronRight
+          className="w-3.5 h-3.5 text-outline-variant shrink-0 group-hover:text-outline transition-colors"
+          aria-hidden
+        />
+      )}
+    </>
+  );
+  const inner = (
+    <div className="flex items-center gap-3 px-4 py-3">{content}</div>
+  );
+  if (!to) return <div className="flex items-center gap-3 px-4 py-3">{content}</div>;
   return (
     <Link
-      to="/settings"
-      className="inline-flex items-center gap-2 h-8 px-3 rounded-full border border-border bg-surface text-[12px] text-fg-muted hover:text-fg hover:border-border-strong transition-colors max-w-[280px]"
-      title="Edit brand profile"
+      to={to}
+      className="block hover:bg-surface-container transition-colors group focus-visible:outline-none focus-visible:shadow-focus"
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" aria-hidden />
-      <span className="truncate">{bits.join(' · ')}</span>
-      <ChevronRight className="w-3.5 h-3.5 shrink-0 text-fg-subtle" strokeWidth={2} />
+      {inner}
     </Link>
   );
 }
 
-function BrandSnapshot({ profile }: { profile: BrandProfile | null }) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-display font-semibold text-[15px] tracking-tight">
-          Brand snapshot
-        </h2>
-        <Link to="/settings" className="text-[12px] text-brand hover:underline">
-          Edit
-        </Link>
-      </div>
-      {profile?.onboarding_completed ? (
-        <BrandSnapshotFilled profile={profile} />
-      ) : (
-        <BrandSnapshotProgress profile={profile} />
-      )}
-    </Card>
-  );
-}
-
-function BrandSnapshotFilled({ profile }: { profile: BrandProfile }) {
-  return (
-    <dl className="text-[13px] space-y-2.5">
-      {profile.company_name && <Row label="Company" value={profile.company_name} />}
-      {profile.primary_channels?.length > 0 && (
-        <Row label="Channels" value={profile.primary_channels.join(', ')} />
-      )}
-      {profile.target_cac != null && (
-        <Row label="Target CAC" value={`$${Number(profile.target_cac).toLocaleString()}`} />
-      )}
-      {profile.target_roas != null && (
-        <Row label="Target ROAS" value={`${profile.target_roas}×`} />
-      )}
-      {profile.icp_description && (
-        <div className="pt-2 border-t border-border/60">
-          <div className="text-fg-subtle text-[12px] mb-1">ICP</div>
-          <p className="text-[13px] text-fg leading-relaxed line-clamp-2">
-            {profile.icp_description}
-          </p>
-        </div>
-      )}
-    </dl>
-  );
-}
-
-function BrandSnapshotProgress({ profile }: { profile: BrandProfile | null }) {
-  const items: { label: string; done: boolean }[] = [
-    { label: 'Company', done: !!profile?.company_name },
-    { label: 'Channels', done: !!profile?.primary_channels?.length },
-    { label: 'Target CAC', done: profile?.target_cac != null },
-    { label: 'Voice', done: !!profile?.voice_guidelines },
-  ];
-  const filled = items.filter(i => i.done).length;
-  const pct = Math.round((filled / items.length) * 100);
-
-  return (
-    <div className="text-[13px]">
-      <p className="text-fg-muted leading-relaxed mb-3">
-        Finish setup so every answer is shaped by your brand context.
-      </p>
-      <ul className="space-y-1.5 mb-3">
-        {items.map(item => (
-          <li key={item.label} className="flex items-center gap-2">
-            <span
-              className={
-                item.done
-                  ? 'grid place-items-center w-4 h-4 rounded-full bg-brand text-brand-fg shrink-0'
-                  : 'w-4 h-4 rounded-full border border-border shrink-0'
-              }
-              aria-hidden
-            >
-              {item.done && <Check className="w-3 h-3" strokeWidth={3} />}
-            </span>
-            <span className={item.done ? 'text-fg' : 'text-fg-subtle'}>
-              {item.label}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div
-        className="h-1 rounded-full bg-surface-sunken overflow-hidden mb-3"
-        role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div
-          className="h-full bg-brand transition-[width] duration-300 ease-out-quad"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <Link
-        to="/settings"
-        className="inline-flex items-center gap-1 text-brand text-[13px] font-medium hover:underline"
-      >
-        Complete setup
-        <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
-      </Link>
-    </div>
-  );
-}
-
-function ThisWeekStrip({
-  chatsThisWeek,
-  totalChats,
-  lastActivityIso,
+function QuickAction({
+  label,
+  to,
+  onClick,
+  shortcut,
+  icon,
 }: {
-  chatsThisWeek: number;
-  totalChats: number;
-  lastActivityIso: string | null;
+  label: string;
+  to?: string;
+  onClick?: () => void;
+  shortcut: string[];
+  icon?: React.ReactNode;
 }) {
-  if (totalChats === 0) return null;
-  const parts: string[] = [];
-  parts.push(
-    `${chatsThisWeek} investigation${chatsThisWeek === 1 ? '' : 's'} this week`,
-  );
-  if (lastActivityIso) parts.push(`last active ${relativeTime(lastActivityIso)}`);
-  return (
-    <Card className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
-      <div className="text-[13px] text-fg-muted flex items-center gap-3 flex-wrap">
-        <span className="font-medium text-fg">This week</span>
-        {parts.map((p, i) => (
-          <React.Fragment key={i}>
-            <span className="text-fg-subtle/60" aria-hidden>·</span>
-            <span>{p}</span>
-          </React.Fragment>
+  const body = (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-control hover:bg-surface-container transition-colors group">
+      {icon && (
+        <span className="text-on-surface-variant group-hover:text-on-surface transition-colors">
+          {icon}
+        </span>
+      )}
+      <span className="flex-1 text-body-base text-on-surface-variant group-hover:text-on-surface transition-colors">
+        {label}
+      </span>
+      <span className="flex items-center gap-1">
+        {shortcut.map((k, i) => (
+          <kbd
+            key={i}
+            className="inline-grid place-items-center min-w-[20px] h-[18px] px-1 text-label-caps text-outline bg-surface-container rounded-control"
+          >
+            {k}
+          </kbd>
         ))}
-      </div>
-      <Link to="/investigations" className="text-[12px] text-brand hover:underline">
-        View all
-      </Link>
-    </Card>
+      </span>
+      {to && (
+        <ArrowUpRight
+          className="w-3 h-3 text-outline-variant opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-hidden
+        />
+      )}
+    </div>
+  );
+  if (to) {
+    return (
+      <li>
+        <Link to={to} className="block focus-visible:outline-none focus-visible:shadow-focus rounded-control">
+          {body}
+        </Link>
+      </li>
+    );
+  }
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full text-left focus-visible:outline-none focus-visible:shadow-focus rounded-control"
+      >
+        {body}
+      </button>
+    </li>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-fg-subtle">{label}</dt>
-      <dd className="font-medium text-right truncate max-w-[60%]">{value}</dd>
-    </div>
-  );
+function topCalcLabel(byCalc: Record<string, number>): string {
+  let topKey: string | null = null;
+  let topCount = 0;
+  for (const [k, n] of Object.entries(byCalc)) {
+    if (n > topCount) {
+      topCount = n;
+      topKey = k;
+    }
+  }
+  if (!topKey || topCount === 0) return '';
+  return `${CALC_LABELS[topKey] ?? topKey} · ${topCount}`;
 }
