@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 (PAI-13 PR E) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 (PAI-13 PR F) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -61,6 +61,9 @@ PRs in chronological order. Each is on `main`.
 | [#41](https://github.com/paritoshtripathi935/MiniPerplexity/pull/41) | **PAI-13 / PR D — Operational homepage.** Replaces "Good afternoon, Paritosh" + uniform card grid with the operational hub from the Stitch `paidpilot_homepage_dark` mock. Three asymmetric zones: header (`N open investigations · M scenarios pending · last active <relative>`), operational feed (left ~60% — investigations / calculators / dim Meta+Google "Connect X" stubs / optional brand-setup), Continue investigation (right top — 3 recent sessions), Quick actions (right bottom — ⌘N/⌘E/⌘P/⌘K with kbd chips). Real data: `listSessions` + `localStorage` scenario count w/ cross-tab sync via storage event + brand profile. Stubbed rows link to /settings as V2 onramps. Removed: time-based greeting, primary-action anchor card, day-of-week rituals, BrandSnapshot card, ThisWeekStrip. |
 | [#43](https://github.com/paritoshtripathi935/MiniPerplexity/pull/43) | **PAI-13 / PR D.1 — Home polish.** Side-by-side fixes after comparing #41 to the Stitch mock: drop the "Operational Hub" h1 (redundant with top-nav "Home" highlight; bullet state line becomes the lead, body-base size); fix "0 scenarios pending" → "no scenarios pending"; adopt Stitch's "→ N scenarios saved" arrow syntax for the Calculators row trailing slot; drop the right-side chevron on linkable feed rows (hover tint communicates affordance). |
 | [#44](https://github.com/paritoshtripathi935/MiniPerplexity/pull/44) | **PAI-13 / PR E — Investigation workspace.** Visual refit of the chat surface. Single always-visible investigation header replaces the dual "model-selector toolbar + scroll-triggered sticky bar" pattern: title + `● Active` chip + `N turns` chip + ModelSelector. Drops IntersectionObserver / showStickyHeader / scrollToTop. Right rail header "Context" → "Evidence"; Active play panel Sparkles → PlayCircle (last AI-sparkle on this surface). Per-turn Cite/Open-source decorative buttons + ⋯ overflow menu deferred — citation pills + sessions-sidebar context already cover the function. Functional behavior unchanged. |
+| [#46](https://github.com/paritoshtripathi935/MiniPerplexity/pull/46) | **PAI-13 / Logo mark.** Adopts Concept 1 from the Stitch brand-identity export — a "P with chat-tail" silhouette in M3 primary-container (#6750A4). Single-path SVG. New `Logo.tsx` renders the silhouette at `currentColor`. AppLayout brand chip + LoginPage hero swap "P" letterform → `<Logo />`. `public/favicon.svg` / `apple-touch-icon.svg` / `logo-mark.svg` rewritten with the new mark — replaces the indigo sparkle favicons from the pre-PAI-13 brand. |
+| [#47](https://github.com/paritoshtripathi935/MiniPerplexity/pull/47) | **PAI-13 / PR F.1 — Calc tabs + focused workspace.** Page-level tabs replace the "all four calcs stacked in column-css" layout with a single-calc workspace per Stitch. Selection persists via `paidpilot-calc-active-tab` localStorage. Tertiary breadcrumb chip top-right. PresetBar Sparkles icon dropped (last AI-decorative sparkle on this surface). Calc internals untouched. |
+| [#48](https://github.com/paritoshtripathi935/MiniPerplexity/pull/48) | **PAI-13 / PR F.2 — Scenarios as primary surface.** Lifts scenarios out of each calc's footer into a left-side primary surface per the full Stitch CAC payback mock. New `ScenariosPanel` with stacked rows (name + metric-lg headline + chip-line of inputs + delta vs. previous, semantic green/amber); new `scenarioDisplays.tsx` as single source of truth for per-calc headline + chips + compareFields; new `SaveScenarioButton` replaces the old ScenarioBar footer (collapsed pill → name input + Save). Inline Compare moves to ScenariosPanel. Each calc accepts `registerLoadHandler` so the page bridges ScenariosPanel row clicks into `loadScenario`. `useScenarios` adds same-window broadcast (custom event) so the calc's Save and ScenariosPanel's list stay in sync. Deleted `ScenarioBar.tsx`. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -116,16 +119,14 @@ Real candidates, ranked by leverage:
 0. **PAI-13 — Operator design system adoption** (in progress).
    Stacked-PR plan, 7 slices. Full plan in
    [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A (#35), PR B (#37),
-   PR C (#39), PR D (#41), PR D.1 (#43), PR E (#44) shipped.**
-   Next up: **PR F — Calculators as scenario workspaces.** Rebuild
-   the CAC Payback calculator per the Stitch
-   `cac_payback_calculator_dark` mock — scenarios stacked on the left
-   (one dominant active row, others recede), Active Model Variables
-   form on the right with drift indicators per input, empty-state
-   per the Stitch mock. Apply the same shape to ROAS→Margin, A/B
-   Sample Size, and Blended Channel Efficiency (split per-calc if
-   the diff gets unwieldy). Medium blast radius — calculator components
-   are isolated, but four of them exist.
+   PR C (#39), PR D (#41), PR D.1 (#43), PR E (#44), Logo (#46),
+   PR F.1 (#47), PR F.2 (#48) shipped.** Next up: **PR G — Polish
+   + dead-code sweep.** Plays page audit, Settings page audit,
+   remaining empty states, drop now-unused Tailwind classes /
+   colors / animations, bundle pass (consider `React.lazy`-splitting
+   the investigation route now that the home + calc surfaces have
+   grown). Low blast radius — cleanup only. Closes out the PAI-13
+   stack.
 
 1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
    after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
