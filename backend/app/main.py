@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 from sqlalchemy import text
 
 from app.api.v1.brand_profile import router as brand_profile_router
@@ -62,8 +65,44 @@ async def lifespan(app: FastAPI):
 # Load settings
 settings = BackendBaseSettings()
 
-# Initialize FastAPI app with settings
-app = FastAPI(lifespan=lifespan, **settings.set_backend_app_attributes)
+# Initialize FastAPI app with settings.
+# `default_response_class=ORJSONResponse` switches every JSON response
+# to orjson serialization — 2-3x faster than the stdlib json default,
+# with no API change at the route level (handlers still return dicts).
+app = FastAPI(
+    lifespan=lifespan,
+    default_response_class=ORJSONResponse,
+    **settings.set_backend_app_attributes,
+)
+
+
+class GZipExceptStreaming:
+    """GZipMiddleware wrapper that bypasses compression for SSE.
+
+    The native Starlette GZipMiddleware buffers the response body and
+    compresses it as a unit, which breaks `text/event-stream` responses
+    — every token-by-token chunk would be held back until the stream
+    completes. We can't tell the response Content-Type from the request
+    alone, but we know our single streaming endpoint by path
+    (`/answer/{session_id}/stream`). Bypass GZip for paths ending in
+    `/stream`; everything else goes through normal compression.
+    """
+
+    def __init__(self, app: ASGIApp, minimum_size: int = 1024) -> None:
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=minimum_size)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path", "").endswith("/stream"):
+            await self.app(scope, receive, send)
+            return
+        await self.gzip(scope, receive, send)
+
+
+# Response compression — typical JSON saves 70-80% over the wire.
+# minimum_size=1024 skips tiny responses (health checks, etc.) where
+# gzip overhead would dominate. SSE is bypassed via the wrapper above.
+app.add_middleware(GZipExceptStreaming, minimum_size=1024)
 
 # Set up CORS middleware
 app.add_middleware(

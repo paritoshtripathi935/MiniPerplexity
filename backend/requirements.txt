@@ -17,3 +17,8 @@ alembic>=1.13
 # Auth (Clerk JWT verification)
 pyjwt[crypto]>=2.8
 httpx>=0.27
+
+# Perf — orjson powers ORJSONResponse (2-3x faster JSON serialization
+# than the stdlib json module). Used as the default_response_class on
+# the FastAPI app.
+orjson>=3.9
