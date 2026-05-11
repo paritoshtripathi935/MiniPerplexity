@@ -178,12 +178,20 @@ export default {
           '0%, 49%': { opacity: '1' },
           '50%, 100%': { opacity: '0' },
         },
+        // Subtle page-enter — opacity only + 2px lift. ~180ms feels
+        // perceptible without slowing navigation. Matches PAI-13's "motion
+        // communicates continuity, not decoration" rule.
+        'page-enter': {
+          '0%': { opacity: '0', transform: 'translateY(2px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'fade-in-up': 'fade-in-up 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
         shimmer: 'shimmer 1.4s linear infinite',
         'status-blink': 'status-blink 1.4s ease-in-out infinite',
         'cursor-blink': 'cursor-blink 1s steps(1, end) infinite',
+        'page-enter': 'page-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },

@@ -41,6 +41,11 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
   // Investigation surface uses its own full-bleed layout (no max-width).
   // Legacy `/chat/*` redirects via App.tsx; nothing else needs this guard.
   const isInvestigationRoute = location.pathname.startsWith('/investigations');
+  // Top-level route segment drives the page-enter key. We deliberately key
+  // on the first segment (not the full pathname) so that nav within an
+  // investigation (/investigations/abc → /investigations/def) doesn't re-
+  // trigger the page-enter animation — only true page jumps do.
+  const pageKey = location.pathname.split('/')[1] || 'home';
   const { setOpen: setPaletteOpen } = useCommandPalette();
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
@@ -124,11 +129,14 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
       </header>
 
       {isInvestigationRoute ? (
-        <main className="flex-1 min-h-0">
+        <main key={pageKey} className="flex-1 min-h-0 motion-safe:animate-page-enter">
           <Outlet />
         </main>
       ) : (
-        <main className="flex-1 max-w-[1280px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+        <main
+          key={pageKey}
+          className="flex-1 max-w-[1280px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 motion-safe:animate-page-enter"
+        >
           <Outlet />
         </main>
       )}
