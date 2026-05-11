@@ -70,11 +70,11 @@ export interface Message {
    */
   searchingUrls?: string[];
   /**
-   * Number of characters of `content` that have been revealed so far during
-   * the client-side streaming animation. `undefined` = render all of `content`
-   * (covers historical/rehydrated messages and live messages while searching).
+   * True between first token and the stream's `done` event. Drives the
+   * "Writing" indicator + cursor + hides Copy/Regenerate/follow-up chips
+   * while the answer is mid-stream. Unset on historical/rehydrated turns.
    */
-  revealedLength?: number;
+  isStreaming?: boolean;
   /**
    * Inputs that produced this assistant turn — kept around so the user
    * can hit "Regenerate" without re-running the search step. Only

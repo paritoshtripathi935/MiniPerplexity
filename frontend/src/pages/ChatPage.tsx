@@ -12,11 +12,10 @@ import { ChatEmptyState } from '../components/ChatEmptyState';
 import { ModelSelector } from '../components/ModelSelector';
 import {
   getBrandProfile, getMe, getNextSteps, listPlays,
-  performSearch, getAnswer, getSessionHistory, runPlay, streamAnswer,
+  performSearch, getSessionHistory, streamAnswer,
   type BrandProfile, type Play, type StreamDoneEvent, type UserProfile,
 } from '../services/api';
 import { Message } from '../types';
-import { useStreamingReveal } from '../hooks/useStreamingReveal';
 import {
   normaliseSearchResults,
   rehydrateMessages,
@@ -75,8 +74,6 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   // Defaults to false so arrivals to `/chat/:id` from anywhere (Home, deep
   // link, refresh) actually load the conversation.
   const justCreatedRef = useRef(false);
-
-  const startStreamingReveal = useStreamingReveal(setMessages, sessionId);
 
   const [showStickyHeader, setShowStickyHeader] = useState(false);
 
@@ -309,7 +306,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                   content: text,
                   isSearching: false,
                   searchingUrls: undefined,
-                  revealedLength: undefined,
+                  isStreaming: true,
                 };
               }
               return { ...m, content: m.content + text };
@@ -327,6 +324,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                     search_results:
                       normaliseSearchResults(evt.search_results) ?? m.search_results,
                     latencyMs: evt.latency_ms,
+                    isStreaming: false,
                     nextStepsLoading: !!evt.message_id,
                     originatingQuery: params.originatingQuery,
                     originatingSearchResults: params.searchResults,
@@ -349,8 +347,9 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
 
   /**
    * Regenerate an assistant turn in place — same query + same search
-   * results, just re-call /answer. Cheaper than a fresh round and mirrors
-   * what ChatGPT/Claude do.
+   * results, just re-stream /answer into the existing message id. Cheaper
+   * than a fresh round and mirrors what ChatGPT/Claude do. First token
+   * replaces the "_Regenerating…_" placeholder.
    */
   const handleRegenerate = async (msg: Message) => {
     if (!msg.originatingQuery || !msg.originatingSearchResults?.length) return;
@@ -358,54 +357,26 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     setMessages(prev =>
       prev.map(m =>
         m.id === msg.id
-          ? { ...m, content: '_Regenerating…_\n', isSearching: true, revealedLength: undefined }
+          ? { ...m, content: '_Regenerating…_\n', isSearching: true, isStreaming: false }
           : m
       )
     );
     setLoading(true);
     try {
-      const answerResponse = msg.originatingPlayId
-        ? await runPlay(
-            msg.originatingPlayId,
-            msg.originatingQuery,
-            sessionId,
-            msg.originatingSearchResults,
-            getToken
-          )
-        : await getAnswer(
-            msg.originatingQuery,
-            sessionId,
-            msg.originatingSearchResults,
-            [],
-            getToken
-          );
-      if (answerResponse?.answer) {
-        const fullContent = answerResponse.answer;
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === msg.id
-              ? {
-                  ...m,
-                  content: fullContent,
-                  sources: (answerResponse.citations ?? []).map((c: string) => ({
-                    title: '',
-                    url: c,
-                    type: 'web',
-                  })),
-                  search_results: normaliseSearchResults(answerResponse.search_results) ?? m.search_results,
-                  isSearching: false,
-                  revealedLength: 0,
-                  latencyMs: answerResponse.latency_ms,
-                }
-              : m
-          )
-        );
-        startStreamingReveal(msg.id, fullContent);
-      }
+      await runAnswerStream({
+        responseMsgId: msg.id,
+        query: msg.originatingQuery,
+        searchResults: msg.originatingSearchResults,
+        playId: msg.originatingPlayId,
+        originatingQuery: msg.originatingQuery,
+        originatingPlayId: msg.originatingPlayId,
+      });
     } catch (e) {
       setError(`Regenerate failed: ${e}`);
       setMessages(prev =>
-        prev.map(m => (m.id === msg.id ? { ...m, isSearching: false } : m))
+        prev.map(m =>
+          m.id === msg.id ? { ...m, isSearching: false, isStreaming: false } : m
+        )
       );
     } finally {
       setLoading(false);
@@ -530,11 +501,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const lastFinishedAssistantId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (
-        m.type === 'assistant' &&
-        !m.isSearching &&
-        typeof m.revealedLength !== 'number'
-      ) {
+      if (m.type === 'assistant' && !m.isSearching && !m.isStreaming) {
         return m.id;
       }
     }
