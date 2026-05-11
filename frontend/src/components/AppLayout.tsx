@@ -3,6 +3,11 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { Calculator, Home, PlayCircle, Search, Settings, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
+import {
+  CommandPalette,
+  CommandPaletteProvider,
+  useCommandPalette,
+} from './CommandPalette';
 
 interface Props {
   darkMode: boolean;
@@ -21,11 +26,23 @@ const NAV = [
  * Sticky top nav + outlet for routed pages. Pages render their own page-level
  * chrome below.
  */
-export function AppLayout({ darkMode, toggleDarkMode }: Props) {
+export function AppLayout(props: Props) {
+  return (
+    <CommandPaletteProvider>
+      <AppLayoutInner {...props} />
+      <CommandPalette />
+    </CommandPaletteProvider>
+  );
+}
+
+function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
   const location = useLocation();
   // Investigation surface uses its own full-bleed layout (no max-width).
   // Legacy `/chat/*` redirects via App.tsx; nothing else needs this guard.
   const isInvestigationRoute = location.pathname.startsWith('/investigations');
+  const { setOpen: setPaletteOpen } = useCommandPalette();
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-sunken text-fg">
@@ -65,6 +82,29 @@ export function AppLayout({ darkMode, toggleDarkMode }: Props) {
           </nav>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="hidden sm:inline-flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors border border-border"
+              aria-label="Open command palette"
+              title="Open command palette"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="text-[12px]">Search</span>
+              <kbd className="inline-grid place-items-center min-w-[18px] h-[16px] px-1 text-[10px] font-medium text-fg-subtle bg-surface-sunken rounded">
+                {isMac ? '⌘' : 'Ctrl'}
+              </kbd>
+              <kbd className="inline-grid place-items-center min-w-[18px] h-[16px] px-1 text-[10px] font-medium text-fg-subtle bg-surface-sunken rounded">
+                K
+              </kbd>
+            </button>
+            {/* Compact icon-only variant for mobile / narrow widths. */}
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="sm:hidden grid place-items-center w-8 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
+              aria-label="Open command palette"
+            >
+              <Search className="w-4 h-4" />
+            </button>
             <button
               onClick={toggleDarkMode}
               className="grid place-items-center w-8 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
