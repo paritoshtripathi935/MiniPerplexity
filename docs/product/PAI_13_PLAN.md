@@ -34,7 +34,7 @@ Contents:
 
 | Decision | Choice | Notes |
 |---|---|---|
-| Accent color | **Purple** `#4f378a` (primary) / `#6750a4` (primary-container) | DESIGN.md text mentions `#0052FF` but every screen ships purple. Going with screens. |
+| Color palette | **Full Material 3 purple scheme from DESIGN.md YAML** — see [palette table below](#color-palette-canonical--embed-verbatim-in-tailwindconfigjs) | DESIGN.md prose mentions `#0052FF` blue — that's a doc artifact, ignored. Tokens are canonical. Accent is `primary=#4f378a` / `primary-container=#6750a4`. |
 | Navigation structure | **Keep current 5-page nav** (Home / Investigations / Plays / Calculators / Settings) | Stitch's sidebars each invented different decorative nav labels — those are not real. |
 | Icon library | **Lucide** stays | Material Symbols would give 1:1 match to Stitch HTML but adds a font + migration cost. Lucide is close enough and already tree-shaken. |
 | Theme default | **Dark-first** | Switch the default; light still works via class toggle. Gate behind localStorage so existing light-mode users keep their preference. |
@@ -42,6 +42,78 @@ Contents:
 | PR strategy | **Stacked** | One foundation PR, six dependent slices. Merge in order. |
 
 ## Design tokens (from DESIGN.md)
+
+### Color palette (canonical — embed verbatim in `tailwind.config.js`)
+
+This is the full palette from the Stitch `DESIGN.md` YAML frontmatter.
+**Ignore the `#0052FF` blue mentioned in the DESIGN.md prose** — it's a
+documentation-tool artifact. The YAML tokens (and every rendered screen)
+ship the Material 3 purple scheme below.
+
+**Light theme (canonical, defined in DESIGN.md):**
+
+| Token | Value | Role |
+|---|---|---|
+| `surface` / `background` / `surface-bright` | `#fdf7ff` | base canvas |
+| `surface-container-lowest` | `#ffffff` | lowest tonal layer |
+| `surface-container-low` | `#f8f2fa` | level 1 (slight elevation) |
+| `surface-container` | `#f2ecf4` | cards, sidebars |
+| `surface-container-high` | `#ece6ee` | modals, popovers |
+| `surface-container-highest` | `#e6e0e9` | highest tonal layer |
+| `surface-dim` | `#ded8e0` | de-emphasised surface |
+| `surface-variant` | `#e6e0e9` | secondary surface tint |
+| `on-surface` / `on-background` | `#1d1b20` | primary text |
+| `on-surface-variant` | `#494551` | secondary/metadata text |
+| `outline` | `#7a7582` | strong borders, dividers |
+| `outline-variant` | `#cbc4d2` | subtle borders, dividers |
+| `inverse-surface` | `#322f35` | inverted surface (toasts, snackbars) |
+| `inverse-on-surface` | `#f5eff7` | text on inverted surface |
+| `primary` | `#4f378a` | primary actions, active states |
+| `primary-container` | `#6750a4` | filled accent (buttons, brand chip) |
+| `on-primary` | `#ffffff` | text on `primary` |
+| `on-primary-container` | `#e0d2ff` | text on `primary-container` |
+| `inverse-primary` | `#cfbcff` | primary on dark surfaces |
+| `surface-tint` | `#6750a4` | accent tint for elevated surfaces |
+| `secondary` | `#63597c` | secondary action |
+| `secondary-container` | `#e1d4fd` | secondary chip background |
+| `on-secondary` | `#ffffff` | text on `secondary` |
+| `on-secondary-container` | `#645a7d` | text on `secondary-container` |
+| `tertiary` | `#765b00` | tertiary semantic (amber/warning lean) |
+| `tertiary-container` | `#c9a74d` | filled tertiary |
+| `on-tertiary` | `#ffffff` | text on `tertiary` |
+| `on-tertiary-container` | `#503d00` | text on `tertiary-container` |
+| `error` | `#ba1a1a` | error semantic |
+| `error-container` | `#ffdad6` | filled error chip background |
+| `on-error` | `#ffffff` | text on `error` |
+| `on-error-container` | `#93000a` | text on `error-container` |
+| `primary-fixed` | `#e9ddff` | high-emphasis fixed accent surface |
+| `primary-fixed-dim` | `#cfbcff` | dimmed fixed accent surface |
+| `on-primary-fixed` | `#22005d` | text on `primary-fixed` |
+| `on-primary-fixed-variant` | `#4f378a` | secondary text on `primary-fixed` |
+| `secondary-fixed` | `#e9ddff` | fixed secondary surface |
+| `secondary-fixed-dim` | `#cdc0e9` | dimmed fixed secondary surface |
+| `on-secondary-fixed` | `#1f1635` | text on `secondary-fixed` |
+| `on-secondary-fixed-variant` | `#4b4263` | secondary text on `secondary-fixed` |
+| `tertiary-fixed` | `#ffdf93` | fixed tertiary surface |
+| `tertiary-fixed-dim` | `#e7c365` | dimmed fixed tertiary surface |
+| `on-tertiary-fixed` | `#241a00` | text on `tertiary-fixed` |
+| `on-tertiary-fixed-variant` | `#594400` | secondary text on `tertiary-fixed` |
+
+**Dark theme (PR A derives this — DESIGN.md does not ship a dark palette
+explicitly):** Stitch's exported HTML inverts roles (uses `on-background`
+as body bg, `surface-bright` as foreground) — a hack, not a proper scheme.
+For PR A we'll generate a proper Material 3 dark scheme keyed to the same
+purple primary, using:
+
+- `surface` ≈ `#141218` (M3 dark base)
+- `surface-container-low/high/highest` shifted lighter in steps
+- `on-surface` → near-white, `on-surface-variant` → light grey
+- `primary` → `inverse-primary` (`#cfbcff`) for accent on dark
+- `outline` / `outline-variant` shifted to remain ~1.5:1 against base
+
+Exact values lock during PR A implementation.
+
+### Other tokens
 
 ```
 Spacing       4px grid · xs/sm/md/lg/xl = 4/8/16/24/48
@@ -52,9 +124,9 @@ Type scale    h1 24/600/-0.02em · h2 18/600/-0.01em · body-base 14/400 ·
 Layering      Tonal (no shadows). Border 1px instead of large gaps.
 Elevation     Modals/popovers: optional 0 4px 12px rgba(0,0,0,.05) or 1px border.
               No blur, no glassmorphism.
-Color use     Achromatic base. Semantic colors only (green ok / amber warn / red issue).
-              Accent only for: primary CTA on a screen, active nav, citation chips,
-              selected-row left bar in palette.
+Accent use    Reserved for: primary CTA per screen, active nav, citation chips,
+              selected-row left bar in palette, brand chip. Nowhere else.
+Semantic use  Green/amber/red only for low-saturation status (≤16px deployments).
 ```
 
 ## Stacked PRs
