@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalcCard, Field, Result } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
-import { ScenarioBar } from './ScenarioBar';
-import { ScenarioCompare, type CompareField } from './ScenarioCompare';
+import { SaveScenarioButton } from './SaveScenarioButton';
 import { useScenarios, type Scenario } from './useScenarios';
 import { Slider } from './Slider';
 import { Recommendations } from './RecommendationsList';
@@ -15,7 +14,13 @@ import { PRESETS } from './presets';
 
 const CALC_ID = 'cac-payback';
 
-export function CACPaybackCalc() {
+interface CalcProps {
+  /** PR F.2 workspace wiring — the page hooks the calc's loadScenario into
+   * this ref so the left-side ScenariosPanel can drive it. */
+  registerLoadHandler?: (fn: (s: Scenario) => void) => void;
+}
+
+export function CACPaybackCalc({ registerLoadHandler }: CalcProps = {}) {
   const [mode, setMode] = useState<CalcMode>('forward');
   const [cac, setCac] = useState('120');
   const [targetMonths, setTargetMonths] = useState('4');
@@ -61,8 +66,7 @@ export function CACPaybackCalc() {
     return cacPaybackRecommendations(forward, Number(cac), Number(arpu), Number(margin));
   }, [mode, forward, cac, arpu, margin]);
 
-  const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
-  const [compareOpen, setCompareOpen] = useState(false);
+  const { scenarios, save } = useScenarios(CALC_ID);
 
   const inputs = { cac, targetMonths, arpu, margin };
   const outputs = { months: forward, requiredCac: reverse };
@@ -74,15 +78,9 @@ export function CACPaybackCalc() {
     setArpu((s.inputs.arpu as string) ?? arpu);
     setMargin((s.inputs.margin as string) ?? margin);
   };
-
-  const compareFields: CompareField[] = [
-    { key: 'mode', label: 'Mode', get: s => s.mode, format: v => (v === 'forward' ? 'Forward' : 'Reverse') },
-    { key: 'cac', label: 'CAC', get: s => s.inputs.cac, format: v => fmtMoney(Number(v)), lowerIsBetter: true },
-    { key: 'arpu', label: 'ARPU/mo', get: s => s.inputs.arpu, format: v => fmtMoney(Number(v)) },
-    { key: 'margin', label: 'Margin %', get: s => s.inputs.margin, format: v => `${v}%`, lowerIsBetter: false },
-    { key: 'months', label: 'Payback (months)', get: s => s.outputs.months, format: v => fmtMonths(v as number | null), lowerIsBetter: true },
-    { key: 'requiredCac', label: 'Required CAC', get: s => s.outputs.requiredCac, format: v => fmtMoney(v as number | null), lowerIsBetter: true },
-  ];
+  // Re-register on every render so the captured fallback state stays fresh.
+  // Cheap (a ref-set) and avoids the stale-closure trap with useEffect deps.
+  registerLoadHandler?.(loadScenario);
 
   return (
     <CalcCard
@@ -103,18 +101,10 @@ export function CACPaybackCalc() {
         </>
       }
       footer={
-        <>
-          <ScenarioBar
-            scenarios={scenarios}
-            onSave={name => save({ name, mode, inputs, outputs })}
-            onLoad={loadScenario}
-            onRemove={remove}
-            onDuplicate={duplicate}
-            onCompareToggle={() => setCompareOpen(o => !o)}
-            compareOpen={compareOpen}
-          />
-          {compareOpen && <ScenarioCompare scenarios={scenarios} fields={compareFields} />}
-        </>
+        <SaveScenarioButton
+          scenarioCount={scenarios.length}
+          onSave={name => save({ name, mode, inputs, outputs })}
+        />
       }
     >
       <div className="grid grid-cols-3 gap-2">

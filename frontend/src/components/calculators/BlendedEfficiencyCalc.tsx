@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalcCard, Field, Result, inputCls } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
-import { ScenarioBar } from './ScenarioBar';
-import { ScenarioCompare, type CompareField } from './ScenarioCompare';
+import { SaveScenarioButton } from './SaveScenarioButton';
 import { useScenarios, type Scenario } from './useScenarios';
 import { Recommendations } from './RecommendationsList';
 import { fmtMoney } from './formatters';
@@ -20,7 +19,11 @@ interface ChannelRow {
   conversions: string;
 }
 
-export function BlendedEfficiencyCalc() {
+interface CalcProps {
+  registerLoadHandler?: (fn: (s: Scenario) => void) => void;
+}
+
+export function BlendedEfficiencyCalc({ registerLoadHandler }: CalcProps = {}) {
   const [mode, setMode] = useState<CalcMode>('forward');
   const [rows, setRows] = useState<ChannelRow[]>([
     { name: 'Meta', spend: '20000', conversions: '350' },
@@ -81,8 +84,7 @@ export function BlendedEfficiencyCalc() {
     return blendedCacRecommendations(forward.blendedCAC, forward.perChannel);
   }, [mode, forward]);
 
-  const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
-  const [compareOpen, setCompareOpen] = useState(false);
+  const { scenarios, save } = useScenarios(CALC_ID);
 
   const inputs = { rows, targetCac };
   const outputs = {
@@ -97,21 +99,7 @@ export function BlendedEfficiencyCalc() {
     if (Array.isArray(s.inputs.rows)) setRows(s.inputs.rows as ChannelRow[]);
     if (typeof s.inputs.targetCac === 'string') setTargetCac(s.inputs.targetCac);
   };
-
-  const compareFields: CompareField[] = [
-    { key: 'mode', label: 'Mode', get: s => s.mode, format: v => (v === 'forward' ? 'Forward' : 'Reverse') },
-    {
-      key: 'channels',
-      label: 'Channels',
-      get: s => (s.inputs.rows as ChannelRow[] | undefined)?.length ?? 0,
-      format: v => `${v}`,
-    },
-    { key: 'targetCac', label: 'Target CAC', get: s => s.inputs.targetCac, format: v => fmtMoney(Number(v)), lowerIsBetter: true },
-    { key: 'totalSpend', label: 'Total spend', get: s => s.outputs.totalSpend, format: v => fmtMoney(v as number | null) },
-    { key: 'totalConversions', label: 'Total conversions', get: s => s.outputs.totalConversions, format: v => v == null ? '—' : (v as number).toLocaleString() },
-    { key: 'blendedCAC', label: 'Blended CAC', get: s => s.outputs.blendedCAC, format: v => fmtMoney(v as number | null), lowerIsBetter: true },
-    { key: 'requiredTotalSpend', label: 'Required spend', get: s => s.outputs.requiredTotalSpend, format: v => fmtMoney(v as number | null), lowerIsBetter: true },
-  ];
+  registerLoadHandler?.(loadScenario);
 
   const updateRow = (i: number, patch: Partial<ChannelRow>) =>
     setRows(rs => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -160,18 +148,10 @@ export function BlendedEfficiencyCalc() {
         </>
       }
       footer={
-        <>
-          <ScenarioBar
-            scenarios={scenarios}
-            onSave={name => save({ name, mode, inputs, outputs })}
-            onLoad={loadScenario}
-            onRemove={remove}
-            onDuplicate={duplicate}
-            onCompareToggle={() => setCompareOpen(o => !o)}
-            compareOpen={compareOpen}
-          />
-          {compareOpen && <ScenarioCompare scenarios={scenarios} fields={compareFields} />}
-        </>
+        <SaveScenarioButton
+          scenarioCount={scenarios.length}
+          onSave={name => save({ name, mode, inputs, outputs })}
+        />
       }
     >
       {mode === 'reverse' && (

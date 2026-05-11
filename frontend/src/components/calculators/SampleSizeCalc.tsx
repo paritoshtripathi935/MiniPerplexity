@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalcCard, Field, Result } from './CalcCard';
 import { Insight } from './Insight';
 import { ModeToggle, type CalcMode } from './ModeToggle';
-import { ScenarioBar } from './ScenarioBar';
-import { ScenarioCompare, type CompareField } from './ScenarioCompare';
+import { SaveScenarioButton } from './SaveScenarioButton';
 import { useScenarios, type Scenario } from './useScenarios';
 import { Slider } from './Slider';
 import { Recommendations } from './RecommendationsList';
@@ -45,7 +44,11 @@ function solveLift(p1: number, alpha: number, power: number, target: number): nu
   return (lo + hi) / 2;
 }
 
-export function SampleSizeCalc() {
+interface CalcProps {
+  registerLoadHandler?: (fn: (s: Scenario) => void) => void;
+}
+
+export function SampleSizeCalc({ registerLoadHandler }: CalcProps = {}) {
   const [mode, setMode] = useState<CalcMode>('forward');
   const [baseline, setBaseline] = useState('1.2');
   const [mde, setMde] = useState('15');
@@ -95,8 +98,7 @@ export function SampleSizeCalc() {
     return sampleSizeRecommendations(forward.nPerArm, Number(alpha), Number(power));
   }, [mode, forward, alpha, power]);
 
-  const { scenarios, save, remove, duplicate } = useScenarios(CALC_ID);
-  const [compareOpen, setCompareOpen] = useState(false);
+  const { scenarios, save } = useScenarios(CALC_ID);
 
   const inputs = { baseline, mde, targetN, alpha, power };
   const outputs = {
@@ -112,17 +114,7 @@ export function SampleSizeCalc() {
     setAlpha((s.inputs.alpha as string) ?? alpha);
     setPower((s.inputs.power as string) ?? power);
   };
-
-  const compareFields: CompareField[] = [
-    { key: 'mode', label: 'Mode', get: s => s.mode, format: v => (v === 'forward' ? 'Forward' : 'Reverse') },
-    { key: 'baseline', label: 'Baseline %', get: s => s.inputs.baseline, format: v => `${v}%` },
-    { key: 'mde', label: 'MDE %', get: s => s.inputs.mde, format: v => `${v}%`, lowerIsBetter: true },
-    { key: 'targetN', label: 'Target N / arm', get: s => s.inputs.targetN, format: v => Number(v).toLocaleString() },
-    { key: 'alpha', label: 'α', get: s => s.inputs.alpha, format: v => String(v) },
-    { key: 'power', label: 'Power', get: s => s.inputs.power, format: v => String(v) },
-    { key: 'nPerArm', label: 'N / arm', get: s => s.outputs.nPerArm, format: v => v == null ? '—' : (v as number).toLocaleString(), lowerIsBetter: true },
-    { key: 'minDetectableLift', label: 'Min detectable lift', get: s => s.outputs.minDetectableLift, format: v => v == null ? '—' : `${(v as number).toFixed(1)}%`, lowerIsBetter: true },
-  ];
+  registerLoadHandler?.(loadScenario);
 
   return (
     <CalcCard
@@ -160,18 +152,10 @@ export function SampleSizeCalc() {
         </>
       }
       footer={
-        <>
-          <ScenarioBar
-            scenarios={scenarios}
-            onSave={name => save({ name, mode, inputs, outputs })}
-            onLoad={loadScenario}
-            onRemove={remove}
-            onDuplicate={duplicate}
-            onCompareToggle={() => setCompareOpen(o => !o)}
-            compareOpen={compareOpen}
-          />
-          {compareOpen && <ScenarioCompare scenarios={scenarios} fields={compareFields} />}
-        </>
+        <SaveScenarioButton
+          scenarioCount={scenarios.length}
+          onSave={name => save({ name, mode, inputs, outputs })}
+        />
       }
     >
       <div className="grid grid-cols-2 gap-2">
