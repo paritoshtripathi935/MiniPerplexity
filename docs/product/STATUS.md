@@ -107,6 +107,13 @@ User-selectable models (UI dropdown at the top of chat):
 
 Real candidates, ranked by leverage:
 
+0. **PAI-13 — Operator design system adoption.** Stacked-PR plan,
+   7 slices, designs already generated in Stitch. Full plan in
+   [PAI_13_PLAN.md](./PAI_13_PLAN.md) — locked decisions, slice list,
+   risks, source-material paths. Start with PR A (design tokens +
+   dark-first foundation). Independent of the other items below; you
+   can interleave or land in parallel.
+
 1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
    after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
    `backend/app/api/v1/query_handler.py` and its model imports if no
