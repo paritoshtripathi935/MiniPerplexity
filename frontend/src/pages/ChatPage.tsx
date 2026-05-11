@@ -480,17 +480,17 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             triggered sticky bar" pattern; one bar that's always in view. */}
         <div className="border-b border-border bg-surface px-4 sm:px-6 h-12 flex items-center gap-3 shrink-0">
           <div className="flex-1 min-w-0 flex items-center gap-3">
-            <div className="text-body-base font-medium text-on-surface truncate">
+            <div className="text-body-base font-medium text-fg truncate">
               {conversationTitle}
             </div>
             {hasStarted && (
-              <span className="inline-flex items-center gap-1.5 px-1.5 h-5 rounded-control bg-surface-container text-label-caps text-on-surface-variant shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary" aria-hidden />
-                Active
+              <span className="inline-flex items-center gap-1.5 px-1.5 h-5 rounded-md border border-emerald-400/30 bg-emerald-400/10 font-mono text-[10px] uppercase tracking-wider text-emerald-400 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                active
               </span>
             )}
             {hasStarted && (
-              <span className="inline-flex items-center px-1.5 h-5 rounded-control bg-surface-container text-label-caps text-on-surface-variant shrink-0 tabular-nums">
+              <span className="inline-flex items-center px-1.5 h-5 rounded-md border border-border/60 bg-surface-raised/60 font-mono text-[10px] uppercase tracking-wider text-fg-subtle shrink-0 tabular-nums">
                 {turnCount} turn{turnCount === 1 ? '' : 's'}
               </span>
             )}

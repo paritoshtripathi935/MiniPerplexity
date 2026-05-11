@@ -42,22 +42,22 @@ export function ScenariosPanel({ calcId, onLoad }: Props) {
   return (
     <section>
       <header className="flex items-center justify-between mb-3">
-        <h2 className="text-label-caps text-on-surface-variant uppercase">
-          Saved scenarios
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+          saved scenarios
         </h2>
         {sorted.length >= 2 && (
           <button
             type="button"
             onClick={() => setCompareOpen(v => !v)}
             className={clsx(
-              'inline-flex items-center gap-1.5 h-7 px-2.5 text-body-sm rounded-control border transition-colors',
+              'inline-flex items-center gap-1.5 h-7 px-2.5 text-body-sm rounded-md border transition-colors',
               compareOpen
-                ? 'border-primary text-primary bg-surface-container-low'
-                : 'border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline',
+                ? 'border-brand/40 text-brand bg-brand/10'
+                : 'border-border/60 text-fg-muted hover:text-fg hover:border-border-strong',
             )}
           >
             <GitCompare className="w-3 h-3" />
-            Compare
+            compare
             <ChevronDown
               className={clsx(
                 'w-3 h-3 transition-transform',
@@ -69,13 +69,13 @@ export function ScenariosPanel({ calcId, onLoad }: Props) {
       </header>
 
       {sorted.length === 0 ? (
-        <div className="rounded-card border border-dashed border-outline-variant px-4 py-10 text-center text-body-sm text-on-surface-variant">
-          No scenarios yet.{' '}
-          <span className="text-on-surface">Calculate once and save it</span> to
+        <div className="rounded-2xl border border-dashed border-border/60 px-4 py-10 text-center text-body-sm text-fg-muted">
+          no scenarios yet.{' '}
+          <span className="text-fg">calculate once and save it</span> to
           track changes over time.
         </div>
       ) : (
-        <div className="rounded-card border border-outline-variant bg-surface-container-low divide-y divide-outline-variant overflow-hidden">
+        <div className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur divide-y divide-border/40 overflow-hidden">
           {sorted.map((s, i) => {
             const headline = display.headline(s);
             const value = display.headlineValue(s);
@@ -154,16 +154,16 @@ function ScenarioRow({
     <div
       className={clsx(
         'group flex items-center gap-4 px-4 py-3 transition-colors',
-        dominant ? 'bg-surface-container' : 'hover:bg-surface-container',
+        dominant ? 'bg-brand/5' : 'hover:bg-surface-raised/60',
       )}
     >
       <button
         type="button"
         onClick={onLoad}
-        className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:shadow-focus rounded-control"
+        className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:shadow-focus rounded-md"
         title="Load this scenario"
       >
-        <div className="text-body-base text-on-surface font-medium truncate">
+        <div className="text-body-base text-fg font-medium truncate">
           {scenario.name}
         </div>
         {chips.length > 0 && (
@@ -171,7 +171,7 @@ function ScenarioRow({
             {chips.map((c, i) => (
               <span
                 key={i}
-                className="inline-flex items-center px-1.5 h-5 rounded-control bg-surface-container-high text-label-caps text-on-surface-variant"
+                className="inline-flex items-center px-1.5 h-5 rounded-md border border-border/60 bg-surface-raised/60 font-mono text-[10px] uppercase tracking-wider text-fg-subtle"
               >
                 {c}
               </span>
@@ -181,7 +181,7 @@ function ScenarioRow({
       </button>
 
       <div className="text-right shrink-0">
-        <div className="font-display text-metric-lg text-on-surface tabular-nums">
+        <div className="font-display text-metric-lg text-fg tabular-nums">
           {headline}
         </div>
         {deltaStr && (
@@ -190,7 +190,7 @@ function ScenarioRow({
               'text-body-sm tabular-nums mt-1',
               deltaBetter && 'text-success',
               deltaWorse && 'text-warning',
-              !deltaBetter && !deltaWorse && 'text-on-surface-variant',
+              !deltaBetter && !deltaWorse && 'text-fg-muted',
             )}
           >
             {deltaStr} vs. last
@@ -202,7 +202,7 @@ function ScenarioRow({
         <button
           type="button"
           onClick={onDuplicate}
-          className="grid place-items-center w-7 h-7 rounded-control text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"
+          className="grid place-items-center w-7 h-7 rounded-md text-fg-muted hover:text-fg hover:bg-surface-raised transition-colors"
           aria-label={`Duplicate ${scenario.name}`}
           title="Duplicate"
         >
@@ -211,7 +211,7 @@ function ScenarioRow({
         <button
           type="button"
           onClick={onRemove}
-          className="grid place-items-center w-7 h-7 rounded-control text-on-surface-variant hover:text-m3-error hover:bg-m3-error-container/40 transition-colors"
+          className="grid place-items-center w-7 h-7 rounded-md text-fg-muted hover:text-danger hover:bg-danger-subtle/40 transition-colors"
           aria-label={`Delete ${scenario.name}`}
           title="Delete"
         >

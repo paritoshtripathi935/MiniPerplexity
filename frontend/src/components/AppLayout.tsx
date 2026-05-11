@@ -144,12 +144,16 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
   );
 }
 
-/** Page hero — title + description with consistent spacing. */
+/** Page hero — title + description with consistent spacing. Matches the
+ *  landing-page eyebrow/heading rhythm: small mono-uppercase tag, then a
+ *  display-typography lowercase title. */
 export function PageHeader({
+  eyebrow,
   title,
   subtitle,
   actions,
 }: {
+  eyebrow?: string;
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
@@ -157,6 +161,11 @@ export function PageHeader({
   return (
     <div className="mb-8 flex items-start justify-between gap-4">
       <div>
+        {eyebrow && (
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+            {eyebrow}
+          </p>
+        )}
         <h1 className="font-display text-h1">
           {title}
         </h1>

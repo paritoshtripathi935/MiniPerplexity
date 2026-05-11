@@ -229,7 +229,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-[11px] text-fg-subtle tabular-nums">
+            <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-wider text-fg-subtle tabular-nums">
               {sendKey} ↵ to send
             </span>
             <button
@@ -238,10 +238,10 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
               disabled={loading || !query.trim()}
               aria-label="Send"
               className={clsx(
-                'grid place-items-center w-7 h-7 rounded-md transition-colors duration-150',
+                'grid place-items-center w-7 h-7 rounded-md transition-all duration-150',
                 'disabled:opacity-40 disabled:pointer-events-none',
                 query.trim()
-                  ? 'bg-brand text-brand-fg hover:bg-brand/90'
+                  ? 'bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white shadow-[0_0_16px_rgba(124,92,255,0.35)] hover:shadow-[0_0_22px_rgba(124,92,255,0.55)]'
                   : 'bg-surface-sunken text-fg-subtle'
               )}
             >

@@ -125,26 +125,26 @@ export function HomePage({}: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* PRIMARY SURFACE — operational feed */}
         <section className="lg:col-span-3">
-          <SectionLabel>Operational feed</SectionLabel>
-          <div className="rounded-card border border-outline-variant bg-surface-container-low divide-y divide-outline-variant">
+          <SectionLabel>operational feed</SectionLabel>
+          <div className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur divide-y divide-border/40 overflow-hidden">
             <FeedRow
               icon={<Search className="w-4 h-4" />}
               label={
                 openInvestigations.length === 0
-                  ? 'No investigations open'
+                  ? 'no investigations open'
                   : `${openInvestigations.length} investigation${openInvestigations.length === 1 ? '' : 's'} open`
               }
               trailing={
                 lastActivity ? (
-                  <span className="text-body-sm text-on-surface-variant tabular-nums">
+                  <span className="text-body-sm text-fg-muted tabular-nums">
                     last activity {relativeTime(lastActivity)}
                   </span>
                 ) : (
                   <Link
                     to={`/investigations/${newChatId}`}
-                    className="text-body-sm text-primary hover:underline"
+                    className="text-body-sm text-brand hover:underline"
                   >
-                    Start one →
+                    start one →
                   </Link>
                 )
               }
@@ -153,18 +153,18 @@ export function HomePage({}: Props) {
 
             <FeedRow
               icon={<Calculator className="w-4 h-4" />}
-              label="Calculators"
+              label="calculators"
               trailing={
                 scenarios.total === 0 ? (
-                  <span className="text-body-sm text-on-surface-variant">
-                    <span className="text-outline-variant">→</span>{' '}
-                    <Link to="/calc" className="text-primary hover:underline">
+                  <span className="text-body-sm text-fg-muted">
+                    <span className="text-fg-subtle/60">→</span>{' '}
+                    <Link to="/calc" className="text-brand hover:underline">
                       no scenarios saved yet
                     </Link>
                   </span>
                 ) : (
-                  <span className="text-body-sm text-on-surface-variant tabular-nums">
-                    <span className="text-outline-variant">→</span>{' '}
+                  <span className="text-body-sm text-fg-muted tabular-nums">
+                    <span className="text-fg-subtle/60">→</span>{' '}
                     {scenarios.total} scenario{scenarios.total === 1 ? '' : 's'} saved
                   </span>
                 )
@@ -174,12 +174,12 @@ export function HomePage({}: Props) {
 
             <FeedRow
               icon={<TrendingDown className="w-4 h-4" />}
-              label="Meta CAC trend"
+              label="meta CAC trend"
               trailing={
                 <span className="text-body-sm">
-                  <span className="text-on-surface-variant">—</span>{' '}
-                  <Link to="/settings" className="text-primary hover:underline">
-                    Connect Meta
+                  <span className="text-fg-muted">—</span>{' '}
+                  <Link to="/settings" className="text-brand hover:underline">
+                    connect Meta
                   </Link>
                 </span>
               }
@@ -188,12 +188,12 @@ export function HomePage({}: Props) {
 
             <FeedRow
               icon={<BarChart3 className="w-4 h-4" />}
-              label="Channel mix vs. target ROAS"
+              label="channel mix vs. target ROAS"
               trailing={
                 <span className="text-body-sm">
-                  <span className="text-on-surface-variant">—</span>{' '}
-                  <Link to="/settings" className="text-primary hover:underline">
-                    Connect Google Ads
+                  <span className="text-fg-muted">—</span>{' '}
+                  <Link to="/settings" className="text-brand hover:underline">
+                    connect Google Ads
                   </Link>
                 </span>
               }
@@ -203,10 +203,10 @@ export function HomePage({}: Props) {
             {brandIncomplete && (
               <FeedRow
                 icon={<Settings className="w-4 h-4" />}
-                label={`Brand profile · ${brandSetupPct}% complete`}
+                label={`brand profile · ${brandSetupPct}% complete`}
                 trailing={
-                  <Link to="/settings" className="text-body-sm text-primary hover:underline">
-                    Finish setup →
+                  <Link to="/settings" className="text-body-sm text-brand hover:underline">
+                    finish setup →
                   </Link>
                 }
                 to="/settings"
@@ -221,10 +221,10 @@ export function HomePage({}: Props) {
         {/* SECONDARY SURFACE — right rail */}
         <aside className="lg:col-span-2 space-y-8">
           <section>
-            <SectionLabel>Continue investigation</SectionLabel>
+            <SectionLabel>continue investigation</SectionLabel>
             {recentThree.length === 0 ? (
-              <div className="rounded-card border border-dashed border-outline-variant px-4 py-6 text-body-sm text-on-surface-variant">
-                No active investigations. Start by asking what changed, what to
+              <div className="rounded-2xl border border-dashed border-border/60 px-4 py-6 text-body-sm text-fg-muted">
+                no active investigations. start by asking what changed, what to
                 test, or what to scale.
               </div>
             ) : (
@@ -233,18 +233,18 @@ export function HomePage({}: Props) {
                   <li key={s.id}>
                     <Link
                       to={`/investigations/${s.id}`}
-                      className="block rounded-card border border-outline-variant bg-surface-container-low hover:border-outline transition-colors p-3 group focus-visible:outline-none focus-visible:shadow-focus"
+                      className="block rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur hover:border-brand/40 transition-colors p-3 group focus-visible:outline-none focus-visible:shadow-focus"
                     >
                       <div className="flex items-start justify-between gap-3 mb-1">
-                        <span className="text-body-base text-on-surface font-medium truncate">
-                          {s.title?.trim() || 'Untitled investigation'}
+                        <span className="text-body-base text-fg font-medium truncate">
+                          {s.title?.trim() || 'untitled investigation'}
                         </span>
-                        <span className="text-body-sm text-on-surface-variant shrink-0 tabular-nums">
+                        <span className="text-body-sm text-fg-muted shrink-0 tabular-nums">
                           {relativeTime(s.last_accessed_at)}
                         </span>
                       </div>
                       {s.last_message_excerpt && (
-                        <p className="text-body-sm text-on-surface-variant line-clamp-1 leading-snug">
+                        <p className="text-body-sm text-fg-muted line-clamp-1 leading-snug">
                           {s.last_message_excerpt}
                         </p>
                       )}
@@ -256,26 +256,26 @@ export function HomePage({}: Props) {
           </section>
 
           <section>
-            <SectionLabel>Quick actions</SectionLabel>
+            <SectionLabel>quick actions</SectionLabel>
             <ul className="space-y-px">
               <QuickAction
-                label="New investigation"
+                label="new investigation"
                 to={`/investigations/${newChatId}`}
                 shortcut={['⌘', 'N']}
               />
               <QuickAction
-                label="Open calculators"
+                label="open calculators"
                 to="/calc"
                 shortcut={['⌘', 'E']}
               />
               <QuickAction
-                label="Run a play"
+                label="run a play"
                 to="/plays"
                 shortcut={['⌘', 'P']}
                 icon={<PlayCircle className="w-3.5 h-3.5" />}
               />
               <QuickAction
-                label="Search anything"
+                label="search anything"
                 onClick={() => setPaletteOpen(true)}
                 shortcut={['⌘', 'K']}
                 icon={<Search className="w-3.5 h-3.5" />}
@@ -292,7 +292,7 @@ export function HomePage({}: Props) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-label-caps text-on-surface-variant uppercase mb-3">
+    <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
       {children}
     </h2>
   );
@@ -334,13 +334,13 @@ function OperationalStateLine({
     );
   }
   return (
-    <p className="text-body-base text-on-surface-variant flex items-center gap-2 flex-wrap">
-      <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" aria-hidden />
+    <p className="text-body-base text-fg-muted flex items-center gap-2 flex-wrap">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" aria-hidden />
       {parts.map((p, i) => (
         <span key={i} className="contents">
           {p}
           {i < parts.length - 1 && (
-            <span className="text-outline-variant" aria-hidden>
+            <span className="text-fg-subtle/60" aria-hidden>
               ·
             </span>
           )}
@@ -363,12 +363,12 @@ function FeedRow({ icon, label, trailing, to, dim = false }: FeedRowProps) {
   const content = (
     <>
       <span
-        className={`shrink-0 ${dim ? 'text-outline' : 'text-on-surface-variant'}`}
+        className={`shrink-0 ${dim ? 'text-fg-subtle' : 'text-fg-muted'}`}
       >
         {icon}
       </span>
       <span
-        className={`flex-1 min-w-0 truncate text-body-base ${dim ? 'text-on-surface-variant' : 'text-on-surface'}`}
+        className={`flex-1 min-w-0 truncate text-body-base ${dim ? 'text-fg-muted' : 'text-fg'}`}
       >
         {label}
       </span>
@@ -379,7 +379,7 @@ function FeedRow({ icon, label, trailing, to, dim = false }: FeedRowProps) {
   return (
     <Link
       to={to}
-      className="flex items-center gap-3 px-4 py-3 hover:bg-surface-container transition-colors focus-visible:outline-none focus-visible:shadow-focus"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-surface-raised/60 transition-colors focus-visible:outline-none focus-visible:shadow-focus"
     >
       {content}
     </Link>
@@ -400,20 +400,20 @@ function QuickAction({
   icon?: React.ReactNode;
 }) {
   const body = (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-control hover:bg-surface-container transition-colors group">
+    <div className="flex items-center gap-2 px-3 py-2 rounded-control hover:bg-surface-raised/60 transition-colors group">
       {icon && (
-        <span className="text-on-surface-variant group-hover:text-on-surface transition-colors">
+        <span className="text-fg-muted group-hover:text-fg transition-colors">
           {icon}
         </span>
       )}
-      <span className="flex-1 text-body-base text-on-surface-variant group-hover:text-on-surface transition-colors">
+      <span className="flex-1 text-body-base text-fg-muted group-hover:text-fg transition-colors">
         {label}
       </span>
       <span className="flex items-center gap-1">
         {shortcut.map((k, i) => (
           <kbd
             key={i}
-            className="inline-grid place-items-center min-w-[20px] h-[18px] px-1 text-label-caps text-outline bg-surface-container rounded-control"
+            className="inline-grid place-items-center min-w-[20px] h-[18px] px-1 font-mono text-[10px] text-fg-subtle bg-surface-raised/60 border border-border/60 rounded-control"
           >
             {k}
           </kbd>
@@ -421,7 +421,7 @@ function QuickAction({
       </span>
       {to && (
         <ArrowUpRight
-          className="w-3 h-3 text-outline-variant opacity-0 group-hover:opacity-100 transition-opacity"
+          className="w-3 h-3 text-fg-subtle/60 opacity-0 group-hover:opacity-100 transition-opacity"
           aria-hidden
         />
       )}

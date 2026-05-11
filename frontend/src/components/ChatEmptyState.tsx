@@ -51,12 +51,15 @@ export function ChatEmptyState({
 
   return (
     <div className="mt-16 sm:mt-24 animate-fade-in">
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+        new investigation
+      </p>
       <h2 className="font-display text-h1 sm:text-[28px] font-semibold tracking-tight text-fg">
-        Start by asking what changed, what to test, or what to scale.
+        start by asking what changed, what to test, or what to scale.
       </h2>
       {profile?.company_name && (
         <p className="text-body-base text-fg-muted mt-2 max-w-xl leading-relaxed">
-          Working on {profile.company_name}. Your brand context is applied automatically.
+          working on {profile.company_name}. your brand context is applied automatically.
         </p>
       )}
 
@@ -65,10 +68,10 @@ export function ChatEmptyState({
           <button
             key={i}
             onClick={() => onPick(s.prompt)}
-            className="group text-left rounded-lg border border-border bg-surface hover:bg-surface-sunken hover:border-border-strong transition-colors duration-150 p-4 focus-visible:outline-none focus-visible:shadow-focus"
+            className="group text-left rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur hover:border-brand/40 hover:bg-surface-raised/60 transition-colors duration-150 p-4 focus-visible:outline-none focus-visible:shadow-focus"
           >
-            <div className="text-label-caps uppercase text-fg-subtle mb-1.5">
-              {s.tag}
+            <div className="font-mono text-[10px] uppercase tracking-wider text-brand/80 mb-1.5">
+              {s.tag.toLowerCase()}
             </div>
             <div className="text-body-sm text-fg leading-snug">{s.prompt}</div>
           </button>
@@ -76,7 +79,7 @@ export function ChatEmptyState({
       </div>
 
       <p className="text-[11px] text-fg-subtle mt-6">
-        Paste a URL in the composer to investigate that page specifically.
+        paste a URL in the composer to investigate that page specifically.
       </p>
     </div>
   );

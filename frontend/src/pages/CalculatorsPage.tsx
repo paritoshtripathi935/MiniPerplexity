@@ -52,20 +52,23 @@ export function CalculatorsPage({}: Props) {
     <PresetProvider>
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-h1 text-on-surface">{activeDef.label}</h1>
-          <p className="mt-1 text-body-sm text-on-surface-variant max-w-2xl">
-            All client-side — no telemetry, no roundtrips. Saved scenarios live
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+            calculators
+          </p>
+          <h1 className="font-display text-h1 text-fg">{activeDef.label.toLowerCase()}.</h1>
+          <p className="mt-1 text-body-sm text-fg-muted max-w-2xl">
+            all client-side — no telemetry, no roundtrips. saved scenarios live
             in your browser.
           </p>
         </div>
-        <span className="inline-flex items-center gap-2 px-2.5 h-7 rounded-control border border-outline-variant bg-surface-container-low text-label-caps text-on-surface-variant">
-          Calculators
-          <span className="text-outline-variant" aria-hidden>/</span>
-          <span className="text-on-surface">{activeDef.label}</span>
+        <span className="inline-flex items-center gap-2 px-2.5 h-7 rounded-md border border-border/60 bg-surface-raised/60 font-mono text-[10px] uppercase tracking-wider text-fg-muted">
+          calculators
+          <span className="text-fg-subtle/60" aria-hidden>/</span>
+          <span className="text-fg">{activeDef.label.toLowerCase()}</span>
         </span>
       </header>
 
-      <nav className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-outline-variant pb-px">
+      <nav className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-border/60 pb-px">
         {CALC_DEFS.map(c => {
           const isActive = c.id === active;
           return (
@@ -76,14 +79,14 @@ export function CalculatorsPage({}: Props) {
               className={
                 'inline-flex items-center h-8 px-3 text-body-sm font-medium transition-colors relative shrink-0 ' +
                 (isActive
-                  ? 'text-on-surface'
-                  : 'text-on-surface-variant hover:text-on-surface')
+                  ? 'text-fg'
+                  : 'text-fg-muted hover:text-fg')
               }
             >
               {c.label}
               {isActive && (
                 <span
-                  className="absolute left-0 right-0 -bottom-px h-[2px] bg-primary"
+                  className="absolute left-0 right-0 -bottom-px h-[2px] bg-gradient-to-r from-[#7C5CFF] to-[#3B82F6]"
                   aria-hidden
                 />
               )}

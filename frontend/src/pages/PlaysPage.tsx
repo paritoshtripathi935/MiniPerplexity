@@ -89,15 +89,16 @@ export function PlaysPage({ onPrepareRun }: Props) {
   return (
     <>
       <PageHeader
-        title="Plays"
-        subtitle="Pre-built playbooks for common growth-ops asks. Pick one, fill a few inputs, get a marketer-grade output."
+        eyebrow="plays library"
+        title="plays."
+        subtitle="pre-built playbooks for common growth-ops asks. pick one, fill a few inputs, get a marketer-grade output."
       />
 
       {recentPlays.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-label-caps uppercase text-on-surface-variant mb-3 flex items-center gap-1.5">
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3 flex items-center gap-1.5">
             <History className="w-3 h-3" aria-hidden />
-            Recently used
+            recently used
           </h2>
           <PlayList>
             {recentPlays.map(({ play, lastRunAt, runCount }) => (
@@ -106,9 +107,9 @@ export function PlaysPage({ onPrepareRun }: Props) {
                 play={play}
                 onClick={() => setActivePlay(play)}
                 trailing={
-                  <span className="flex items-center gap-3 shrink-0 text-body-sm text-on-surface-variant tabular-nums">
+                  <span className="flex items-center gap-3 shrink-0 text-body-sm text-fg-muted tabular-nums">
                     <span>{runCount} run{runCount === 1 ? '' : 's'}</span>
-                    <span className="text-outline-variant" aria-hidden>·</span>
+                    <span className="text-fg-subtle/60" aria-hidden>·</span>
                     <span>{relativeTime(lastRunAt)}</span>
                   </span>
                 }
@@ -119,7 +120,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
       )}
 
       <header className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-label-caps uppercase text-on-surface-variant">All plays</h2>
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">all plays</h2>
         {filterActive && (
           <button
             type="button"
@@ -127,21 +128,21 @@ export function PlaysPage({ onPrepareRun }: Props) {
               setFilter('All');
               setSearch('');
             }}
-            className="text-body-sm text-primary hover:underline"
+            className="text-body-sm text-brand hover:underline"
           >
-            Clear filter
+            clear filter
           </button>
         )}
       </header>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search plays"
-            className="w-full pl-9 pr-3 h-9 rounded-control text-body-sm bg-surface border border-outline-variant placeholder:text-outline outline-none focus-visible:shadow-focus"
+            placeholder="search plays"
+            className="w-full pl-9 pr-3 h-9 rounded-control text-body-sm bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -152,8 +153,8 @@ export function PlaysPage({ onPrepareRun }: Props) {
               className={clsx(
                 'h-8 px-3 rounded-control text-body-md font-medium transition-colors',
                 filter === c
-                  ? 'bg-on-surface text-surface'
-                  : 'bg-surface border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline',
+                  ? 'bg-brand/15 text-fg border border-brand/40'
+                  : 'bg-surface border border-border text-fg-muted hover:text-fg hover:border-border-strong',
               )}
             >
               {c}
@@ -163,19 +164,19 @@ export function PlaysPage({ onPrepareRun }: Props) {
       </div>
 
       {loading ? (
-        <p className="text-body-sm text-on-surface-variant">Loading plays…</p>
+        <p className="text-body-sm text-fg-muted">loading plays…</p>
       ) : filtered.length === 0 ? (
-        <div className="rounded-card border border-dashed border-outline-variant px-4 py-10 text-center text-body-sm text-on-surface-variant">
-          No plays match this filter.{' '}
+        <div className="rounded-2xl border border-dashed border-border/60 px-4 py-10 text-center text-body-sm text-fg-muted">
+          no plays match this filter.{' '}
           <button
             type="button"
             onClick={() => {
               setFilter('All');
               setSearch('');
             }}
-            className="text-primary hover:underline"
+            className="text-brand hover:underline"
           >
-            Show all
+            show all
           </button>
         </div>
       ) : (
@@ -186,7 +187,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
               play={p}
               onClick={() => setActivePlay(p)}
               trailing={
-                <span className="inline-flex items-center px-1.5 h-5 rounded-control bg-surface-container-high text-label-caps text-on-surface-variant shrink-0">
+                <span className="inline-flex items-center px-1.5 h-5 rounded-md border border-border/60 bg-surface-raised font-mono text-[10px] uppercase tracking-wider text-fg-subtle shrink-0">
                   {p.category}
                 </span>
               }
@@ -219,7 +220,7 @@ interface RecentPlay {
 
 function PlayList({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-card border border-outline-variant bg-surface-container-low divide-y divide-outline-variant overflow-hidden">
+    <div className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur divide-y divide-border/40 overflow-hidden">
       {children}
     </div>
   );
@@ -239,16 +240,16 @@ function PlayRow({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-surface-container transition-colors focus-visible:outline-none focus-visible:shadow-focus"
+      className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-surface-raised/60 transition-colors focus-visible:outline-none focus-visible:shadow-focus"
     >
-      <span className="grid place-items-center w-7 h-7 rounded-control bg-surface-container text-on-surface-variant shrink-0 mt-0.5">
+      <span className="grid place-items-center w-7 h-7 rounded-md bg-brand/10 text-brand shrink-0 mt-0.5">
         <Icon className="w-3.5 h-3.5" strokeWidth={2} />
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-body-base text-on-surface font-medium truncate">
+        <span className="block text-body-base text-fg font-medium truncate">
           {play.title}
         </span>
-        <span className="block text-body-sm text-on-surface-variant leading-snug line-clamp-1">
+        <span className="block text-body-sm text-fg-muted leading-snug line-clamp-1">
           {play.description}
         </span>
       </span>
