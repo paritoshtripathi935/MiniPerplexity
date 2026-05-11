@@ -1,7 +1,7 @@
 import React, { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
-import { Calculator, Home, MessageSquare, Settings, Sparkles, Sun, Moon } from 'lucide-react';
+import { Calculator, Home, PlayCircle, Search, Settings, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
 
 interface Props {
@@ -11,8 +11,8 @@ interface Props {
 
 const NAV = [
   { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/chat', label: 'Chat', icon: MessageSquare, end: false },
-  { to: '/plays', label: 'Plays', icon: Sparkles, end: false },
+  { to: '/investigations', label: 'Investigations', icon: Search, end: false },
+  { to: '/plays', label: 'Plays', icon: PlayCircle, end: false },
   { to: '/calc', label: 'Calculators', icon: Calculator, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ];
@@ -23,15 +23,17 @@ const NAV = [
  */
 export function AppLayout({ darkMode, toggleDarkMode }: Props) {
   const location = useLocation();
-  const isChatRoute = location.pathname.startsWith('/chat');
+  // Investigation surface uses its own full-bleed layout (no max-width).
+  // Legacy `/chat/*` redirects via App.tsx; nothing else needs this guard.
+  const isInvestigationRoute = location.pathname.startsWith('/investigations');
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-sunken text-fg">
       <header className="sticky top-0 z-40 border-b border-border bg-surface/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
           <NavLink to="/" className="flex items-center gap-2 mr-2 shrink-0">
-            <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg">
-              <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />
+            <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg font-display font-semibold text-[13px] leading-none">
+              P
             </span>
             <span className="font-display font-semibold tracking-tight text-[15px]">
               PaidPilot
@@ -80,7 +82,7 @@ export function AppLayout({ darkMode, toggleDarkMode }: Props) {
         </div>
       </header>
 
-      {isChatRoute ? (
+      {isInvestigationRoute ? (
         <main className="flex-1 min-h-0">
           <Outlet />
         </main>

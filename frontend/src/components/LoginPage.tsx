@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SignIn } from '@clerk/clerk-react';
-import { Github, Linkedin, Mail, Globe, Sparkles, X } from 'lucide-react';
+import { Github, Linkedin, Mail, Globe, X } from 'lucide-react';
 
 const developerData = {
   name: 'Paritosh Tripathi',
@@ -72,8 +72,8 @@ const LoginPage: React.FC = () => {
           {/* Pitch */}
           <div className="space-y-7">
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand text-brand-fg shadow-card">
-                <Sparkles className="w-4 h-4" strokeWidth={2.5} />
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand text-brand-fg shadow-card font-display font-semibold text-[16px] leading-none">
+                P
               </span>
               <span className="font-display text-[20px] font-semibold tracking-tight">
                 PaidPilot
@@ -82,7 +82,7 @@ const LoginPage: React.FC = () => {
 
             <div>
               <h1 className="font-display text-[36px] sm:text-[44px] leading-[1.05] tracking-[-0.02em] font-semibold">
-                An AI co-pilot for performance marketers.
+                An operating system for growth teams.
               </h1>
               <p className="text-[15px] text-fg-muted mt-4 max-w-md leading-relaxed">
                 Benchmarks, briefs, and channel plans without the Slack-and-search slog. Your brand context is baked into every answer. Free while in beta.

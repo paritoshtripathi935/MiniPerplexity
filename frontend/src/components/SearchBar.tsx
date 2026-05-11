@@ -49,7 +49,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
   {
     onSearch,
     loading,
-    placeholder = 'Ask anything paid-acquisition…    Tip: type / to run a play',
+    placeholder = 'Continue the investigation…    Tip: type / to run a play',
     plays = [],
     onPlaySelect,
     activePlay,
@@ -265,7 +265,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
             autoFocus
             value={customUrl}
             onChange={e => setCustomUrl(e.target.value)}
-            placeholder="Paste a URL — the assistant will read this page instead of searching."
+            placeholder="Paste a URL — PaidPilot will read this page instead of running a search."
             className="flex-1 px-3 h-8 rounded-md text-[12px] bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
           />
           <button
