@@ -21,7 +21,6 @@ import {
   ArrowUpRight,
   BarChart3,
   Calculator,
-  ChevronRight,
   PlayCircle,
   Search,
   Settings,
@@ -76,13 +75,6 @@ function readScenarioCounts(): CalcSummary {
   }
 }
 
-const CALC_LABELS: Record<string, string> = {
-  'cac-payback': 'CAC Payback',
-  'roas-margin': 'ROAS → Margin',
-  'sample-size': 'A/B Sample Size',
-  'blended-efficiency': 'Blended Efficiency',
-};
-
 export function HomePage({}: Props) {
   const { getToken } = useAuth();
   const { setOpen: setPaletteOpen } = useCommandPalette();
@@ -135,7 +127,9 @@ export function HomePage({}: Props) {
   return (
     <>
       <header className="mb-8">
-        <h1 className="font-display text-h1 text-on-surface">Operational Hub</h1>
+        {/* No page title — top-nav already says "Home" is active. The
+         * operational state line is the lead, matching the Stitch dark
+         * mock where the page identity lives in the sidebar chip. */}
         <OperationalStateLine
           openCount={openInvestigations.length}
           scenarioCount={scenarios.total}
@@ -174,25 +168,19 @@ export function HomePage({}: Props) {
 
             <FeedRow
               icon={<Calculator className="w-4 h-4" />}
-              label={
-                <span>
-                  Calculators
-                  <span className="text-on-surface-variant"> · </span>
-                  <span className="text-on-surface-variant">
-                    {scenarios.total === 0
-                      ? 'no scenarios saved yet'
-                      : `${scenarios.total} scenario${scenarios.total === 1 ? '' : 's'} saved`}
-                  </span>
-                </span>
-              }
+              label="Calculators"
               trailing={
                 scenarios.total === 0 ? (
-                  <Link to="/calc" className="text-body-sm text-primary hover:underline">
-                    Open →
-                  </Link>
+                  <span className="text-body-sm text-on-surface-variant">
+                    <span className="text-outline-variant">→</span>{' '}
+                    <Link to="/calc" className="text-primary hover:underline">
+                      no scenarios saved yet
+                    </Link>
+                  </span>
                 ) : (
                   <span className="text-body-sm text-on-surface-variant tabular-nums">
-                    {topCalcLabel(scenarios.byCalc)}
+                    <span className="text-outline-variant">→</span>{' '}
+                    {scenarios.total} scenario{scenarios.total === 1 ? '' : 's'} saved
                   </span>
                 )
               }
@@ -336,14 +324,22 @@ function OperationalStateLine({
 }) {
   const parts: React.ReactNode[] = [];
   parts.push(
-    <span key="inv" className="tabular-nums">
-      {openCount} open investigation{openCount === 1 ? '' : 's'}
-    </span>,
+    openCount === 0 ? (
+      <span key="inv">no investigations open</span>
+    ) : (
+      <span key="inv" className="tabular-nums">
+        {openCount} open investigation{openCount === 1 ? '' : 's'}
+      </span>
+    ),
   );
   parts.push(
-    <span key="sc" className="tabular-nums">
-      {scenarioCount} scenario{scenarioCount === 1 ? '' : 's'} pending
-    </span>,
+    scenarioCount === 0 ? (
+      <span key="sc">no scenarios pending</span>
+    ) : (
+      <span key="sc" className="tabular-nums">
+        {scenarioCount} scenario{scenarioCount === 1 ? '' : 's'} pending
+      </span>
+    ),
   );
   if (lastActivityIso) {
     parts.push(
@@ -353,7 +349,7 @@ function OperationalStateLine({
     );
   }
   return (
-    <p className="mt-2 text-body-sm text-on-surface-variant flex items-center gap-2 flex-wrap">
+    <p className="text-body-base text-on-surface-variant flex items-center gap-2 flex-wrap">
       <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" aria-hidden />
       {parts.map((p, i) => (
         <span key={i} className="contents">
@@ -392,24 +388,15 @@ function FeedRow({ icon, label, trailing, to, dim = false }: FeedRowProps) {
         {label}
       </span>
       {trailing}
-      {to && (
-        <ChevronRight
-          className="w-3.5 h-3.5 text-outline-variant shrink-0 group-hover:text-outline transition-colors"
-          aria-hidden
-        />
-      )}
     </>
-  );
-  const inner = (
-    <div className="flex items-center gap-3 px-4 py-3">{content}</div>
   );
   if (!to) return <div className="flex items-center gap-3 px-4 py-3">{content}</div>;
   return (
     <Link
       to={to}
-      className="block hover:bg-surface-container transition-colors group focus-visible:outline-none focus-visible:shadow-focus"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-surface-container transition-colors focus-visible:outline-none focus-visible:shadow-focus"
     >
-      {inner}
+      {content}
     </Link>
   );
 }
@@ -477,15 +464,3 @@ function QuickAction({
   );
 }
 
-function topCalcLabel(byCalc: Record<string, number>): string {
-  let topKey: string | null = null;
-  let topCount = 0;
-  for (const [k, n] of Object.entries(byCalc)) {
-    if (n > topCount) {
-      topCount = n;
-      topKey = k;
-    }
-  }
-  if (!topKey || topCount === 0) return '';
-  return `${CALC_LABELS[topKey] ?? topKey} · ${topCount}`;
-}
