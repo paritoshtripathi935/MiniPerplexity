@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 (PAI-13 PR D) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 (PAI-13 PR E) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -59,6 +59,8 @@ PRs in chronological order. Each is on `main`.
 | [#37](https://github.com/paritoshtripathi935/MiniPerplexity/pull/37) | **PAI-13 / PR B — "Investigation" rename + AI-buzzword strip.** Routes `/chat/*` → `/investigations/*` with `<Navigate>` redirects preserving sessionId (existing bookmarks land safely). Top-bar "Chat" → "Investigations" (Search icon); Plays icon Sparkles → PlayCircle. Brand chip + LoginPage logo: Sparkles → "P" letterform. Copy strip: "Ask anything paid-acquisition" → "Continue the investigation…", "AI co-pilot" → "operating system for growth teams", "What can I help you ship today?" → "Start by asking what changed, what to test, or what to scale.", "message" → "turn" throughout. Prop rename: `onNewChat` → `onNewInvestigation`. Sparkles icons inside Plays sub-components (SlashMenu, PlayRunModal, PresetBar, ChatRightRail active-play, ModelSelector "recommended") deferred to PRs E/F. HomePage greeting + layout deferred to PR D. |
 | [#39](https://github.com/paritoshtripathi935/MiniPerplexity/pull/39) | **PAI-13 / PR C — Command palette (⌘K).** Linear-style modal quick-switcher built on [`cmdk`](https://cmdk.paco.me/) matching the Stitch `command_palette_dark` mock. Groups: Investigations (last 8 sessions + "New investigation") · Plays (catalog) · Calculators · Jump to. Selected row gets the 2px primary left bar. Hotkeys: ⌘K toggle, ⌘N new investigation, ⌘P plays, ⌘E calculators, Esc close, Linear-style G chords (G D / G I / G P / G S). Top-bar trigger: bordered search-pill with kbd hint (sm+), icon-only on mobile. Data fetched lazily on first open, cached 30s — anonymous users skip the sessions fetch. Bundle +17.6 kB gzip (cmdk). The single biggest "feels like Linear" lever per the plan. |
 | [#41](https://github.com/paritoshtripathi935/MiniPerplexity/pull/41) | **PAI-13 / PR D — Operational homepage.** Replaces "Good afternoon, Paritosh" + uniform card grid with the operational hub from the Stitch `paidpilot_homepage_dark` mock. Three asymmetric zones: header (`N open investigations · M scenarios pending · last active <relative>`), operational feed (left ~60% — investigations / calculators / dim Meta+Google "Connect X" stubs / optional brand-setup), Continue investigation (right top — 3 recent sessions), Quick actions (right bottom — ⌘N/⌘E/⌘P/⌘K with kbd chips). Real data: `listSessions` + `localStorage` scenario count w/ cross-tab sync via storage event + brand profile. Stubbed rows link to /settings as V2 onramps. Removed: time-based greeting, primary-action anchor card, day-of-week rituals, BrandSnapshot card, ThisWeekStrip. |
+| [#43](https://github.com/paritoshtripathi935/MiniPerplexity/pull/43) | **PAI-13 / PR D.1 — Home polish.** Side-by-side fixes after comparing #41 to the Stitch mock: drop the "Operational Hub" h1 (redundant with top-nav "Home" highlight; bullet state line becomes the lead, body-base size); fix "0 scenarios pending" → "no scenarios pending"; adopt Stitch's "→ N scenarios saved" arrow syntax for the Calculators row trailing slot; drop the right-side chevron on linkable feed rows (hover tint communicates affordance). |
+| [#44](https://github.com/paritoshtripathi935/MiniPerplexity/pull/44) | **PAI-13 / PR E — Investigation workspace.** Visual refit of the chat surface. Single always-visible investigation header replaces the dual "model-selector toolbar + scroll-triggered sticky bar" pattern: title + `● Active` chip + `N turns` chip + ModelSelector. Drops IntersectionObserver / showStickyHeader / scrollToTop. Right rail header "Context" → "Evidence"; Active play panel Sparkles → PlayCircle (last AI-sparkle on this surface). Per-turn Cite/Open-source decorative buttons + ⋯ overflow menu deferred — citation pills + sessions-sidebar context already cover the function. Functional behavior unchanged. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -113,16 +115,17 @@ Real candidates, ranked by leverage:
 
 0. **PAI-13 — Operator design system adoption** (in progress).
    Stacked-PR plan, 7 slices. Full plan in
-   [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A (#35), PR B (#37), PR C
-   (#39), PR D (#41) shipped.** Next up: **PR E — Investigation
-   workspace.** Apply the design language to ChatPage. Sticky title
-   bar with status / turn-count / last-activity chips + ⋯ overflow.
-   Document-style turns (no bubbles, flush-left "you" / "PaidPilot"
-   labels). Right rail relabel: "Evidence" header with Sources /
-   Videos / Active play subsections. Empty-state with 3 suggestion
-   chips from brand profile. Composer placeholder already says
-   "Continue the investigation…" (PR B). Medium blast radius —
-   rebuild of the investigation surface, isolated from other pages.
+   [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A (#35), PR B (#37),
+   PR C (#39), PR D (#41), PR D.1 (#43), PR E (#44) shipped.**
+   Next up: **PR F — Calculators as scenario workspaces.** Rebuild
+   the CAC Payback calculator per the Stitch
+   `cac_payback_calculator_dark` mock — scenarios stacked on the left
+   (one dominant active row, others recede), Active Model Variables
+   form on the right with drift indicators per input, empty-state
+   per the Stitch mock. Apply the same shape to ROAS→Margin, A/B
+   Sample Size, and Blended Channel Efficiency (split per-calc if
+   the diff gets unwieldy). Medium blast radius — calculator components
+   are isolated, but four of them exist.
 
 1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
    after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
