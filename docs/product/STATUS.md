@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 (PAI-13 PR A) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -55,6 +55,7 @@ PRs in chronological order. Each is on `main`.
 |---|---|
 | [#29](https://github.com/paritoshtripathi935/MiniPerplexity/pull/29) | **Real SSE streaming for `/answer`** (slices A+B). New `POST /api/v1/answer/{session_id}/stream` returning `text/event-stream`; backend uses async `httpx` against Cloudflare with `stream: true`. Frontend `streamAnswer()` parses SSE frames and appends tokens live — no more `setInterval`-based reveal on the search/play paths. Dual-schema handled (`_extract_stream_delta`). Persistence runs after the stream so a mid-flight drop never half-saves a turn. Smoke-tested against `gpt-oss-120b` + Mistral; both stream word-level chunks. Merged with a true merge commit (admin bypass of linear-history). |
 | [#31](https://github.com/paritoshtripathi935/MiniPerplexity/pull/31) | **Slice C — Regenerate on streaming + cleanup.** Regenerate now uses the same `runAnswerStream` helper; first token replaces "_Regenerating…_" in place. Replaces `Message.revealedLength: number` with `Message.isStreaming: boolean` — the latter is what actually drives the Writing indicator + cursor + Copy/follow-up visibility. Caught a regression on PR #29 along the way: the new SSE path wasn't setting any reveal state, so those signals were silently lost. Deletes `useStreamingReveal.ts` and the now-unused `getAnswer` / `runPlay` / `fetchAnswer` wrappers. Backend JSON `/answer` endpoint is dead code in this repo but kept for now. |
+| [#35](https://github.com/paritoshtripathi935/MiniPerplexity/pull/35) | **PAI-13 / PR A — Operator design tokens + dark-first.** Foundation for the [PAI-13 stack](./PAI_13_PLAN.md). Swaps the theme to the Material 3 purple scheme from the Stitch DESIGN.md. Legacy CSS variables (`--brand`, `--surface`, `--fg`, ...) remapped to M3 roles so existing pages render unchanged — every component inherits the new palette without code changes. Adds the operational type scale (`metric-lg`, `h1`, `h2`, `body-base`, `body-sm`, `label-caps`) and named radii (`card` 12 / `panel` 10 / `chip` 8 / `control` 6). Default theme flipped to dark unless `paidpilot-theme=light` is set; inline script in `index.html` applies `.dark` before React mounts (no FOUC). PRs B–G refit each page to the M3 names. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -107,12 +108,14 @@ User-selectable models (UI dropdown at the top of chat):
 
 Real candidates, ranked by leverage:
 
-0. **PAI-13 — Operator design system adoption.** Stacked-PR plan,
-   7 slices, designs already generated in Stitch. Full plan in
-   [PAI_13_PLAN.md](./PAI_13_PLAN.md) — locked decisions, slice list,
-   risks, source-material paths. Start with PR A (design tokens +
-   dark-first foundation). Independent of the other items below; you
-   can interleave or land in parallel.
+0. **PAI-13 — Operator design system adoption** (in progress).
+   Stacked-PR plan, 7 slices. Full plan in
+   [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A shipped (#35).** Next
+   up: **PR B — "Investigation" rename + AI-buzzword strip.** Rename
+   `/chat/:id` → `/investigations/:id`, "New chat" → "New investigation",
+   sessions sidebar → "Investigations", strip "Ask me anything" / "AI
+   assistant" / emoji greetings, rewrite empty states with operational
+   copy. Medium blast radius (copy + one route rename).
 
 1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
    after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
