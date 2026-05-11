@@ -12,7 +12,6 @@ import {
   type Play, type PlayHistoryItem,
 } from '../services/api';
 import { PageHeader } from '../components/AppLayout';
-import { Card } from '../components/ui/Card';
 import { PlayRunModal } from '../components/PlayRunModal';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
@@ -25,6 +24,15 @@ interface Props {
   onPrepareRun: (play: Play, query: string, sessionId: string) => void;
 }
 
+/**
+ * Plays catalog — operational list, not a card grid.
+ *
+ * Rebuilt under PAI-13 / PR H to drop the "dashboard grid syndrome"
+ * 3-column tile layout in favour of stacked rows with internal dividers
+ * (per DESIGN.md's "1px borders instead of large gaps" rule). Recent
+ * plays at the top, full catalog below. Both surfaces use the same row
+ * shape so visual rhythm is consistent.
+ */
 export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
   const { getToken, isSignedIn } = useAuth();
@@ -47,8 +55,6 @@ export function PlaysPage({ onPrepareRun }: Props) {
     })();
   }, []);
 
-  // Plays history is signed-in only — anonymous users don't have one. Failure
-  // is non-fatal: the section just stays hidden.
   useEffect(() => {
     if (!isSignedIn) return;
     (async () => {
@@ -62,14 +68,12 @@ export function PlaysPage({ onPrepareRun }: Props) {
   }, [isSignedIn, getToken]);
 
   // Deep-link support: `/plays?run=<play_id>` opens the run modal directly.
-  // Used by the home anchor card when it suggests a specific play.
   useEffect(() => {
     const runId = searchParams.get('run');
     if (!runId || plays.length === 0) return;
     const target = plays.find(p => p.id === runId);
     if (target) {
       setActivePlay(target);
-      // Clear so a back-then-forward doesn't reopen unexpectedly.
       const next = new URLSearchParams(searchParams);
       next.delete('run');
       setSearchParams(next, { replace: true });
@@ -78,7 +82,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(plays.map(p => p.category)))],
-    [plays]
+    [plays],
   );
 
   const filtered = useMemo(() => {
@@ -94,9 +98,6 @@ export function PlaysPage({ onPrepareRun }: Props) {
     navigate(`/investigations/${sid}`);
   };
 
-  // Recently-used plays the user has actually run, joined to the catalog so
-  // we can render full play metadata for the run modal. History entries
-  // referencing plays no longer in the catalog are filtered out silently.
   const recentPlays = useMemo<RecentPlay[]>(() => {
     if (history.length === 0 || plays.length === 0) return [];
     const byId = new Map(plays.map(p => [p.id, p]));
@@ -109,32 +110,64 @@ export function PlaysPage({ onPrepareRun }: Props) {
       .slice(0, 6);
   }, [history, plays]);
 
+  const filterActive = filter !== 'All' || search.trim().length > 0;
+
   return (
     <>
       <PageHeader
         title="Plays"
-        subtitle="Pre-baked playbooks for the most common asks. Pick one, fill a few inputs, get a marketer-grade output."
+        subtitle="Pre-built playbooks for common growth-ops asks. Pick one, fill a few inputs, get a marketer-grade output."
       />
 
       {recentPlays.length > 0 && (
-        <RecentlyUsedSection
-          recentPlays={recentPlays}
-          onPick={p => setActivePlay(p)}
-        />
+        <section className="mb-8">
+          <h2 className="text-label-caps uppercase text-on-surface-variant mb-3 flex items-center gap-1.5">
+            <History className="w-3 h-3" aria-hidden />
+            Recently used
+          </h2>
+          <PlayList>
+            {recentPlays.map(({ play, lastRunAt, runCount }) => (
+              <PlayRow
+                key={play.id}
+                play={play}
+                onClick={() => setActivePlay(play)}
+                trailing={
+                  <span className="flex items-center gap-3 shrink-0 text-body-sm text-on-surface-variant tabular-nums">
+                    <span>{runCount} run{runCount === 1 ? '' : 's'}</span>
+                    <span className="text-outline-variant" aria-hidden>·</span>
+                    <span>{relativeTime(lastRunAt)}</span>
+                  </span>
+                }
+              />
+            ))}
+          </PlayList>
+        </section>
       )}
 
-      <h2 className="text-label-caps uppercase text-fg-subtle mb-3">
-        All plays
-      </h2>
+      <header className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-label-caps uppercase text-on-surface-variant">All plays</h2>
+        {filterActive && (
+          <button
+            type="button"
+            onClick={() => {
+              setFilter('All');
+              setSearch('');
+            }}
+            className="text-body-sm text-primary hover:underline"
+          >
+            Clear filter
+          </button>
+        )}
+      </header>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle" />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search plays"
-            className="w-full pl-9 pr-3 h-9 rounded-md text-body-sm bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
+            className="w-full pl-9 pr-3 h-9 rounded-control text-body-sm bg-surface border border-outline-variant placeholder:text-outline outline-none focus-visible:shadow-focus"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -143,10 +176,10 @@ export function PlaysPage({ onPrepareRun }: Props) {
               key={c}
               onClick={() => setFilter(c)}
               className={clsx(
-                'h-8 px-3 rounded-md text-body-md font-medium transition-colors duration-150',
+                'h-8 px-3 rounded-control text-body-md font-medium transition-colors',
                 filter === c
-                  ? 'bg-fg text-fg-inverted'
-                  : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
+                  ? 'bg-on-surface text-surface'
+                  : 'bg-surface border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline',
               )}
             >
               {c}
@@ -156,40 +189,36 @@ export function PlaysPage({ onPrepareRun }: Props) {
       </div>
 
       {loading ? (
-        <p className="text-body-sm text-fg-muted">Loading plays…</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map(p => {
-            const Icon = ICONS[p.icon ?? ''] ?? PlayIcon;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setActivePlay(p)}
-                className="group text-left focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
-              >
-                <Card interactive className="p-4 h-full">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="grid place-items-center w-8 h-8 rounded-md bg-surface-sunken text-fg-muted group-hover:bg-brand-subtle group-hover:text-brand transition-colors">
-                      <Icon className="w-4 h-4" strokeWidth={2} />
-                    </div>
-                    <span className="text-label-caps uppercase text-fg-subtle">
-                      {p.category}
-                    </span>
-                  </div>
-                  <h3 className="font-display font-semibold text-body-base tracking-tight mb-1">
-                    {p.title}
-                  </h3>
-                  <p className="text-body-sm text-fg-muted leading-snug line-clamp-3">
-                    {p.description}
-                  </p>
-                </Card>
-              </button>
-            );
-          })}
-          {filtered.length === 0 && (
-            <p className="text-body-sm text-fg-muted col-span-full">No plays match.</p>
-          )}
+        <p className="text-body-sm text-on-surface-variant">Loading plays…</p>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-card border border-dashed border-outline-variant px-4 py-10 text-center text-body-sm text-on-surface-variant">
+          No plays match this filter.{' '}
+          <button
+            type="button"
+            onClick={() => {
+              setFilter('All');
+              setSearch('');
+            }}
+            className="text-primary hover:underline"
+          >
+            Show all
+          </button>
         </div>
+      ) : (
+        <PlayList>
+          {filtered.map(p => (
+            <PlayRow
+              key={p.id}
+              play={p}
+              onClick={() => setActivePlay(p)}
+              trailing={
+                <span className="inline-flex items-center px-1.5 h-5 rounded-control bg-surface-container-high text-label-caps text-on-surface-variant shrink-0">
+                  {p.category}
+                </span>
+              }
+            />
+          ))}
+        </PlayList>
       )}
 
       {activePlay && (
@@ -206,7 +235,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
   );
 }
 
-/* ---------- Recently used ---------------------------------------------- */
+/* ----------------------------- Sub-components --------------------------- */
 
 interface RecentPlay {
   play: Play;
@@ -214,54 +243,43 @@ interface RecentPlay {
   runCount: number;
 }
 
-function RecentlyUsedSection({
-  recentPlays,
-  onPick,
-}: {
-  recentPlays: RecentPlay[];
-  onPick: (play: Play) => void;
-}) {
+function PlayList({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mb-8">
-      <h2 className="text-label-caps uppercase text-fg-subtle mb-3 flex items-center gap-1.5">
-        <History className="w-3 h-3" />
-        Recently used
-      </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {recentPlays.map(({ play, lastRunAt, runCount }) => {
-          const Icon = ICONS[play.icon ?? ''] ?? PlayIcon;
-          return (
-            <button
-              key={play.id}
-              onClick={() => onPick(play)}
-              className="group text-left focus-visible:outline-none focus-visible:shadow-focus rounded-lg"
-            >
-              <Card interactive className="p-4 h-full">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="grid place-items-center w-8 h-8 rounded-md bg-brand-subtle text-brand">
-                    <Icon className="w-4 h-4" strokeWidth={2} />
-                  </div>
-                  <span className="text-[11px] text-fg-subtle tabular-nums">
-                    {runCount} run{runCount === 1 ? '' : 's'}
-                  </span>
-                </div>
-                <h3 className="font-display font-semibold text-body-base tracking-tight mb-1">
-                  {play.title}
-                </h3>
-                <div className="flex items-center justify-between gap-2 mt-2">
-                  <span className="text-body-md text-fg-subtle">
-                    {relativeTime(lastRunAt)}
-                  </span>
-                  <span className="text-body-md text-brand font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                    Run again →
-                  </span>
-                </div>
-              </Card>
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    <div className="rounded-card border border-outline-variant bg-surface-container-low divide-y divide-outline-variant overflow-hidden">
+      {children}
+    </div>
+  );
+}
+
+function PlayRow({
+  play,
+  onClick,
+  trailing,
+}: {
+  play: Play;
+  onClick: () => void;
+  trailing?: React.ReactNode;
+}) {
+  const Icon = ICONS[play.icon ?? ''] ?? PlayIcon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-surface-container transition-colors focus-visible:outline-none focus-visible:shadow-focus"
+    >
+      <span className="grid place-items-center w-7 h-7 rounded-control bg-surface-container text-on-surface-variant shrink-0 mt-0.5">
+        <Icon className="w-3.5 h-3.5" strokeWidth={2} />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-body-base text-on-surface font-medium truncate">
+          {play.title}
+        </span>
+        <span className="block text-body-sm text-on-surface-variant leading-snug line-clamp-1">
+          {play.description}
+        </span>
+      </span>
+      {trailing}
+    </button>
   );
 }
 

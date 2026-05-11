@@ -1,16 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
 import LoginPage from './components/LoginPage';
 import { AppLayout } from './components/AppLayout';
 import { Onboarding } from './components/Onboarding';
 import { HomePage } from './pages/HomePage';
-import { ChatPage, type PendingPlay } from './pages/ChatPage';
-import { PlaysPage } from './pages/PlaysPage';
-import { CalculatorsPage } from './pages/CalculatorsPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { getBrandProfile, type BrandProfile } from './services/api';
 import { wakeupBackend } from './utils/api';
+// Type-only import — types are erased at build time, no bundle cost.
+import { type PendingPlay } from './pages/ChatPage';
+
+// PAI-13 / PR H bundle pass: lazy-load the heavier routes so the home
+// (most users' landing page) ships a smaller initial payload. ChatPage
+// pulls in react-markdown, syntax-highlighter, the right rail, sessions
+// sidebar — easily 100+ kB on its own. Calculators pulls 4 calc
+// components plus the scenarios panel + compare. Plays + Settings are
+// smaller but still split to keep route-level chunks consistent.
+const ChatPage = lazy(() =>
+  import('./pages/ChatPage').then(m => ({ default: m.ChatPage })),
+);
+const PlaysPage = lazy(() =>
+  import('./pages/PlaysPage').then(m => ({ default: m.PlaysPage })),
+);
+const CalculatorsPage = lazy(() =>
+  import('./pages/CalculatorsPage').then(m => ({ default: m.CalculatorsPage })),
+);
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })),
+);
 
 /** Cross-route shared state lives here; pages get what they need via props. */
 function AuthedShell() {
@@ -66,21 +83,25 @@ function AuthedShell() {
           <Route
             path="investigations"
             element={
-              <ChatPage
-                darkMode={darkMode}
-                pending={pendingPlay}
-                clearPending={() => setPendingPlay(null)}
-              />
+              <Suspense fallback={null}>
+                <ChatPage
+                  darkMode={darkMode}
+                  pending={pendingPlay}
+                  clearPending={() => setPendingPlay(null)}
+                />
+              </Suspense>
             }
           />
           <Route
             path="investigations/:sessionId"
             element={
-              <ChatPage
-                darkMode={darkMode}
-                pending={pendingPlay}
-                clearPending={() => setPendingPlay(null)}
-              />
+              <Suspense fallback={null}>
+                <ChatPage
+                  darkMode={darkMode}
+                  pending={pendingPlay}
+                  clearPending={() => setPendingPlay(null)}
+                />
+              </Suspense>
             }
           />
           {/* Bookmark-preservation redirects for the pre-PAI-13 /chat paths. */}
@@ -92,18 +113,31 @@ function AuthedShell() {
           <Route
             path="plays"
             element={
-              <PlaysPage
-                darkMode={darkMode}
-                onPrepareRun={(play, query, sessionId) =>
-                  setPendingPlay({ play, query, sessionId })
-                }
-              />
+              <Suspense fallback={null}>
+                <PlaysPage
+                  darkMode={darkMode}
+                  onPrepareRun={(play, query, sessionId) =>
+                    setPendingPlay({ play, query, sessionId })
+                  }
+                />
+              </Suspense>
             }
           />
-          <Route path="calc" element={<CalculatorsPage darkMode={darkMode} />} />
+          <Route
+            path="calc"
+            element={
+              <Suspense fallback={null}>
+                <CalculatorsPage darkMode={darkMode} />
+              </Suspense>
+            }
+          />
           <Route
             path="settings"
-            element={<SettingsPage darkMode={darkMode} onUpdate={p => setProfile(p)} />}
+            element={
+              <Suspense fallback={null}>
+                <SettingsPage darkMode={darkMode} onUpdate={p => setProfile(p)} />
+              </Suspense>
+            }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

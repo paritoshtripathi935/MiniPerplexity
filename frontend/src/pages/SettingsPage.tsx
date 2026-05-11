@@ -28,8 +28,8 @@ interface Props {
 }
 
 const fieldCls =
-  'w-full px-3 py-2 rounded-md border border-border bg-surface text-body-sm placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
-const labelCls = 'block text-body-md font-medium mb-1.5 text-fg';
+  'w-full px-3 py-2 rounded-control border border-outline-variant bg-surface text-body-sm text-on-surface placeholder:text-outline outline-none focus-visible:shadow-focus';
+const labelCls = 'block text-body-md font-medium mb-1.5 text-on-surface';
 
 export function SettingsPage({ onUpdate }: Props) {
   const { getToken } = useAuth();
@@ -103,7 +103,7 @@ export function SettingsPage({ onUpdate }: Props) {
     <>
       <PageHeader
         title="Brand profile"
-        subtitle="Composed into the system prompt for every chat — so answers cite the right channels, ICP, and targets."
+        subtitle="Composed into the system prompt on every investigation — so answers cite the right channels, ICP, and targets."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -151,10 +151,10 @@ export function SettingsPage({ onUpdate }: Props) {
                     type="button"
                     onClick={() => toggleChannel(c.id)}
                     className={clsx(
-                      'h-8 px-3 rounded-md text-body-md font-medium transition-colors duration-150',
+                      'h-8 px-3 rounded-control text-body-md font-medium transition-colors',
                       on
-                        ? 'bg-fg text-fg-inverted'
-                        : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
+                        ? 'bg-on-surface text-surface'
+                        : 'bg-surface border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline',
                     )}
                   >
                     {on && <Check className="inline w-3 h-3 mr-1 -mt-0.5" />}
@@ -235,10 +235,10 @@ export function SettingsPage({ onUpdate }: Props) {
           <h2 className="font-display font-semibold text-body-base tracking-tight mb-3">
             How this is used
           </h2>
-          <ul className="text-body-sm text-fg-muted space-y-2.5 leading-relaxed">
-            <li><span className="text-fg">Every chat</span> gets your brand context in the system prompt.</li>
-            <li><span className="text-fg">Plays</span> personalise their output to your channels and ICP.</li>
-            <li><span className="text-fg">Targets</span> sanity-check your "is this CAC normal?" questions.</li>
+          <ul className="text-body-sm text-on-surface-variant space-y-2.5 leading-relaxed">
+            <li><span className="text-on-surface">Every investigation</span> gets your brand context in the system prompt.</li>
+            <li><span className="text-on-surface">Plays</span> personalise their output to your channels and ICP.</li>
+            <li><span className="text-on-surface">Targets</span> sanity-check your "is this CAC normal?" questions.</li>
             <li>Stored on Neon, scoped to your account. Never shared.</li>
           </ul>
         </Card>
