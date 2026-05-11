@@ -44,7 +44,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       // Skip the history-load effect on the upcoming sessionId change: this
       // ID was just minted on the client, there's nothing in the DB yet.
       justCreatedRef.current = true;
-      navigate(`/chat/${uuidv4()}`, { replace: true });
+      navigate(`/investigations/${uuidv4()}`, { replace: true });
     }
   }, [routeSessionId, navigate]);
 
@@ -475,12 +475,12 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     }
   };
 
-  const handleSelectSession = (id: string) => navigate(`/chat/${id}`);
-  const handleNewChat = () => {
+  const handleSelectSession = (id: string) => navigate(`/investigations/${id}`);
+  const handleNewInvestigation = () => {
     justCreatedRef.current = true;
     setMessages([]);
     setActivePlay(null);
-    navigate(`/chat/${uuidv4()}`);
+    navigate(`/investigations/${uuidv4()}`);
   };
 
   /**
@@ -510,7 +510,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
 
   const conversationTitle = useMemo(() => {
     const firstUser = messages.find(m => m.type === 'user');
-    if (!firstUser) return 'New chat';
+    if (!firstUser) return 'New investigation';
     const t = firstUser.content.replace(/^▸\s+/, '').split('\n')[0].trim();
     return t.length > 80 ? t.slice(0, 79).trim() + '…' : t;
   }, [messages]);
@@ -523,7 +523,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             darkMode={darkMode}
             activeSessionId={sessionId}
             onSelectSession={handleSelectSession}
-            onNewChat={handleNewChat}
+            onNewInvestigation={handleNewInvestigation}
             refreshSignal={sidebarRefresh}
           />
         </aside>

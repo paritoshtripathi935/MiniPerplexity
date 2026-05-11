@@ -37,10 +37,10 @@ interface PrimaryAction {
 /**
  * Choose the single suggested primary action for the home anchor card.
  * Prefers, in order:
- *   1. Resume the most recent active chat (<24h old, has messages).
+ *   1. Resume the most recent active investigation (<24h old, has turns).
  *   2. First-time user nudge: run a foundational play.
  *   3. Day-of-week marketing rituals (Mon = Weekly Review, Fri = Retro).
- *   4. Default: open chat with a fresh session.
+ *   4. Default: open a fresh investigation.
  */
 function pickPrimaryAction(
   sessions: SessionListItem[],
@@ -54,14 +54,14 @@ function pickPrimaryAction(
     return age < ONE_DAY_MS && s.message_count > 0 && !s.is_archived;
   });
   if (resumeCandidate) {
-    const title = resumeCandidate.title?.trim() || 'your last conversation';
+    const title = resumeCandidate.title?.trim() || 'your last investigation';
     return {
       eyebrow: 'Pick up where you left off',
       title: `Resume · ${title}`,
       body:
         resumeCandidate.last_message_excerpt ||
-        `${resumeCandidate.message_count} message${resumeCandidate.message_count === 1 ? '' : 's'}.`,
-      to: `/chat/${resumeCandidate.id}`,
+        `${resumeCandidate.message_count} turn${resumeCandidate.message_count === 1 ? '' : 's'}.`,
+      to: `/investigations/${resumeCandidate.id}`,
     };
   }
 
@@ -106,10 +106,10 @@ function pickPrimaryAction(
 
   return {
     eyebrow: 'Ready when you are',
-    title: 'Ask PaidPilot anything paid-acquisition',
+    title: 'Open a new investigation',
     body:
-      'Citations are weighted toward platform docs and trade press; your brand context is applied automatically.',
-    to: `/chat/${newChatId}`,
+      'Ask what changed, what to test, or what to scale. Citations weighted toward platform docs and trade press; your brand context is applied automatically.',
+    to: `/investigations/${newChatId}`,
   };
 }
 
@@ -164,7 +164,7 @@ export function HomePage({}: Props) {
         subtitle={
           onboarded && profile?.company_name
             ? `Working on ${profile.company_name} — your brand context is baked into every answer.`
-            : 'Welcome to PaidPilot. Ask anything paid-acquisition, run a play, or do the math.'
+            : 'Open an investigation, run a play, or do the math.'
         }
         actions={<BrandChip profile={profile} />}
       />
@@ -200,8 +200,8 @@ export function HomePage({}: Props) {
       <nav className="mb-10 text-[13px] text-fg-subtle flex items-center gap-2 flex-wrap">
         <span>Or jump to</span>
         <span className="text-fg-subtle/60">·</span>
-        <Link to={`/chat/${newChatId}`} className="hover:text-fg transition-colors">
-          Chat
+        <Link to={`/investigations/${newChatId}`} className="hover:text-fg transition-colors">
+          Investigations
         </Link>
         <span className="text-fg-subtle/60">·</span>
         <Link to="/plays" className="hover:text-fg transition-colors">
@@ -217,16 +217,16 @@ export function HomePage({}: Props) {
         <Card className="lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display font-semibold text-[15px] tracking-tight">
-              Recent chats
+              Recent investigations
             </h2>
-            <Link to="/chat" className="text-[12px] text-brand hover:underline">
+            <Link to="/investigations" className="text-[12px] text-brand hover:underline">
               View all
             </Link>
           </div>
           {sessions.length === 0 ? (
             <p className="text-[13px] text-fg-muted">
-              No chats yet.{' '}
-              <Link to={`/chat/${newChatId}`} className="text-brand hover:underline">
+              No investigations yet.{' '}
+              <Link to={`/investigations/${newChatId}`} className="text-brand hover:underline">
                 Start one →
               </Link>
             </p>
@@ -235,12 +235,12 @@ export function HomePage({}: Props) {
               {sessions.map(s => (
                 <li key={s.id}>
                   <Link
-                    to={`/chat/${s.id}`}
+                    to={`/investigations/${s.id}`}
                     className="block py-3 px-2 rounded-md hover:bg-surface-sunken transition-colors group"
                   >
                     <div className="flex items-baseline justify-between gap-3 mb-1">
                       <div className="text-[14px] font-medium truncate min-w-0 flex-1">
-                        {s.title || 'Untitled chat'}
+                        {s.title || 'Untitled investigation'}
                       </div>
                       <div className="text-[12px] text-fg-subtle shrink-0 tabular-nums">
                         {relativeTime(s.last_accessed_at)}
@@ -252,7 +252,7 @@ export function HomePage({}: Props) {
                       </p>
                     ) : (
                       <p className="text-[12px] text-fg-subtle">
-                        {s.message_count} message{s.message_count === 1 ? '' : 's'}
+                        {s.message_count} turn{s.message_count === 1 ? '' : 's'}
                       </p>
                     )}
                   </Link>
@@ -421,7 +421,7 @@ function ThisWeekStrip({
   if (totalChats === 0) return null;
   const parts: string[] = [];
   parts.push(
-    `${chatsThisWeek} chat${chatsThisWeek === 1 ? '' : 's'} this week`,
+    `${chatsThisWeek} investigation${chatsThisWeek === 1 ? '' : 's'} this week`,
   );
   if (lastActivityIso) parts.push(`last active ${relativeTime(lastActivityIso)}`);
   return (
@@ -435,7 +435,7 @@ function ThisWeekStrip({
           </React.Fragment>
         ))}
       </div>
-      <Link to="/chat" className="text-[12px] text-brand hover:underline">
+      <Link to="/investigations" className="text-[12px] text-brand hover:underline">
         View all
       </Link>
     </Card>

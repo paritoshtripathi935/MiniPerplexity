@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
 import LoginPage from './components/LoginPage';
 import { AppLayout } from './components/AppLayout';
@@ -64,7 +64,7 @@ function AuthedShell() {
         <Route element={<AppLayout darkMode={darkMode} toggleDarkMode={() => setDarkMode(d => !d)} />}>
           <Route index element={<HomePage darkMode={darkMode} />} />
           <Route
-            path="chat"
+            path="investigations"
             element={
               <ChatPage
                 darkMode={darkMode}
@@ -74,7 +74,7 @@ function AuthedShell() {
             }
           />
           <Route
-            path="chat/:sessionId"
+            path="investigations/:sessionId"
             element={
               <ChatPage
                 darkMode={darkMode}
@@ -82,6 +82,12 @@ function AuthedShell() {
                 clearPending={() => setPendingPlay(null)}
               />
             }
+          />
+          {/* Bookmark-preservation redirects for the pre-PAI-13 /chat paths. */}
+          <Route path="chat" element={<Navigate to="/investigations" replace />} />
+          <Route
+            path="chat/:sessionId"
+            element={<ChatLegacyRedirect />}
           />
           <Route
             path="plays"
@@ -104,6 +110,12 @@ function AuthedShell() {
       </Routes>
     </>
   );
+}
+
+/** Preserves the sessionId when bookmarks land on the legacy /chat/:id path. */
+function ChatLegacyRedirect() {
+  const { sessionId } = useParams();
+  return <Navigate to={sessionId ? `/investigations/${sessionId}` : '/investigations'} replace />;
 }
 
 function App() {

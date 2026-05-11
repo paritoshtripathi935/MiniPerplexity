@@ -48,20 +48,17 @@ export function ChatEmptyState({
   onPick: (text: string) => void;
 }) {
   const starters = useMemo(() => starterPrompts(profile), [profile]);
-  const hello = profile?.company_name
-    ? `What can I help with for ${profile.company_name}?`
-    : 'What can I help you ship today?';
 
   return (
     <div className="mt-16 sm:mt-24 animate-fade-in">
       <h2 className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tight text-fg">
-        {hello}
+        Start by asking what changed, what to test, or what to scale.
       </h2>
-      <p className="text-[14px] text-fg-muted mt-2 max-w-xl leading-relaxed">
-        Citations are weighted toward platform docs (Meta, Google, TikTok) and trade
-        press (eMarketer, Adweek, Search Engine Land). Your brand context is applied
-        automatically.
-      </p>
+      {profile?.company_name && (
+        <p className="text-[14px] text-fg-muted mt-2 max-w-xl leading-relaxed">
+          Working on {profile.company_name}. Your brand context is applied automatically.
+        </p>
+      )}
 
       <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2">
         {starters.map((s, i) => (
@@ -79,7 +76,7 @@ export function ChatEmptyState({
       </div>
 
       <p className="text-[11px] text-fg-subtle mt-6">
-        Tip: paste a URL inside the composer to get an answer about that page specifically.
+        Paste a URL in the composer to investigate that page specifically.
       </p>
     </div>
   );

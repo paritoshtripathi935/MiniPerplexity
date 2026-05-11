@@ -18,7 +18,7 @@ interface Props {
   darkMode?: boolean;
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
-  onNewChat: () => void;
+  onNewInvestigation: () => void;
   refreshSignal?: number;
 }
 
@@ -37,7 +37,7 @@ function relativeTime(iso: string): string {
 export function SessionsSidebar({
   activeSessionId,
   onSelectSession,
-  onNewChat,
+  onNewInvestigation,
   refreshSignal = 0,
 }: Props) {
   const { getToken, isSignedIn } = useAuth();
@@ -123,10 +123,10 @@ export function SessionsSidebar({
   };
 
   const onDelete = async (id: string) => {
-    if (!window.confirm('Delete this conversation? This cannot be undone.')) return;
+    if (!window.confirm('Delete this investigation? This cannot be undone.')) return;
     try {
       await clearSession(id, getToken);
-      if (id === activeSessionId) onNewChat();
+      if (id === activeSessionId) onNewInvestigation();
       refresh();
     } catch (e: any) {
       setErrMsg(e?.message ?? 'Delete failed');
@@ -147,11 +147,11 @@ export function SessionsSidebar({
         <Button
           variant="primary"
           size="sm"
-          onClick={onNewChat}
+          onClick={onNewInvestigation}
           leadingIcon={<Plus className="w-3.5 h-3.5" />}
           className="w-full justify-center"
         >
-          New chat
+          New investigation
         </Button>
 
         <SignedIn>
@@ -187,7 +187,7 @@ export function SessionsSidebar({
 
       <SignedOut>
         <div className="px-4 py-6 text-[13px] text-fg-muted">
-          Sign in to keep your chat history across devices.
+          Sign in to keep your investigations across devices.
         </div>
       </SignedOut>
 
@@ -231,7 +231,7 @@ export function SessionsSidebar({
               )}
               {!loading && sessions.length === 0 && (
                 <li className="px-3 py-2 text-[13px] text-fg-muted">
-                  No conversations yet. Ask something to get started.
+                  No investigations yet. Start by asking what changed, what to test, or what to scale.
                 </li>
               )}
               {sessions.map(s => {

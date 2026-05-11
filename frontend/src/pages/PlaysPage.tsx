@@ -91,7 +91,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
   const handleSubmit = (play: Play, query: string) => {
     const sid = uuidv4();
     onPrepareRun(play, query, sid);
-    navigate(`/chat/${sid}`);
+    navigate(`/investigations/${sid}`);
   };
 
   // Recently-used plays the user has actually run, joined to the catalog so
