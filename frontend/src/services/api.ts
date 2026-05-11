@@ -66,38 +66,6 @@ export async function performSearch(
 }
 
 /**
- * Get an answer from the server based on the given query, search results, and previous queries.
- */
-export async function getAnswer(
-  query: string,
-  sessionId: string,
-  searchResults: any,
-  previousQueries: string[] = [],
-  getToken?: GetToken
-) {
-  const response = await fetch(`${API_HOST}/api/v1/answer/${sessionId}`, {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'Content-Type': 'application/json',
-      ...(await authHeaders(getToken)),
-    },
-    body: JSON.stringify({
-      query: query,
-      search_results: searchResults,
-      previous_queries: previousQueries
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(`Failed to get answer: ${errorData.detail || response.statusText}`);
-  }
-
-  return await response.json();
-}
-
-/**
  * Payload emitted on the final `done` SSE event from /answer/stream.
  * Carries everything the JSON /answer endpoint returned, minus the
  * `answer` body itself (which the client already accumulated from tokens).
@@ -200,20 +168,6 @@ export async function streamAnswer(args: StreamAnswerArgs): Promise<void> {
   }
   // Drain any trailing complete-but-unterminated frame.
   if (buffer.trim()) handleFrame(buffer);
-}
-
-/**
- * Fetches an answer for a given query and session ID.
- */
-export async function fetchAnswer(query: string, sessionId: string, getToken?: GetToken) {
-  try {
-    const searchResults = await performSearch(query, sessionId, [], undefined, undefined, getToken);
-    const data = await getAnswer(query, sessionId, searchResults, [], getToken);
-    return data;
-  } catch (error) {
-    console.error(error);
-    throw error;
-  }
 }
 
 /**
@@ -495,35 +449,3 @@ export async function getPlaysHistory(
   return await response.json();
 }
 
-/**
- * Run a Play: same as `getAnswer` but tags the request with `play_id` so
- * the backend layers the Play's instructions + output schema onto the
- * system prompt.
- */
-export async function runPlay(
-  playId: string,
-  query: string,
-  sessionId: string,
-  searchResults: any,
-  getToken?: GetToken
-) {
-  const qp = new URLSearchParams({ play_id: playId });
-  const response = await fetch(`${API_HOST}/api/v1/answer/${sessionId}?${qp}`, {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'Content-Type': 'application/json',
-      ...(await authHeaders(getToken)),
-    },
-    body: JSON.stringify({
-      query,
-      search_results: searchResults,
-      previous_queries: [],
-    }),
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`Play failed: ${errorData.detail || response.statusText}`);
-  }
-  return await response.json();
-}

@@ -71,16 +71,8 @@ function AssistantTurn({
   const isSearching = !!message.isSearching;
   const searchingUrls = message.searchingUrls ?? [];
 
-  // While the streaming reveal is in progress, show only the revealed prefix
-  // of the content. `undefined` means "render everything" (covers historical
-  // messages and the "_Thinking…_" placeholder).
-  const visibleContent = useMemo(() => {
-    if (typeof message.revealedLength !== 'number') return message.content;
-    return message.content.slice(0, message.revealedLength);
-  }, [message.content, message.revealedLength]);
-  const isStreaming =
-    typeof message.revealedLength === 'number' &&
-    message.revealedLength < message.content.length;
+  const visibleContent = message.content;
+  const isStreaming = !!message.isStreaming;
 
   const handleCopy = async () => {
     try {
