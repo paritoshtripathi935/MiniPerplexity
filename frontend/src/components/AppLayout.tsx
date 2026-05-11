@@ -8,6 +8,7 @@ import {
   CommandPaletteProvider,
   useCommandPalette,
 } from './CommandPalette';
+import { Logo } from './Logo';
 
 interface Props {
   darkMode: boolean;
@@ -49,8 +50,8 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
       <header className="sticky top-0 z-40 border-b border-border bg-surface/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
           <NavLink to="/" className="flex items-center gap-2 mr-2 shrink-0">
-            <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg font-display font-semibold text-[13px] leading-none">
-              P
+            <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg">
+              <Logo className="w-4 h-4" />
             </span>
             <span className="font-display font-semibold tracking-tight text-[15px]">
               PaidPilot

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SignIn } from '@clerk/clerk-react';
 import { Github, Linkedin, Mail, Globe, X } from 'lucide-react';
+import { Logo } from './Logo';
 
 const developerData = {
   name: 'Paritosh Tripathi',
@@ -72,8 +73,8 @@ const LoginPage: React.FC = () => {
           {/* Pitch */}
           <div className="space-y-7">
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand text-brand-fg shadow-card font-display font-semibold text-[16px] leading-none">
-                P
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand text-brand-fg shadow-card">
+                <Logo className="w-5 h-5" />
               </span>
               <span className="font-display text-[20px] font-semibold tracking-tight">
                 PaidPilot
