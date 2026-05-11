@@ -1,10 +1,11 @@
+import json
 import logging
 import time
 import traceback
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,6 +216,133 @@ async def get_answer(
     except Exception as e:
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error generating answer: {e}")
+
+
+def _sse(event: str, data: dict) -> bytes:
+    """Encode a single SSE frame. Two-newline terminator per spec."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
+@router.post("/answer/{session_id}/stream")
+async def stream_answer(
+    session_id: str,
+    query_request: QueryRequest,
+    play_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Streaming counterpart to /answer.
+
+    Emits one `event: token` per Cloudflare delta as the model generates,
+    followed by exactly one `event: done` carrying the persisted message
+    id, total latency, citation list and ranked search results — so the
+    client can stop showing the "thinking" indicator, attach next-step
+    fetches to the right db id, and rehydrate the right rail. On any
+    failure mid-stream we emit `event: error` instead of `done` and stop.
+
+    The DB writes happen *after* the stream finishes so a network hiccup
+    mid-generation doesn't leave a half-persisted assistant turn. The
+    tradeoff: if the client disconnects after seeing tokens but before
+    `done`, nothing gets persisted — the user can re-ask.
+    """
+    # Resolve everything that requires the DB session *before* we hand control
+    # to the streaming generator: FastAPI closes `db` once the route function
+    # returns, and yielding from inside the generator returns immediately.
+    await get_or_create_session(
+        db, session_id, user_id=(user.id if user else None)
+    )
+    search_results = [r.model_dump() for r in query_request.search_results]
+    tag_authority_in_place(search_results)
+
+    chat_history = await get_chat_history(db, session_id)
+    previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
+
+    profile = await get_brand_profile(db, user.id) if user else None
+    play = get_play(play_id) if play_id else None
+    system_override = compose_system_prompt(profile=profile, play=play)
+
+    cf_chat = CloudflareChat(
+        api_key=CLOUDFLARE_API_KEY,
+        account_id=CLOUDFLARE_ACCOUNT_ID,
+    )
+    chosen_model = resolve_chat_model(user.preferred_chat_model if user else None)
+
+    async def event_stream():
+        t0 = time.perf_counter()
+        collected: list[str] = []
+        try:
+            async for delta in cf_chat.stream_answer(
+                search_results=search_results,
+                chat_history=chat_history,
+                query=query_request.query,
+                previous_queries=previous_queries + [query_request.query],
+                system_override=system_override,
+                model=chosen_model,
+            ):
+                collected.append(delta)
+                yield _sse("token", {"text": delta})
+        except Exception as e:
+            logger.exception("Streaming failed")
+            yield _sse("error", {"detail": f"Streaming failed: {e}"})
+            return
+
+        answer = "".join(collected)
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        # Persist on completion. Mirrors the JSON /answer path exactly.
+        try:
+            query_row = await find_or_create_query(
+                db, session_id=session_id, query_text=query_request.query
+            )
+            sr_rows = await upsert_search_results(db, query_row.id, search_results)
+            await append_message(
+                db,
+                session_id=session_id,
+                role=MessageRole.user,
+                content=query_request.query,
+                query_id=query_row.id,
+            )
+            assistant_msg = await append_message(
+                db,
+                session_id=session_id,
+                role=MessageRole.assistant,
+                content=answer,
+                query_id=query_row.id,
+                play_id=play_id,
+                latency_ms=latency_ms,
+                model_name=chosen_model,
+            )
+            citations_text = track_citations(search_results)
+            cited_urls_in_order = [r.get("url") for r in search_results if r.get("url")]
+            url_to_id = {row.url: row.id for row in sr_rows}
+            cited_ids = [url_to_id[u] for u in cited_urls_in_order if u in url_to_id]
+            await add_citations(db, assistant_msg.id, cited_ids)
+        except Exception as e:
+            # The user already saw the full answer in the stream — surface a
+            # soft error rather than tearing it down. They can refresh to
+            # see a fresh history fetch if persistence actually failed.
+            logger.exception("Post-stream persistence failed")
+            yield _sse("error", {"detail": f"Persisted partial: {e}"})
+            return
+
+        yield _sse("done", {
+            "message_id": str(assistant_msg.id),
+            "latency_ms": latency_ms,
+            "citations": citations_text,
+            "search_results": search_results,
+        })
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            # Disable proxy buffering so chunks reach the client promptly
+            # (relevant under nginx/render's reverse proxy).
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 class SessionUpdate(BaseModel):

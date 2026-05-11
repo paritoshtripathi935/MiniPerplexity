@@ -98,6 +98,111 @@ export async function getAnswer(
 }
 
 /**
+ * Payload emitted on the final `done` SSE event from /answer/stream.
+ * Carries everything the JSON /answer endpoint returned, minus the
+ * `answer` body itself (which the client already accumulated from tokens).
+ */
+export interface StreamDoneEvent {
+  message_id: string;
+  latency_ms: number;
+  citations: string[];
+  search_results: any[];
+}
+
+interface StreamAnswerArgs {
+  query: string;
+  sessionId: string;
+  searchResults: any[];
+  previousQueries?: string[];
+  playId?: string;
+  onToken: (text: string) => void;
+  onDone: (event: StreamDoneEvent) => void;
+  onError?: (detail: string) => void;
+  getToken?: GetToken;
+  signal?: AbortSignal;
+}
+
+/**
+ * POST /answer/{session_id}/stream and dispatch token / done / error
+ * events as they arrive.
+ *
+ * Manual SSE parsing because EventSource is GET-only and the answer
+ * request has a JSON body. The wire format is the standard SSE one —
+ * `event: <name>\ndata: <json>\n\n` — so the parser stays small. We
+ * buffer across reads in case a network packet splits a frame.
+ */
+export async function streamAnswer(args: StreamAnswerArgs): Promise<void> {
+  const qp = args.playId
+    ? `?${new URLSearchParams({ play_id: args.playId }).toString()}`
+    : '';
+  const response = await fetch(
+    `${API_HOST}/api/v1/answer/${args.sessionId}/stream${qp}`,
+    {
+      method: 'POST',
+      headers: {
+        'accept': 'text/event-stream',
+        'Content-Type': 'application/json',
+        ...(await authHeaders(args.getToken)),
+      },
+      body: JSON.stringify({
+        query: args.query,
+        search_results: args.searchResults,
+        previous_queries: args.previousQueries ?? [],
+      }),
+      signal: args.signal,
+    }
+  );
+
+  if (!response.ok || !response.body) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to start stream: ${detail || response.statusText}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  const handleFrame = (frame: string) => {
+    let eventName = 'message';
+    const dataLines: string[] = [];
+    for (const raw of frame.split('\n')) {
+      if (raw.startsWith('event:')) eventName = raw.slice(6).trim();
+      else if (raw.startsWith('data:')) dataLines.push(raw.slice(5).trim());
+    }
+    if (dataLines.length === 0) return;
+    let payload: any;
+    try {
+      payload = JSON.parse(dataLines.join('\n'));
+    } catch {
+      return;
+    }
+    if (eventName === 'token' && typeof payload?.text === 'string') {
+      args.onToken(payload.text);
+    } else if (eventName === 'done') {
+      args.onDone(payload as StreamDoneEvent);
+    } else if (eventName === 'error') {
+      args.onError?.(String(payload?.detail ?? 'stream error'));
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Frames are separated by a blank line (CRLF tolerant). Process every
+    // complete frame in the buffer and keep the trailing partial.
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      if (frame.trim()) handleFrame(frame);
+    }
+  }
+  // Drain any trailing complete-but-unterminated frame.
+  if (buffer.trim()) handleFrame(buffer);
+}
+
+/**
  * Fetches an answer for a given query and session ID.
  */
 export async function fetchAnswer(query: string, sessionId: string, getToken?: GetToken) {

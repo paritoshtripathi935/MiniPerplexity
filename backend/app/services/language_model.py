@@ -1,7 +1,9 @@
 from dataclasses import dataclass
-from typing import Optional, List, Dict
+from typing import AsyncIterator, Optional, List, Dict
 from enum import Enum
+import json
 import re
+import httpx
 import requests
 from pydantic import Field
 
@@ -119,6 +121,33 @@ def resolve_chat_model(slug: Optional[str]) -> CloudflareModel:
             if m.value == slug:
                 return m
     return DEFAULT_CHAT_MODEL
+
+
+def _extract_stream_delta(chunk: Dict) -> str:
+    """Pull the incremental text out of a single Cloudflare SSE chunk.
+
+    Streaming shapes mirror the non-streaming ones:
+      * Legacy (Llama, Mistral): `{"response": "tok"}` at the top level.
+      * OpenAI-compatible (gpt-oss, qwen3, qwq): `{"choices": [{"delta":
+        {"content": "tok"}}]}`. Some models also emit `reasoning_content` on
+        the delta; we discard it the same way we discard the final field.
+
+    Returns "" for chunks that carry no user-visible text (role-only deltas,
+    keepalives, finish markers).
+    """
+    if not isinstance(chunk, dict):
+        return ""
+    legacy = chunk.get("response")
+    if isinstance(legacy, str):
+        return legacy
+    choices = chunk.get("choices")
+    if isinstance(choices, list) and choices:
+        delta = choices[0].get("delta") if isinstance(choices[0], dict) else None
+        if isinstance(delta, dict):
+            content = delta.get("content")
+            if isinstance(content, str):
+                return content
+    return ""
 
 
 def _extract_response_text(payload: Dict) -> str:
@@ -323,6 +352,109 @@ class CloudflareChat:
 
         response = self._call_for_prompt(formatted_messages, model=model)
         return _extract_response_text(response)
+
+    def _build_answer_messages(
+        self,
+        search_results: List[Dict],
+        chat_history: Optional[List[Dict]],
+        query: Optional[str],
+        previous_queries: Optional[List[str]],
+        system_override: Optional[str],
+    ) -> List[Dict[str, str]]:
+        """Shared message-list builder for both the JSON and streaming paths."""
+        messages: List[Message] = []
+        if system_override:
+            content = system_override
+            if search_results:
+                content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
+            messages.append(Message(role="system", content=content))
+        elif search_results:
+            messages.append(Message(
+                role="system",
+                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
+            ))
+        else:
+            messages.append(Message(role="system", content="You are a helpful AI assistant."))
+
+        if chat_history:
+            messages.extend([Message(**msg) for msg in chat_history])
+
+        query_context = query
+        if previous_queries:
+            query_context = (
+                f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
+                f"Current question: {query}"
+            )
+        if query_context:
+            messages.append(Message(role="user", content=query_context))
+
+        return [{"role": m.role, "content": m.content} for m in messages]
+
+    async def stream_answer(
+        self,
+        search_results: List[Dict],
+        chat_history: Optional[List[Dict]] = None,
+        query: Optional[str] = None,
+        previous_queries: Optional[List[str]] = None,
+        system_override: Optional[str] = None,
+        model: Optional[CloudflareModel] = None,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> AsyncIterator[str]:
+        """Async generator that yields text deltas as Cloudflare emits them.
+
+        Cloudflare Workers AI streams SSE when the request body sets
+        `"stream": true`. Each `data:` line is a JSON object whose shape
+        matches the non-streaming response: legacy `{"response": "tok"}` or
+        OpenAI-shape `{"choices": [{"delta": {"content": "tok"}}]}`. Stream
+        terminates with `data: [DONE]`.
+
+        We deliberately consume the body with `httpx.AsyncClient` (rather
+        than `requests`) so the FastAPI event loop isn't blocked while the
+        model is generating — important when several users are streaming
+        simultaneously on a single worker.
+        """
+        formatted = self._build_answer_messages(
+            search_results, chat_history, query, previous_queries, system_override
+        )
+        url = self._url_for(model) if model is not None else self.full_url
+        payload = {"messages": formatted, "max_tokens": max_tokens, "stream": True}
+
+        # No artificial overall timeout — long answers can legitimately take
+        # >60s. The read timeout guards against a stalled connection between
+        # chunks instead.
+        timeout = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST", url, headers=self._get_headers(), json=payload
+            ) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    raise CloudflareAPIError(
+                        f"Streaming call failed ({response.status_code}): {body.decode('utf-8', errors='replace')[:500]}"
+                    )
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    # Cloudflare always prefixes payload lines with `data: `.
+                    # Other SSE fields (event:, id:) are not emitted by their
+                    # current implementation but skip them defensively.
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data:
+                        continue
+                    if data == "[DONE]":
+                        return
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        # Malformed line — skip rather than abort the whole
+                        # turn. The model will still produce subsequent
+                        # well-formed chunks.
+                        continue
+                    delta = _extract_stream_delta(chunk)
+                    if delta:
+                        yield delta
 
     def score_search_results(self, query: str, results: List[Dict]) -> Dict[int, int]:
         """Score search results 0–100 for relevance to the user's query.

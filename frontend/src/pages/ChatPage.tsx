@@ -12,13 +12,12 @@ import { ChatEmptyState } from '../components/ChatEmptyState';
 import { ModelSelector } from '../components/ModelSelector';
 import {
   getBrandProfile, getMe, getNextSteps, listPlays,
-  performSearch, getAnswer, getSessionHistory, runPlay,
-  type BrandProfile, type Play, type UserProfile,
+  performSearch, getAnswer, getSessionHistory, runPlay, streamAnswer,
+  type BrandProfile, type Play, type StreamDoneEvent, type UserProfile,
 } from '../services/api';
 import { Message } from '../types';
 import { useStreamingReveal } from '../hooks/useStreamingReveal';
 import {
-  applyAssistantAnswer,
   normaliseSearchResults,
   rehydrateMessages,
 } from '../utils/messageShape';
@@ -212,26 +211,14 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           url => appendSearchUrl(responseMsg.id, url),
           getToken
         );
-        const answerResponse = await runPlay(
-          pending.play.id, pending.query, pending.sessionId, searchResults, getToken
-        );
-        if (answerResponse?.answer && Array.isArray(answerResponse.citations)) {
-          const reveal = applyAssistantAnswer({
-            messageId: responseMsg.id,
-            answer: answerResponse.answer,
-            searchResults: searchResults,
-            citations: answerResponse.citations,
-            originatingQuery: pending.query,
-            originatingSearchResults: searchResults,
-            originatingPlayId: pending.play.id,
-            dbId: answerResponse.message_id,
-            latencyMs: answerResponse.latency_ms,
-          });
-          setMessages(reveal.update);
-          startStreamingReveal(reveal.messageId, reveal.fullContent);
-          fetchNextSteps(responseMsg.id, answerResponse.message_id);
-          setSidebarRefresh(n => n + 1);
-        }
+        await runAnswerStream({
+          responseMsgId: responseMsg.id,
+          query: pending.query,
+          searchResults,
+          playId: pending.play.id,
+          originatingQuery: pending.query,
+          originatingPlayId: pending.play.id,
+        });
       } catch (e) {
         setError(`Play failed: ${e}`);
       } finally {
@@ -280,6 +267,84 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       })();
     },
     [getToken]
+  );
+
+  /**
+   * Stream an answer into an already-rendered placeholder assistant
+   * message. Shared by handleSearch and the two play paths — all three
+   * differ only in query/playId/previousQueries.
+   *
+   * First token flips `isSearching` off and clears the placeholder
+   * content. Subsequent tokens are appended. The `done` event provides
+   * the persisted message id (for next-steps), the ranked search_results
+   * + citations (for the right rail), and the total latency.
+   */
+  const runAnswerStream = useCallback(
+    async (params: {
+      responseMsgId: string;
+      query: string;
+      searchResults: any[];
+      previousQueries?: string[];
+      playId?: string;
+      originatingQuery: string;
+      originatingPlayId?: string;
+    }) => {
+      let firstTokenSeen = false;
+      let streamErrorDetail: string | null = null;
+      await streamAnswer({
+        query: params.query,
+        sessionId,
+        searchResults: params.searchResults,
+        previousQueries: params.previousQueries,
+        playId: params.playId,
+        getToken,
+        onToken: (text: string) => {
+          setMessages(prev =>
+            prev.map(m => {
+              if (m.id !== params.responseMsgId) return m;
+              if (!firstTokenSeen) {
+                firstTokenSeen = true;
+                return {
+                  ...m,
+                  content: text,
+                  isSearching: false,
+                  searchingUrls: undefined,
+                  revealedLength: undefined,
+                };
+              }
+              return { ...m, content: m.content + text };
+            })
+          );
+        },
+        onDone: (evt: StreamDoneEvent) => {
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === params.responseMsgId
+                ? {
+                    ...m,
+                    dbId: evt.message_id,
+                    sources: evt.citations.map(c => ({ title: '', url: c, type: 'web' })),
+                    search_results:
+                      normaliseSearchResults(evt.search_results) ?? m.search_results,
+                    latencyMs: evt.latency_ms,
+                    nextStepsLoading: !!evt.message_id,
+                    originatingQuery: params.originatingQuery,
+                    originatingSearchResults: params.searchResults,
+                    originatingPlayId: params.originatingPlayId,
+                  }
+                : m
+            )
+          );
+          fetchNextSteps(params.responseMsgId, evt.message_id);
+          setSidebarRefresh(n => n + 1);
+        },
+        onError: detail => {
+          streamErrorDetail = detail;
+        },
+      });
+      if (streamErrorDetail) throw new Error(streamErrorDetail);
+    },
+    [sessionId, getToken, fetchNextSteps]
   );
 
   /**
@@ -378,26 +443,14 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         url => appendSearchUrl(responseMsg.id, url),
         getToken
       );
-      const answerResponse = await runPlay(
-        play.id, query, sessionId, searchResults, getToken
-      );
-      if (answerResponse?.answer) {
-        const reveal = applyAssistantAnswer({
-          messageId: responseMsg.id,
-          answer: answerResponse.answer,
-          searchResults: searchResults,
-          citations: answerResponse.citations ?? [],
-          originatingQuery: query,
-          originatingSearchResults: searchResults,
-          originatingPlayId: play.id,
-          dbId: answerResponse.message_id,
-          latencyMs: answerResponse.latency_ms,
-        });
-        setMessages(reveal.update);
-        startStreamingReveal(reveal.messageId, reveal.fullContent);
-        fetchNextSteps(responseMsg.id, answerResponse.message_id);
-        setSidebarRefresh(n => n + 1);
-      }
+      await runAnswerStream({
+        responseMsgId: responseMsg.id,
+        query,
+        searchResults,
+        playId: play.id,
+        originatingQuery: query,
+        originatingPlayId: play.id,
+      });
     } catch (e) {
       setError(`Play failed: ${e}`);
     } finally {
@@ -436,25 +489,13 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         url => appendSearchUrl(responseMsg.id, url),
         getToken
       );
-      const answerResponse = await getAnswer(
-        query, sessionId, searchResults, previousQueries, getToken
-      );
-      if (answerResponse?.answer && Array.isArray(answerResponse.citations)) {
-        const reveal = applyAssistantAnswer({
-          messageId: responseMsg.id,
-          answer: answerResponse.answer,
-          searchResults: searchResults,
-          citations: answerResponse.citations,
-          originatingQuery: query,
-          originatingSearchResults: searchResults,
-          dbId: answerResponse.message_id,
-          latencyMs: answerResponse.latency_ms,
-        });
-        setMessages(reveal.update);
-        startStreamingReveal(reveal.messageId, reveal.fullContent);
-        fetchNextSteps(responseMsg.id, answerResponse.message_id);
-        setSidebarRefresh(n => n + 1);
-      }
+      await runAnswerStream({
+        responseMsgId: responseMsg.id,
+        query,
+        searchResults,
+        previousQueries,
+        originatingQuery: query,
+      });
     } catch (err) {
       console.error(err);
       setError(`Failed to fetch answer: ${err}`);
