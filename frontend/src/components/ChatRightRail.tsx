@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ChevronLeft, ChevronRight, ExternalLink, ShieldCheck, Sparkles, Youtube,
+  ChevronLeft, ChevronRight, ExternalLink, PlayCircle, ShieldCheck, Youtube,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { Play } from '../services/api';
@@ -162,7 +162,7 @@ function RailToggle({
       )}
       {expanded && (
         <span className="text-[10px] uppercase tracking-[0.08em] font-semibold text-fg-subtle pr-1">
-          Context
+          Evidence
         </span>
       )}
     </div>
@@ -210,7 +210,7 @@ function ActivePlayPanel({ play }: { play: Play }) {
       </h3>
       <div className="flex items-start gap-2.5 p-3 rounded-lg bg-brand-subtle/40 border border-brand-subtle">
         <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg shrink-0">
-          <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />
+          <PlayCircle className="w-3.5 h-3.5" strokeWidth={2} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-semibold text-fg leading-tight">

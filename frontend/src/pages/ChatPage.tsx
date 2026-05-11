@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
-import { ArrowUp } from 'lucide-react';
 import { ChatMessage } from '../components/ChatMessage';
 import { SearchBar, type ComposerHandle } from '../components/SearchBar';
 import { SessionsSidebar } from '../components/SessionsSidebar';
@@ -65,7 +64,6 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const [activePlay, setActivePlay] = useState<Play | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesTopRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
   // True only when a fresh session was just minted on the client (auto-mint
@@ -74,8 +72,6 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   // Defaults to false so arrivals to `/chat/:id` from anywhere (Home, deep
   // link, refresh) actually load the conversation.
   const justCreatedRef = useRef(false);
-
-  const [showStickyHeader, setShowStickyHeader] = useState(false);
 
   // One-time load of the Plays catalog so the composer can offer slash
   // commands. Failure is non-fatal — the user just doesn't get the menu.
@@ -131,27 +127,10 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
-  const scrollToTop = useCallback(() => {
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
-
-  // Sticky conversation header — show once the first turn has scrolled out
-  // of view. Uses IntersectionObserver against a sentinel above the messages.
-  useEffect(() => {
-    const sentinel = messagesTopRef.current;
-    const root = scrollContainerRef.current;
-    if (!sentinel || !root) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => setShowStickyHeader(!entry.isIntersecting),
-      { root, threshold: 0 }
-    );
-    obs.observe(sentinel);
-    return () => obs.disconnect();
-  }, [messages.length]);
 
   // Hydrate when the URL session changes — but skip the auto-mint case
   // (where there's nothing to load yet) and the pending-play case.
@@ -515,6 +494,13 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     return t.length > 80 ? t.slice(0, 79).trim() + '…' : t;
   }, [messages]);
 
+  // Count user turns. Used for the status-chip strip in the sticky header.
+  const turnCount = useMemo(
+    () => messages.filter(m => m.type === 'user').length,
+    [messages],
+  );
+  const hasStarted = turnCount > 0;
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
       <div className="hidden md:block h-full">
@@ -530,10 +516,26 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-surface relative">
-        {/* Always-visible toolbar — currently just the model selector. The
-            sticky-on-scroll header below absorbs this when the user is deep
-            in a conversation. */}
-        <div className="border-b border-border h-11 px-4 sm:px-6 flex items-center justify-end shrink-0">
+        {/* Always-visible investigation header — title + status chips +
+            ModelSelector. Replaces the earlier dual "toolbar / scroll-
+            triggered sticky bar" pattern; one bar that's always in view. */}
+        <div className="border-b border-border bg-surface px-4 sm:px-6 h-12 flex items-center gap-3 shrink-0">
+          <div className="flex-1 min-w-0 flex items-center gap-3">
+            <div className="text-body-base font-medium text-on-surface truncate">
+              {conversationTitle}
+            </div>
+            {hasStarted && (
+              <span className="inline-flex items-center gap-1.5 px-1.5 h-5 rounded-control bg-surface-container text-label-caps text-on-surface-variant shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" aria-hidden />
+                Active
+              </span>
+            )}
+            {hasStarted && (
+              <span className="inline-flex items-center px-1.5 h-5 rounded-control bg-surface-container text-label-caps text-on-surface-variant shrink-0 tabular-nums">
+                {turnCount} turn{turnCount === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
           <ModelSelector
             value={me?.preferred_chat_model ?? null}
             onChange={modelId =>
@@ -542,33 +544,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           />
         </div>
 
-        {showStickyHeader && (
-          <div className="absolute top-0 inset-x-0 z-20 border-b border-border bg-surface/85 backdrop-blur supports-[backdrop-filter]:bg-surface/70 animate-fade-in">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 h-11 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium text-fg truncate">
-                  {conversationTitle}
-                </div>
-              </div>
-              <ModelSelector
-                value={me?.preferred_chat_model ?? null}
-                onChange={modelId =>
-                  setMe(prev => (prev ? { ...prev, preferred_chat_model: modelId } : prev))
-                }
-              />
-              <button
-                onClick={scrollToTop}
-                className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-fg-muted hover:text-fg hover:bg-surface-sunken transition-colors"
-              >
-                <ArrowUp className="w-3 h-3" /> Top
-              </button>
-            </div>
-          </div>
-        )}
-
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-8">
           <div className="max-w-3xl mx-auto">
-            <div ref={messagesTopRef} />
             {messages.length === 0 ? (
               <ChatEmptyState
                 profile={profile}
