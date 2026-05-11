@@ -36,3 +36,6 @@ __pycache__/
 # Local push token — never commit
 .env.git
 frontend/.env
+
+# Claude Code workspace (worktrees, transient state)
+.claude/
