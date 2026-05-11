@@ -459,10 +459,12 @@ async def set_preferred_model(
 
 
 @router.get("/models")
-async def list_chat_models():
+async def list_chat_models(response: Response):
     """Catalog of models the chat surface can choose from. Public — the UI
     fetches this to populate the model selector. Stable IDs match what
     `/me/preferred-model` accepts."""
+    # Static catalog, deploy-bound. 1h browser cache matches /plays.
+    response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
     return {
         "models": [
             {
