@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import clsx from 'clsx';
 import { getBrandProfile, putBrandProfile, type BrandProfile } from '../services/api';
+import { useCacheActions } from '../services/queries';
 import { Button } from './ui/Button';
 
 const CHANNELS: { id: string; label: string }[] = [
@@ -33,6 +34,7 @@ const TOTAL_STEPS = 4;
 
 export function Onboarding({ onComplete }: Props) {
   const { getToken, isSignedIn } = useAuth();
+  const { setBrandProfile } = useCacheActions();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,9 @@ export function Onboarding({ onComplete }: Props) {
         },
         getToken
       );
+      // Seed the SWR cache so pages reading useBrandProfile get the new
+      // value immediately without an extra fetch.
+      setBrandProfile(profile);
       onComplete(profile);
     } catch (e: any) {
       setError(e?.message ?? 'Save failed');
