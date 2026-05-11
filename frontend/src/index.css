@@ -208,6 +208,19 @@
   }
 }
 
+/* Hide Clerk's "Secured by Clerk" + "Development mode" branding chips on the
+ * sign-in surface. Targets every direct child of the footer that isn't the
+ * Sign-up action — `.cl-footerAction` is documented stable, the branding
+ * pill's hashed class is not. Keeps the "Don't have an account? Sign up"
+ * link visible.
+ *
+ * NOTE: per Clerk's ToS, removing the "Secured by Clerk" badge requires the
+ * Pro plan (paid). This is a CSS-only visual hide — audit before going to
+ * production with prod keys. */
+.cl-footer > :not([class*="cl-footerAction"]) {
+  display: none !important;
+}
+
 /* Keep a couple of legacy animations the existing components reference. */
 .animate-hello {
   animation: helloAnimation 0.6s ease forwards;

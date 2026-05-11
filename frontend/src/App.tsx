@@ -5,6 +5,7 @@ import LoginPage from './components/LoginPage';
 import { AppLayout } from './components/AppLayout';
 import { Onboarding } from './components/Onboarding';
 import { HomePage } from './pages/HomePage';
+import { LandingPage } from './pages/LandingPage';
 import { getBrandProfile, type BrandProfile } from './services/api';
 import { preloadQueries } from './services/queries';
 import { wakeupBackend } from './utils/api';
@@ -202,7 +203,11 @@ function App() {
   return (
     <BrowserRouter>
       <SignedOut>
-        <LoginPage />
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/sign-in/*" element={<LoginPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </SignedOut>
       <SignedIn>
         <AuthedShell />
