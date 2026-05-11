@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 (PAI-13 PR B) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 (PAI-13 PR C) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -57,6 +57,7 @@ PRs in chronological order. Each is on `main`.
 | [#31](https://github.com/paritoshtripathi935/MiniPerplexity/pull/31) | **Slice C — Regenerate on streaming + cleanup.** Regenerate now uses the same `runAnswerStream` helper; first token replaces "_Regenerating…_" in place. Replaces `Message.revealedLength: number` with `Message.isStreaming: boolean` — the latter is what actually drives the Writing indicator + cursor + Copy/follow-up visibility. Caught a regression on PR #29 along the way: the new SSE path wasn't setting any reveal state, so those signals were silently lost. Deletes `useStreamingReveal.ts` and the now-unused `getAnswer` / `runPlay` / `fetchAnswer` wrappers. Backend JSON `/answer` endpoint is dead code in this repo but kept for now. |
 | [#35](https://github.com/paritoshtripathi935/MiniPerplexity/pull/35) | **PAI-13 / PR A — Operator design tokens + dark-first.** Foundation for the [PAI-13 stack](./PAI_13_PLAN.md). Swaps the theme to the Material 3 purple scheme from the Stitch DESIGN.md. Legacy CSS variables (`--brand`, `--surface`, `--fg`, ...) remapped to M3 roles so existing pages render unchanged — every component inherits the new palette without code changes. Adds the operational type scale (`metric-lg`, `h1`, `h2`, `body-base`, `body-sm`, `label-caps`) and named radii (`card` 12 / `panel` 10 / `chip` 8 / `control` 6). Default theme flipped to dark unless `paidpilot-theme=light` is set; inline script in `index.html` applies `.dark` before React mounts (no FOUC). PRs B–G refit each page to the M3 names. |
 | [#37](https://github.com/paritoshtripathi935/MiniPerplexity/pull/37) | **PAI-13 / PR B — "Investigation" rename + AI-buzzword strip.** Routes `/chat/*` → `/investigations/*` with `<Navigate>` redirects preserving sessionId (existing bookmarks land safely). Top-bar "Chat" → "Investigations" (Search icon); Plays icon Sparkles → PlayCircle. Brand chip + LoginPage logo: Sparkles → "P" letterform. Copy strip: "Ask anything paid-acquisition" → "Continue the investigation…", "AI co-pilot" → "operating system for growth teams", "What can I help you ship today?" → "Start by asking what changed, what to test, or what to scale.", "message" → "turn" throughout. Prop rename: `onNewChat` → `onNewInvestigation`. Sparkles icons inside Plays sub-components (SlashMenu, PlayRunModal, PresetBar, ChatRightRail active-play, ModelSelector "recommended") deferred to PRs E/F. HomePage greeting + layout deferred to PR D. |
+| [#39](https://github.com/paritoshtripathi935/MiniPerplexity/pull/39) | **PAI-13 / PR C — Command palette (⌘K).** Linear-style modal quick-switcher built on [`cmdk`](https://cmdk.paco.me/) matching the Stitch `command_palette_dark` mock. Groups: Investigations (last 8 sessions + "New investigation") · Plays (catalog) · Calculators · Jump to. Selected row gets the 2px primary left bar. Hotkeys: ⌘K toggle, ⌘N new investigation, ⌘P plays, ⌘E calculators, Esc close, Linear-style G chords (G D / G I / G P / G S). Top-bar trigger: bordered search-pill with kbd hint (sm+), icon-only on mobile. Data fetched lazily on first open, cached 30s — anonymous users skip the sessions fetch. Bundle +17.6 kB gzip (cmdk). The single biggest "feels like Linear" lever per the plan. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -111,12 +112,16 @@ Real candidates, ranked by leverage:
 
 0. **PAI-13 — Operator design system adoption** (in progress).
    Stacked-PR plan, 7 slices. Full plan in
-   [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A (#35) and PR B (#37)
-   shipped.** Next up: **PR C — Command palette (⌘K).** Add `cmdk`
-   library + the Stitch command-palette design. Groups: Investigations,
-   Plays, Calculators, Jump-to. Hotkeys: ⌘K opens, ⌘N → new
-   investigation, ⌘P → run a play, ⌘E → open calculators, G+D / G+S
-   jump to dashboard/settings. Low blast radius (net-new component).
+   [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A (#35), PR B (#37), PR C
+   (#39) shipped.** Next up: **PR D — Operational homepage.** Rebuild
+   `HomePage.tsx` per the Stitch `paidpilot_homepage_dark` mock.
+   Three asymmetric zones: operational feed (left ~60%), Continue
+   investigation (right top), Quick actions w/ kbd shortcuts (right
+   bottom). Header replaces "Good afternoon, Paritosh" with a single
+   line of operational state derived from real data (open
+   investigations, scenarios saved, last activity). Meta CAC / campaign
+   cards stubbed as "Connect Meta" onramps for V2. Medium blast radius
+   (one-page rebuild, isolated).
 
 1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
    after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
