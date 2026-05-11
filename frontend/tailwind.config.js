@@ -2,9 +2,17 @@
  *
  * PaidPilot design system
  * ----------------------------------------------------------------------------
- * One brand accent. Colours come from CSS variables defined in src/index.css
- * so light/dark themes swap atomically. Inter Variable for body, Inter Display
- * for headings. Constrained shadow + radius scales.
+ * Material 3 purple scheme. Colours come from CSS variables defined in
+ * src/index.css so light/dark themes swap atomically. Inter Variable for
+ * body, Inter Display for headings. Constrained radius scale (10–12px).
+ *
+ * Two parallel naming layers exist on purpose:
+ *   - M3 tokens (`surface-container-high`, `on-surface-variant`, ...) —
+ *     used by PR D onward as the canonical names.
+ *   - Legacy semantic aliases (`surface-raised`, `fg-muted`, ...) —
+ *     existing pages keep working; aliased to M3 roles in src/index.css.
+ *
+ * Type scale matches docs/product/PAI_13_PLAN.md.
  */
 export default {
   darkMode: 'class',
@@ -42,7 +50,53 @@ export default {
           'monospace',
         ],
       },
+      fontSize: {
+        // M3-keyed operational type scale.
+        'metric-lg': ['2rem', { lineHeight: '1', letterSpacing: '-0.03em', fontWeight: '500' }],
+        'h1': ['1.5rem', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '600' }],
+        'h2': ['1.125rem', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '600' }],
+        'body-base': ['0.875rem', { lineHeight: '1.5', letterSpacing: '0em', fontWeight: '400' }],
+        'body-sm': ['0.8125rem', { lineHeight: '1.4', letterSpacing: '0em', fontWeight: '400' }],
+        'label-caps': ['0.6875rem', { lineHeight: '1', letterSpacing: '0.05em', fontWeight: '600' }],
+      },
       colors: {
+        // ---- M3 tokens ------------------------------------------------------
+        // Surface scale (tonal layering).
+        'surface-bright': 'rgb(var(--m3-surface-bright) / <alpha-value>)',
+        'surface-dim': 'rgb(var(--m3-surface-dim) / <alpha-value>)',
+        'surface-container-lowest': 'rgb(var(--m3-surface-container-lowest) / <alpha-value>)',
+        'surface-container-low': 'rgb(var(--m3-surface-container-low) / <alpha-value>)',
+        'surface-container': 'rgb(var(--m3-surface-container) / <alpha-value>)',
+        'surface-container-high': 'rgb(var(--m3-surface-container-high) / <alpha-value>)',
+        'surface-container-highest': 'rgb(var(--m3-surface-container-highest) / <alpha-value>)',
+        // On-surface text.
+        'on-surface': 'rgb(var(--m3-on-surface) / <alpha-value>)',
+        'on-surface-variant': 'rgb(var(--m3-on-surface-variant) / <alpha-value>)',
+        // Outlines.
+        outline: 'rgb(var(--m3-outline) / <alpha-value>)',
+        'outline-variant': 'rgb(var(--m3-outline-variant) / <alpha-value>)',
+        // Primary (accent).
+        primary: {
+          DEFAULT: 'rgb(var(--m3-primary) / <alpha-value>)',
+          container: 'rgb(var(--m3-primary-container) / <alpha-value>)',
+          fixed: 'rgb(var(--m3-primary-fixed) / <alpha-value>)',
+        },
+        'on-primary': 'rgb(var(--m3-on-primary) / <alpha-value>)',
+        'on-primary-container': 'rgb(var(--m3-on-primary-container) / <alpha-value>)',
+        'on-primary-fixed': 'rgb(var(--m3-on-primary-fixed) / <alpha-value>)',
+        'inverse-primary': 'rgb(var(--m3-inverse-primary) / <alpha-value>)',
+        // Inverse surfaces (toasts, snackbars).
+        'inverse-surface': 'rgb(var(--m3-inverse-surface) / <alpha-value>)',
+        'inverse-on-surface': 'rgb(var(--m3-inverse-on-surface) / <alpha-value>)',
+        // M3 error.
+        'm3-error': {
+          DEFAULT: 'rgb(var(--m3-error) / <alpha-value>)',
+          container: 'rgb(var(--m3-error-container) / <alpha-value>)',
+        },
+        'on-m3-error': 'rgb(var(--m3-on-error) / <alpha-value>)',
+        'on-m3-error-container': 'rgb(var(--m3-on-error-container) / <alpha-value>)',
+
+        // ---- Legacy semantic aliases (kept for back-compat) -----------------
         brand: {
           DEFAULT: 'rgb(var(--brand) / <alpha-value>)',
           fg: 'rgb(var(--brand-fg) / <alpha-value>)',
@@ -75,6 +129,14 @@ export default {
           DEFAULT: 'rgb(var(--warning) / <alpha-value>)',
           subtle: 'rgb(var(--warning-subtle) / <alpha-value>)',
         },
+      },
+      borderRadius: {
+        // M3-keyed radius scale: 10-12px primary, 6-8px small, no pills.
+        // Keeping Tailwind defaults too — these add named operational sizes.
+        card: '0.75rem',   // 12px — cards, modals
+        panel: '0.625rem', // 10px — primary surfaces
+        chip: '0.5rem',    // 8px  — inputs, tags, small buttons
+        control: '0.375rem', // 6px — tightest controls
       },
       boxShadow: {
         card: '0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 1px 0 rgb(0 0 0 / 0.02)',

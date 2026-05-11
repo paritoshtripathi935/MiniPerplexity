@@ -4,6 +4,11 @@
  * Inter variable font, theme tokens (CSS vars consumed by tailwind.config.js),
  * baseline typography. Light/dark themes are class-based; toggling .dark on
  * <html> swaps the variables atomically. No prop-drilling of `darkMode`.
+ *
+ * Palette: Material 3 purple scheme — canonical values mirror the table in
+ * docs/product/PAI_13_PLAN.md. Legacy semantic aliases (--brand, --surface,
+ * etc.) are mapped to M3 roles so existing components keep working while
+ * PRs B-G refit each page.
  */
 @import '@fontsource-variable/inter';
 
@@ -12,28 +17,67 @@
 @tailwind utilities;
 
 @layer base {
-  /* Light theme (default) */
+  /* Light theme — Material 3 light scheme keyed to purple primary #4f378a.
+   * Source of truth: docs/product/PAI_13_PLAN.md palette table. */
   :root {
-    /* Brand — a desaturated indigo. Confidence without circus colour. */
-    --brand: 79 70 229;          /* #4F46E5 */
-    --brand-fg: 255 255 255;
-    --brand-subtle: 238 242 255;
+    /* M3 surface scale (tonal layering, no shadows) */
+    --m3-surface: 253 247 255;                  /* #fdf7ff */
+    --m3-surface-bright: 253 247 255;
+    --m3-surface-dim: 222 216 224;              /* #ded8e0 */
+    --m3-surface-container-lowest: 255 255 255;
+    --m3-surface-container-low: 248 242 250;    /* #f8f2fa */
+    --m3-surface-container: 242 236 244;        /* #f2ecf4 */
+    --m3-surface-container-high: 236 230 238;   /* #ece6ee */
+    --m3-surface-container-highest: 230 224 233; /* #e6e0e9 */
 
-    /* Surfaces — never pure white; layered with subtle contrast. */
-    --surface: 255 255 255;
-    --surface-raised: 255 255 255;
-    --surface-sunken: 248 248 250;
+    /* M3 on-surface text */
+    --m3-on-surface: 29 27 32;                  /* #1d1b20 */
+    --m3-on-surface-variant: 73 69 81;          /* #494551 */
 
-    /* Borders — soft, not harsh. */
-    --border: 232 232 236;
-    --border-strong: 214 214 221;
+    /* M3 outlines */
+    --m3-outline: 122 117 130;                  /* #7a7582 */
+    --m3-outline-variant: 203 196 210;          /* #cbc4d2 */
 
-    /* Foreground (text) — never pure black. */
-    --fg: 17 18 22;
-    --fg-muted: 80 82 92;
-    --fg-subtle: 124 127 137;
-    --fg-inverted: 255 255 255;
+    /* M3 primary (accent — reserved per PAI_13_PLAN.md) */
+    --m3-primary: 79 55 138;                    /* #4f378a */
+    --m3-on-primary: 255 255 255;
+    --m3-primary-container: 103 80 164;         /* #6750a4 */
+    --m3-on-primary-container: 224 210 255;     /* #e0d2ff */
+    --m3-primary-fixed: 233 221 255;            /* #e9ddff */
+    --m3-on-primary-fixed: 34 0 93;             /* #22005d */
+    --m3-inverse-primary: 207 188 255;          /* #cfbcff */
 
+    /* M3 inverse surface (toasts, snackbars) */
+    --m3-inverse-surface: 50 47 53;             /* #322f35 */
+    --m3-inverse-on-surface: 245 239 247;       /* #f5eff7 */
+
+    /* M3 semantic */
+    --m3-error: 186 26 26;                      /* #ba1a1a */
+    --m3-on-error: 255 255 255;
+    --m3-error-container: 255 218 214;          /* #ffdad6 */
+    --m3-on-error-container: 147 0 10;          /* #93000a */
+
+    /* ---------- Legacy semantic aliases (back-compat with existing pages) -
+     * Map to M3 roles. Will be retired as PRs B-G migrate each page to use
+     * the M3 names directly. */
+    --brand: var(--m3-primary-container);       /* visible filled accent */
+    --brand-fg: var(--m3-on-primary);
+    --brand-subtle: var(--m3-primary-fixed);
+
+    --surface: var(--m3-surface);
+    --surface-raised: var(--m3-surface-container-lowest);
+    --surface-sunken: var(--m3-surface-container);
+
+    --border: var(--m3-outline-variant);
+    --border-strong: var(--m3-outline);
+
+    --fg: var(--m3-on-surface);
+    --fg-muted: var(--m3-on-surface-variant);
+    --fg-subtle: var(--m3-outline);
+    --fg-inverted: var(--m3-surface);
+
+    /* Semantic colors — kept as low-saturation, small-scale deployments per
+     * DESIGN.md. Not in the M3 token set so values stay project-defined. */
     --danger: 220 38 38;
     --danger-subtle: 254 226 226;
     --success: 16 163 74;
@@ -42,24 +86,60 @@
     --warning-subtle: 254 243 199;
   }
 
-  /* Dark theme — Linear-flavoured neutrals (cooler, never #000). */
+  /* Dark theme — Material 3 dark scheme for the same purple primary.
+   * Values derived per the M3 spec; locked here so PRs B-G stay consistent. */
   .dark {
-    --brand: 129 140 248;        /* lighter on dark for contrast */
-    --brand-fg: 17 18 22;
-    --brand-subtle: 30 27 75;
+    --m3-surface: 20 18 24;                     /* #141218 — darkest base */
+    --m3-surface-bright: 59 56 62;              /* #3b383e */
+    --m3-surface-dim: 20 18 24;
+    --m3-surface-container-lowest: 14 12 17;    /* #0e0c11 */
+    --m3-surface-container-low: 29 27 32;       /* #1d1b20 */
+    --m3-surface-container: 33 31 36;           /* #211f24 */
+    --m3-surface-container-high: 43 41 46;      /* #2b292e */
+    --m3-surface-container-highest: 54 52 56;   /* #363438 */
 
-    --surface: 14 15 17;          /* near-black, not actual black */
-    --surface-raised: 22 23 27;
-    --surface-sunken: 10 11 13;
+    --m3-on-surface: 230 224 233;               /* #e6e0e9 */
+    --m3-on-surface-variant: 202 196 208;       /* #cac4d0 */
 
-    --border: 36 38 43;
-    --border-strong: 56 58 64;
+    --m3-outline: 148 143 153;                  /* #948f99 */
+    --m3-outline-variant: 73 69 79;             /* #49454f */
 
-    --fg: 232 232 236;
-    --fg-muted: 161 164 175;
-    --fg-subtle: 117 121 132;
-    --fg-inverted: 17 18 22;
+    --m3-primary: 207 188 255;                  /* #cfbcff — light purple on dark */
+    --m3-on-primary: 56 30 114;                 /* #381e72 */
+    --m3-primary-container: 79 55 138;          /* #4f378a */
+    --m3-on-primary-container: 233 221 255;     /* #e9ddff */
+    --m3-primary-fixed: 233 221 255;
+    --m3-on-primary-fixed: 34 0 93;
+    --m3-inverse-primary: 103 80 164;           /* #6750a4 */
 
+    --m3-inverse-surface: 230 224 233;
+    --m3-inverse-on-surface: 50 47 53;
+
+    --m3-error: 255 180 171;                    /* #ffb4ab */
+    --m3-on-error: 105 0 5;                     /* #690005 */
+    --m3-error-container: 147 0 10;             /* #93000a */
+    --m3-on-error-container: 255 218 214;       /* #ffdad6 */
+
+    /* Legacy aliases — same mapping shape, M3 dark values take over. Note
+     * --brand picks inverse-primary for dark (lighter purple) so the accent
+     * stays visible against the near-black surface. */
+    --brand: var(--m3-inverse-primary);
+    --brand-fg: var(--m3-on-primary);
+    --brand-subtle: var(--m3-primary-container);
+
+    --surface: var(--m3-surface-container-low);
+    --surface-raised: var(--m3-surface-container);
+    --surface-sunken: var(--m3-surface);
+
+    --border: var(--m3-outline-variant);
+    --border-strong: var(--m3-outline);
+
+    --fg: var(--m3-on-surface);
+    --fg-muted: var(--m3-on-surface-variant);
+    --fg-subtle: var(--m3-outline);
+    --fg-inverted: var(--m3-surface);
+
+    /* Dark semantic — kept low-saturation. */
     --danger: 248 113 113;
     --danger-subtle: 60 24 24;
     --success: 52 211 153;

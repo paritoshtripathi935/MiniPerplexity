@@ -4,10 +4,23 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
-    <meta name="theme-color" content="#4F46E5" />
+    <meta name="theme-color" content="#141218" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PaidPilot — AI co-pilot for performance marketers</title>
     <meta name="description" content="Benchmarks, briefs, and channel plans for in-house performance marketers. Ask anything paid-acquisition." />
+    <!-- Apply theme before React mounts to prevent flash-of-light-content.
+         Dark-first per PAI-13; only `paidpilot-theme=light` opts out. -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('paidpilot-theme') !== 'light') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (_) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
