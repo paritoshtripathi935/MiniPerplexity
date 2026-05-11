@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-10 · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -47,7 +47,13 @@ PRs in chronological order. Each is on `main`.
 
 | PR | Topic |
 |---|---|
-| (open) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to existing `messages.latency_ms` (no migration), renders "⧗ Answered in 4.2s" hint under each assistant turn (rehydrates on history reload) |
+| [#21](https://github.com/paritoshtripathi935/MiniPerplexity/pull/21) | **PAI-8** — answer latency metric: `/answer` times `generate_answer`, returns `latency_ms`, persists to existing `messages.latency_ms` (no migration), renders "⧗ Answered in 4.2s" hint under each assistant turn (rehydrates on history reload) |
+
+### Shipped 2026-05-11
+
+| PR | Topic |
+|---|---|
+| [#29](https://github.com/paritoshtripathi935/MiniPerplexity/pull/29) | **Real SSE streaming for `/answer`** (slices A+B). New `POST /api/v1/answer/{session_id}/stream` returning `text/event-stream`; backend uses async `httpx` against Cloudflare with `stream: true`. Frontend `streamAnswer()` parses SSE frames and appends tokens live — no more `setInterval`-based reveal on the search/play paths. Dual-schema handled (`_extract_stream_delta`). Persistence runs after the stream so a mid-flight drop never half-saves a turn. Smoke-tested against `gpt-oss-120b` + Mistral; both stream word-level chunks. **Regenerate still uses the JSON `/answer`** (Slice C deferred). Merged with a true merge commit (admin bypass of linear-history). |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -100,11 +106,11 @@ User-selectable models (UI dropdown at the top of chat):
 
 Real candidates, ranked by leverage:
 
-1. **Real SSE streaming** — 1–2 hr backend + ~30 min frontend. The
-   client-side reveal hook in `frontend/src/hooks/useStreamingReveal.ts` is
-   already shaped to swap `setInterval` → `EventSource`. Backend would change
-   `/answer` to stream Cloudflare tokens. Kills the "post-fetch reveal"
-   illusion in favour of real first-token latency.
+1. **Slice C — migrate Regenerate to streaming** (~20 min). The JSON
+   `/answer` is now only used by `handleRegenerate` in `ChatPage`. Wiring
+   it through `streamAnswer()` would let us delete `useStreamingReveal`
+   and the `revealedLength` field on `Message` entirely. Same shape as
+   the three streaming callers — re-use `runAnswerStream`.
 
 2. **GitHub repo rename** — 5 min. Still on `paritoshtripathi935/MiniPerplexity`.
    `gh api -X PATCH /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`
