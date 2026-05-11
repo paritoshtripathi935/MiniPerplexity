@@ -10,10 +10,15 @@ import { ChatRightRail } from '../components/ChatRightRail';
 import { ChatEmptyState } from '../components/ChatEmptyState';
 import { ModelSelector } from '../components/ModelSelector';
 import {
-  getBrandProfile, getMe, getNextSteps, listPlays,
-  performSearch, getSessionHistory, streamAnswer,
-  type BrandProfile, type Play, type StreamDoneEvent, type UserProfile,
+  getNextSteps, performSearch, getSessionHistory, streamAnswer,
+  type Play, type StreamDoneEvent,
 } from '../services/api';
+import {
+  useBrandProfile,
+  useCacheActions,
+  useMe,
+  usePlays,
+} from '../services/queries';
 import { Message } from '../types';
 import {
   normaliseSearchResults,
@@ -33,7 +38,7 @@ interface Props {
 }
 
 export function ChatPage({ darkMode, pending, clearPending }: Props) {
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
   const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams();
 
@@ -53,9 +58,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
-  const [profile, setProfile] = useState<BrandProfile | null>(null);
-  const [me, setMe] = useState<UserProfile | null>(null);
-  const [plays, setPlays] = useState<Play[]>([]);
+  // Cached cross-page queries. Cache hits render synchronously on revisit.
+  const { data: profile } = useBrandProfile(getToken, !!isSignedIn);
+  const { data: me, mutate: mutateMe } = useMe(getToken, !!isSignedIn);
+  const { data: plays = [] } = usePlays();
+  const { invalidateSessions } = useCacheActions();
   /** Slash-selected play queued for the run modal. */
   const [slashPlay, setSlashPlay] = useState<Play | null>(null);
   /** The play whose context is "loaded" — visible in the composer chip and
@@ -72,57 +79,6 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   // Defaults to false so arrivals to `/chat/:id` from anywhere (Home, deep
   // link, refresh) actually load the conversation.
   const justCreatedRef = useRef(false);
-
-  // One-time load of the Plays catalog so the composer can offer slash
-  // commands. Failure is non-fatal — the user just doesn't get the menu.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { plays } = await listPlays();
-        if (!cancelled) setPlays(plays);
-      } catch {
-        /* slash menu silently disabled */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Pull the brand profile so the empty-state can be brand-aware.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const p = await getBrandProfile(getToken);
-        if (!cancelled) setProfile(p);
-      } catch {
-        /* anonymous or first-time — empty state still works */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [getToken]);
-
-  // Pull the user profile so the ModelSelector can preselect the saved
-  // preferred chat model. Anonymous users hit a 401 here — that's fine,
-  // the selector falls back to the catalog default.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const u = await getMe(getToken);
-        if (!cancelled) setMe(u);
-      } catch {
-        /* anonymous — selector silently uses backend default */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [getToken]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -314,6 +270,9 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           );
           fetchNextSteps(params.responseMsgId, evt.message_id);
           setSidebarRefresh(n => n + 1);
+          // Bust the cached sessions list so HomePage / palette see the
+          // newly-active investigation on next mount.
+          invalidateSessions();
         },
         onError: detail => {
           streamErrorDetail = detail;
@@ -321,7 +280,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       });
       if (streamErrorDetail) throw new Error(streamErrorDetail);
     },
-    [sessionId, getToken, fetchNextSteps]
+    [sessionId, getToken, fetchNextSteps, invalidateSessions]
   );
 
   /**
@@ -539,7 +498,10 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
           <ModelSelector
             value={me?.preferred_chat_model ?? null}
             onChange={modelId =>
-              setMe(prev => (prev ? { ...prev, preferred_chat_model: modelId } : prev))
+              mutateMe(
+                prev => (prev ? { ...prev, preferred_chat_model: modelId } : prev),
+                { revalidate: false },
+              )
             }
           />
         </div>

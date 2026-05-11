@@ -34,12 +34,7 @@ import {
   Settings,
   Sparkles,
 } from 'lucide-react';
-import {
-  listPlays,
-  listSessions,
-  type Play,
-  type SessionListItem,
-} from '../services/api';
+import { usePlays, useSessions } from '../services/queries';
 
 /* ----------------------------- Context / hook ---------------------------- */
 
@@ -93,59 +88,26 @@ const CHORD_TIMEOUT_MS = 1500;
 
 /* ------------------------------ Palette UI ------------------------------ */
 
-interface PaletteData {
-  sessions: SessionListItem[];
-  plays: Play[];
-  loadedAt: number | null;
-}
-
-const STALE_MS = 30_000;
-
 /** Renders the palette modal. Always mounted; visibility driven by the
  * provider state so opening is instant after the first paint. */
 export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
   const navigate = useNavigate();
   const { getToken, isSignedIn } = useAuth();
-  const [data, setData] = useState<PaletteData>({
-    sessions: [],
-    plays: [],
-    loadedAt: null,
-  });
+
+  // Shared SWR caches — populated on app boot by preloadQueries so the
+  // first ⌘K open already has data. Subsequent opens hit the cache.
+  // We gate the SWR fetch on `open` so anonymous users (or quick
+  // open-and-close cycles) don't cause needless work, but the cached
+  // data is still readable when the palette mounts.
+  const { data: sessions = [] } = useSessions(getToken, { limit: 8 }, !!isSignedIn && open);
+  const { data: plays = [] } = usePlays(open);
 
   // Reset search input on close so re-opening is fresh.
   const [search, setSearch] = useState('');
   useEffect(() => {
     if (!open) setSearch('');
   }, [open]);
-
-  // Lazy / cached data fetch. Refetch only if the cache is stale.
-  const inflight = useRef(false);
-  useEffect(() => {
-    if (!open || inflight.current) return;
-    const stale =
-      data.loadedAt === null || Date.now() - data.loadedAt > STALE_MS;
-    if (!stale) return;
-
-    inflight.current = true;
-    (async () => {
-      try {
-        const [sessionsRes, playsRes] = await Promise.all([
-          isSignedIn
-            ? listSessions(getToken, { limit: 8 }).catch(() => ({ sessions: [] }))
-            : Promise.resolve({ sessions: [] }),
-          listPlays().catch(() => ({ plays: [] })),
-        ]);
-        setData({
-          sessions: sessionsRes.sessions,
-          plays: playsRes.plays,
-          loadedAt: Date.now(),
-        });
-      } finally {
-        inflight.current = false;
-      }
-    })();
-  }, [open, isSignedIn, getToken, data.loadedAt]);
 
   const close = useCallback(() => setOpen(false), [setOpen]);
 
@@ -279,7 +241,7 @@ export function CommandPalette() {
               shortcut={['⌘', 'N']}
               onSelect={newInvestigation}
             />
-            {data.sessions.map(s => (
+            {sessions.map(s => (
               <PaletteItem
                 key={s.id}
                 icon={<Search className="w-4 h-4" />}
@@ -292,9 +254,9 @@ export function CommandPalette() {
             ))}
           </PaletteGroup>
 
-          {data.plays.length > 0 && (
+          {plays.length > 0 && (
             <PaletteGroup heading="Plays">
-              {data.plays.map(p => (
+              {plays.map(p => (
                 <PaletteItem
                   key={p.id}
                   icon={<PlayCircle className="w-4 h-4" />}

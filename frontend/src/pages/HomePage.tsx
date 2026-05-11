@@ -26,13 +26,8 @@ import {
   Settings,
   TrendingDown,
 } from 'lucide-react';
-import {
-  getBrandProfile,
-  listSessions,
-  type BrandProfile,
-  type SessionListItem,
-} from '../services/api';
 import { useCommandPalette } from '../components/CommandPalette';
+import { useBrandProfile, useSessions } from '../services/queries';
 
 interface Props {
   darkMode: boolean;
@@ -76,25 +71,15 @@ function readScenarioCounts(): CalcSummary {
 }
 
 export function HomePage({}: Props) {
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
   const { setOpen: setPaletteOpen } = useCommandPalette();
-  const [profile, setProfile] = useState<BrandProfile | null>(null);
-  const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [scenarios, setScenarios] = useState<CalcSummary>(() => readScenarioCounts());
   const [newChatId] = useState(() => uuidv4());
 
-  useEffect(() => {
-    (async () => {
-      const [p, s] = await Promise.all([
-        getBrandProfile(getToken).catch(() => null),
-        listSessions(getToken, { limit: 10 }).catch(
-          () => ({ sessions: [] as SessionListItem[] }),
-        ),
-      ]);
-      if (p) setProfile(p);
-      setSessions(s.sessions);
-    })();
-  }, [getToken]);
+  // Cached queries — return synchronously from cache on revisit, then
+  // revalidate in background. First-visit hits the network as before.
+  const { data: profile } = useBrandProfile(getToken, !!isSignedIn);
+  const { data: sessions = [] } = useSessions(getToken, { limit: 10 }, !!isSignedIn);
 
   // Pick up scenarios written from /calc in another tab.
   useEffect(() => {

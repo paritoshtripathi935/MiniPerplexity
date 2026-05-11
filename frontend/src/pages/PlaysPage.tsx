@@ -7,10 +7,8 @@ import {
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
-import {
-  getPlaysHistory, listPlays,
-  type Play, type PlayHistoryItem,
-} from '../services/api';
+import { type Play } from '../services/api';
+import { usePlays, usePlaysHistory } from '../services/queries';
 import { PageHeader } from '../components/AppLayout';
 import { PlayRunModal } from '../components/PlayRunModal';
 
@@ -37,35 +35,11 @@ export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
   const { getToken, isSignedIn } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [plays, setPlays] = useState<Play[]>([]);
-  const [history, setHistory] = useState<PlayHistoryItem[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [activePlay, setActivePlay] = useState<Play | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { plays } = await listPlays();
-        setPlays(plays);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!isSignedIn) return;
-    (async () => {
-      try {
-        const { items } = await getPlaysHistory(getToken);
-        setHistory(items);
-      } catch {
-        /* leave empty — section won't render */
-      }
-    })();
-  }, [isSignedIn, getToken]);
+  const { data: plays = [], isLoading: loading } = usePlays();
+  const { data: history = [] } = usePlaysHistory(getToken, !!isSignedIn);
 
   // Deep-link support: `/plays?run=<play_id>` opens the run modal directly.
   useEffect(() => {

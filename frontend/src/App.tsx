@@ -6,6 +6,7 @@ import { AppLayout } from './components/AppLayout';
 import { Onboarding } from './components/Onboarding';
 import { HomePage } from './pages/HomePage';
 import { getBrandProfile, type BrandProfile } from './services/api';
+import { preloadQueries } from './services/queries';
 import { wakeupBackend } from './utils/api';
 // Type-only import — types are erased at build time, no bundle cost.
 import { type PendingPlay } from './pages/ChatPage';
@@ -84,7 +85,18 @@ function AuthedShell() {
     preloadRouteChunks();
   }, []);
 
-  // Load brand profile so we know whether to show onboarding.
+  // Seed the SWR cache for the shared queries (brand profile, sessions,
+  // plays, me, plays history) shortly after first paint. By the time the
+  // user navigates to any route, the data is already in cache — page
+  // renders synchronously with no spinner. Public plays catalog runs
+  // even when signed-out.
+  useEffect(() => {
+    preloadQueries(getToken, !!isSignedIn);
+  }, [getToken, isSignedIn]);
+
+  // Load brand profile so we know whether to show onboarding. (Independent
+  // of SWR — we need the value imperatively here for the onboarding gate
+  // before any route renders.)
   useEffect(() => {
     if (!isSignedIn) return;
     (async () => {

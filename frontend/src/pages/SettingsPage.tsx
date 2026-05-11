@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { Check, Save } from 'lucide-react';
 import clsx from 'clsx';
-import { getBrandProfile, putBrandProfile, type BrandProfile } from '../services/api';
+import { putBrandProfile, type BrandProfile } from '../services/api';
+import { useBrandProfile, useCacheActions } from '../services/queries';
 import { PageHeader } from '../components/AppLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -32,8 +33,14 @@ const fieldCls =
 const labelCls = 'block text-body-md font-medium mb-1.5 text-on-surface';
 
 export function SettingsPage({ onUpdate }: Props) {
-  const { getToken } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { getToken, isSignedIn } = useAuth();
+  // Cached profile — instant on revisit. isLoading is only true on the
+  // very first fetch when there's no cached value at all.
+  const { data: cachedProfile, isLoading: loading } = useBrandProfile(
+    getToken,
+    !!isSignedIn,
+  );
+  const { setBrandProfile } = useCacheActions();
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,25 +54,22 @@ export function SettingsPage({ onUpdate }: Props) {
   const [voice, setVoice] = useState('');
   const [campaigns, setCampaigns] = useState('');
 
+  // Hydrate the form whenever the cached profile arrives or changes.
+  // SWR re-emits on revalidation, but we only seed each field if the
+  // user hasn't started editing — guarded via the `dirty` ref below.
+  const hydratedRef = React.useRef(false);
   useEffect(() => {
-    (async () => {
-      try {
-        const p = await getBrandProfile(getToken);
-        setCompanyName(p.company_name ?? '');
-        setWebsite(p.website ?? '');
-        setIcp(p.icp_description ?? '');
-        setChannels(p.primary_channels ?? []);
-        setTargetCac(p.target_cac != null ? String(p.target_cac) : '');
-        setTargetRoas(p.target_roas != null ? String(p.target_roas) : '');
-        setVoice(p.voice_guidelines ?? '');
-        setCampaigns(p.current_campaigns_summary ?? '');
-      } catch {
-        /* first-load empty */
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [getToken]);
+    if (!cachedProfile || hydratedRef.current) return;
+    hydratedRef.current = true;
+    setCompanyName(cachedProfile.company_name ?? '');
+    setWebsite(cachedProfile.website ?? '');
+    setIcp(cachedProfile.icp_description ?? '');
+    setChannels(cachedProfile.primary_channels ?? []);
+    setTargetCac(cachedProfile.target_cac != null ? String(cachedProfile.target_cac) : '');
+    setTargetRoas(cachedProfile.target_roas != null ? String(cachedProfile.target_roas) : '');
+    setVoice(cachedProfile.voice_guidelines ?? '');
+    setCampaigns(cachedProfile.current_campaigns_summary ?? '');
+  }, [cachedProfile]);
 
   const toggleChannel = (id: string) =>
     setChannels(prev => (prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]));
@@ -88,6 +92,9 @@ export function SettingsPage({ onUpdate }: Props) {
         },
         getToken
       );
+      // Optimistic cache update: write the new profile into SWR's cache
+      // so HomePage / ChatPage / palette see it immediately on next mount.
+      setBrandProfile(p);
       onUpdate?.(p);
       setSavedAt(Date.now());
     } catch (e: any) {
