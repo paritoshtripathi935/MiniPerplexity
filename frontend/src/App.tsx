@@ -15,12 +15,13 @@ import { wakeupBackend } from './utils/api';
 /** Cross-route shared state lives here; pages get what they need via props. */
 function AuthedShell() {
   const { getToken, isSignedIn } = useAuth();
-  // Initial theme: respect saved preference, fall back to system preference.
+  // Initial theme: dark-first per PAI-13. Users who explicitly chose light
+  // (stored as `paidpilot-theme=light`) keep their preference; everyone else
+  // gets dark, regardless of OS preference. The operator-tool aesthetic is
+  // dark-canonical — matching Linear, Vercel, Ramp.
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
-    const saved = localStorage.getItem('paidpilot-theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
+    return localStorage.getItem('paidpilot-theme') !== 'light';
   });
 
   // Sync .dark on <html> so Tailwind class-based dark variants (and our CSS
