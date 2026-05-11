@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 (PAI-13 PR H — stack complete) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 (PRs #58 + #59 — marketing landing + in-app design sweep merged) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -66,6 +66,13 @@ PRs in chronological order. Each is on `main`.
 | [#48](https://github.com/paritoshtripathi935/MiniPerplexity/pull/48) | **PAI-13 / PR F.2 — Scenarios as primary surface.** Lifts scenarios out of each calc's footer into a left-side primary surface per the full Stitch CAC payback mock. New `ScenariosPanel` with stacked rows (name + metric-lg headline + chip-line of inputs + delta vs. previous, semantic green/amber); new `scenarioDisplays.tsx` as single source of truth for per-calc headline + chips + compareFields; new `SaveScenarioButton` replaces the old ScenarioBar footer (collapsed pill → name input + Save). Inline Compare moves to ScenariosPanel. Each calc accepts `registerLoadHandler` so the page bridges ScenariosPanel row clicks into `loadScenario`. `useScenarios` adds same-window broadcast (custom event) so the calc's Save and ScenariosPanel's list stay in sync. Deleted `ScenarioBar.tsx`. |
 | [#50](https://github.com/paritoshtripathi935/MiniPerplexity/pull/50) | **PAI-13 / PR G — Motion audit + typography token sweep.** Closes two gaps from a post-F audit. Motion: `animate-ping` on Searching dot → custom `animate-status-blink` (calm 1Hz opacity fade, no halo); `animate-pulse` on StreamingCursor → `animate-cursor-blink` (hard 1Hz blink at `on-surface-variant`, drops the brand-color theatrics CLAUDE.md forbids); video-thumb `group-hover:scale-[1.02]` → border-color shift. Typography: ~133 arbitrary `text-[Npx]` instances swept to type-scale tokens (`text-body-base/sm/md`, `text-label-caps`, `text-h1/h2`); added `body-md` (12px) token. Deleted dead `Answer.tsx` + its type. Net -249 LOC across 23 files. |
 | [#52](https://github.com/paritoshtripathi935/MiniPerplexity/pull/52) | **PAI-13 / PR H — Page transitions + Plays/Settings + bundle.** Closes out the PAI-13 stack. (1) Page-enter motion: subtle 180ms fade + 2px lift per route change, keyed on top-level segment so nav within an investigation doesn't re-animate, `motion-safe:` for reduced-motion users. (2) Plays page rebuilt from 3-col card grid → stacked operational list (same row shape for Recently used + catalog); filtered-empty state with reset link. (3) Settings audit: tokens swept to M3 (`outline-variant`, `on-surface`), copy "every chat" → "every investigation". (4) React.lazy + Suspense for /investigations, /plays, /calc, /settings; HomePage stays eager. **Initial bundle 581→326 kB raw, 173→100 kB gzip (-42%).** ChatPage (60 kB gzip) only loads on /investigations. |
+
+### Shipped 2026-05-11 (afternoon)
+
+| PR | Topic |
+|---|---|
+| [#58](https://github.com/paritoshtripathi935/MiniPerplexity/pull/58) | **Marketing landing + split-layout sign-in.** Carves a dedicated marketing surface off the login screen. New `/` for signed-out users — hero, sources strip, 5-tile bento product showcase (chat with citations / brand profile / calculator sparkline / plays icon grid / source weight bars), how-it-works, deep-dive rows, beta pricing ("free for 6 months — $0"), FAQ, final CTA, footer. New split-layout `/sign-in` with pitch + product mock on the left and the Clerk widget on the right. Clerk widget themed at the provider level (`appearance` config maps PaidPilot dark tokens to Clerk element keys; `UserButton` inherits). "Secured by Clerk" + "Development mode" footer pills hidden via a structural CSS rule (`.cl-footer > :not([class*="cl-footerAction"])`) — visual hide only, Clerk Pro plan required for ToS compliance. Routing: signed-out `/` → LandingPage, `/sign-in/*` → LoginPage, `*` → redirect to `/`. Components live under `frontend/src/components/landing/`. |
+| [#59](https://github.com/paritoshtripathi935/MiniPerplexity/pull/59) | **In-app design sweep — match landing.** Audit follow-up. `Button` gains `variant="gradient"` (violet→blue + violet glow) for marquee CTAs. `PageHeader` gains an optional `eyebrow` prop. Cards across HomePage, PlaysPage, SettingsPage, ScenariosPanel, ChatEmptyState, Onboarding, PlayRunModal, CommandPalette migrate from `rounded-card bg-surface-container-low` to landing's `rounded-2xl bg-surface-raised/40`. Title-Case copy lowercased throughout (proper nouns preserved). Citation pills in ChatMessage outlined (`brand/30` + `brand/5`) instead of solid `bg-brand-subtle`. Searching/writing pulse dots switch to emerald-400 to match landing's "live data" convention. SearchBar send, Onboarding Next/Finish, PlayRunModal Run, SessionsSidebar New, SettingsPage Save all swap to gradient variant. Active-session chip → emerald outlined badge. CommandPalette overlay `bg-black/40` → `bg-fg/40 backdrop-blur-sm`. 16 files, +245 / -224, no behavioural changes — token migrations are opportunistic. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -157,6 +164,99 @@ Real candidates, ranked by leverage:
 V2 lever (multi-day): **Meta Ad Library integration** — the differentiator
 that justifies the rebrand. Schema can lean on existing sessions /
 search_results / citations.
+
+## Future roadmap
+
+Captured from the marketing landing's implicit promises + the
+landing→app design audit + Clerk ToS work. Ordered by category, not
+priority. The landing-promises group is implicitly **deadline-driven**:
+beta runs through 2026-11-11 and these need to land before the "free
+for 6 months" framing rolls over to paid tiers.
+
+### A. Promised on the landing page but not built
+
+Each of these shows up as a real product feature on `/` or in the FAQ.
+If a visitor signs up expecting it and we don't have it by GA, that's a
+churn risk.
+
+| # | Item | Where promised | Current state | Effort |
+| --- | --- | --- | --- | --- |
+| A1 | **Export to Notion / Slack / PDF** | Pricing card ("export to notion, slack, pdf"); FAQ "can I export to notion or slack?" answers yes on Team/Enterprise; hero mock shows `notion · slack · .pdf · brief.md` chips | Only markdown export of full sessions exists (`/sessions/{id}/export.md`). No Notion / Slack / PDF | Notion + Slack: each ~1 day (OAuth + API write). PDF: ~half day (server-side render via Pyppeteer or wkhtmltopdf) |
+| A2 | **Source weighting UI** | Bento "re-rank the voices you trust"; deep-dive citation drawer | Backend `source_ranker.py` has static authority + LLM rerank, but no user controls. Users can't boost / mute publishers | ~2 days. New `user_source_weights` table; `/me/source-weights` GET/PUT; UI in Settings or a popover next to the source list |
+| A3 | **Citation drawer / quoted-paragraph view** | Deep-dive: "expand the citation drawer to see the exact paragraph the number came from"; bento hero | Right rail shows source URL + title + snippet, but not the cited paragraph in context. Snippets come from search API, not the page itself | ~1 day. Persist the actual quoted span per citation; render in a drawer on pill click |
+| A4 | **Public API (Enterprise)** | FAQ "do you have an api?" → yes on Enterprise | Backend `/api/v1/*` is the same surface the frontend uses, but no auth scheme for third-party API keys, no rate limit policy per-key, no docs | ~3 days. API-key table + middleware + per-key rate limiter; OpenAPI export; minimal docs page |
+| A5 | **Meta / Google Ads connect** | HomePage has dim "Connect Meta" / "Connect Google Ads" stubs; landing mentions platforms | Stubs are dead links pointing at `/settings`. Real OAuth + data sync not built | Same as STATUS's V2 Meta Ad Library lever. Multi-day. |
+| A6 | **Brand profile logo + color swatch** | Landing's `BrandProfileMock` shows a gradient logo square next to brand name | Settings has text fields only — no logo upload, no color extraction. The mock implies a richer brand record | ~half day. Add `brand_logo_url`, `brand_color_hex` columns; small upload UI; use the swatch in BrandContextMock-equivalent places (HomePage header, chat brand-context bar) |
+| A7 | **`/changelog` route** | Landing nav links to `#changelog` and footer has "Changelog" link | No route. Anchor is dead | ~half day. Static markdown-rendered page reading from `CHANGELOG.md` (would need to start one); or auto-generate from merged PR titles |
+| A8 | **`/docs` route** | Landing nav has Docs link | No route. Anchor is dead | ~1 day. Decide: build in-app or external (e.g. Mintlify / a GitBook). Starter content: "what PaidPilot is for", "how citations work", "running plays", "calculator inputs" |
+| A9 | **Real product screenshots** | Hero, bento, deep-dive currently use CSS-built mocks | The mocks look intentional but will read as "no real product" to a closer look; AI placeholders were removed for this reason | ~half day once UI stabilises. Capture real screenshots at retina; swap into LandingHero, LandingFeatures, LandingDeepDive. Optional: short Loom-style demo for the "see it in 60 seconds" CTA (currently a no-op button) |
+| A10 | **"See it in 60 seconds" video** | Hero secondary CTA | Button is wired but has no handler — no modal, no video | ~half day. Record a 60-second screen capture, host on Mux / Loom, wire up a video modal |
+| A11 | **Plays catalog matches landing-listed names** | Landing deep-dive names "meta abo q4 test plan, lifecycle audit, icp refresh, channel allocation, a/b test spec, launch playbook" | `backend/app/plays/catalog.py` has 10 plays with adjacent (not identical) names | ~half day. Cross-reference; rename catalog entries OR rename landing copy. Pick whichever drives clearer marketing |
+
+### B. Pricing / business-model gap
+
+The beta framing ("free for 6 months") expires 2026-11. After that we
+need real tiers — but more than just pricing pages: a billing system, a
+seat-vs-workspace model, and a way to grandfather beta participants.
+
+| # | Item | Current state | Effort |
+| --- | --- | --- | --- |
+| B1 | **Paid tier infrastructure** | No Stripe, no `subscriptions` table, no billing webhook handlers | ~3 days. Stripe Checkout + customer portal; `subscriptions` table; `current_period_ends_at` + plan tier on `users`; gate features by plan |
+| B2 | **Team / workspace model** | Schema is one `brand_profile` per user; no shared library, no seat concept | ~4 days. New `workspaces` table; `workspace_members(workspace_id, user_id, role)`; migrate `brand_profiles.user_id` → `workspace_id`; shared `messages.workspace_id`; invite + RBAC |
+| B3 | **Grandfathered pricing for beta users** | No mechanism | Once B1 lands: a `users.plan_locked_at` column + a "you're on the beta plan" banner in Settings |
+| B4 | **Pricing page after beta ends** | Single "$0 for 6 months" card | Build the 3-tier card layout I designed earlier (Solo Free / Team $29/seat / Enterprise Custom) when B1 is ready; gate the CTA behind plan tier |
+
+### C. Auth + Clerk compliance
+
+| # | Item | Current state | Effort |
+| --- | --- | --- | --- |
+| C1 | **Clerk Pro upgrade OR custom sign-in** | "Secured by Clerk" pill hidden by CSS override — visual only, violates Clerk free-plan ToS | Upgrade Clerk Pro: ~$25/mo, zero engineering, ToS-clean. Alternative: ~half day rebuilding `<SignIn />` with `useSignIn()` hooks — owns more state but no licence dependency. Pick one before serving prod traffic |
+| C2 | **Custom auth UI parity (if going custom)** | If we go custom: need email + password, Google OAuth, email verification, password reset, 2FA, OAuth-error states | ~half day end-to-end if we drop 2FA / passwordless and keep just Google + password. Add states incrementally |
+
+### D. Design-system finish work
+
+Drift the audit + landing-sweep didn't fully close.
+
+| # | Item | Current state | Effort |
+| --- | --- | --- | --- |
+| D1 | **M3 → legacy alias token migration** | Many files still use `text-on-surface`, `bg-surface-container-low`, `border-outline-variant` etc. Resolves to same CSS vars as landing's `text-fg`, `bg-surface-raised`, `border-border`, so visually identical — but naming inconsistency hurts readability | ~half day. Wholesale find-replace + tsc. Touches ~20 files but is mechanical |
+| D2 | **Mobile right rail fallback** | Right rail is `lg:` only — phones/tablets see no source list. Already on STATUS's "pick up next" (#3) | ~45 min. Slide-up sheet OR conditional inline strip below `lg` |
+| D3 | **`darkMode` prop drilling cleanup** | Pages receive `darkMode: boolean` they don't use; only `AppLayout` reads it. Already on STATUS's "pick up next" (#4) | ~30 min |
+| D4 | **Two `tailwind.config.js` files** | Root + `frontend/` both exist, kept in sync manually | ~10 min. Delete the root one, update any reference to it |
+| D5 | **Bundle size watch** | PAI-13 PR H got initial to 100 kB gzip. Landing PR added LandingPage chunk (~15 kB). Worth a baseline + budget. | ~30 min. Add bundle-size CI check (`size-limit`) so regressions get caught at PR time |
+
+### E. Investigation surface depth
+
+Things the chat experience implies are first-class but are halfway built.
+
+| # | Item | Current state | Effort |
+| --- | --- | --- | --- |
+| E1 | **Save-your-own plays** | Already in STATUS's "Open product questions". Schema sketched: `user_plays(user_id, title, instructions, output_format, inputs jsonb)`. Landing's plays bento implies the library grows over time | ~2 days. Table + `/me/plays` CRUD + "Save as play" action on a finished investigation |
+| E2 | **Reasoning content toggle** | `qwq-32b` emits `reasoning_content` we currently discard. Already in STATUS's "Open product questions" | ~half day. Persist as `messages.reasoning`; "Show thinking" disclosure in ChatMessage |
+| E3 | **Per-turn model override** | Landing's deep-dive says "swap any time". App has per-user default via `ModelSelector` but not per-turn override | ~half day. Carry a `model_override` in the composer state; pass through `/answer/{sid}/stream` |
+| E4 | **Structured-output renderers** | V1 plan section 4 marked ⚠️ partial. Plays with a defined output schema (creative brief, channel plan, A/B spec) should render as styled cards, not free-form markdown. Currently all markdown | ~2 days. Per-play schema renderer; "Copy as Markdown" stays; "Export as PDF" feeds A1 |
+| E5 | **PDF export for any investigation** | Sessions export as `.md` only | Falls out of A1 (PDF infra) |
+
+### F. Open infra / housekeeping
+
+Already partially in STATUS's "Open infra notes" — keeping here for one-stop visibility.
+
+| # | Item | Current state | Effort |
+| --- | --- | --- | --- |
+| F1 | **GitHub repo rename** | Still `paritoshtripathi935/MiniPerplexity`. `gh api -X PATCH …` then README badges | ~5 min |
+| F2 | **Delete JSON `/answer` endpoint** | No frontend caller after PR #31. Already on STATUS's "pick up next" (#1) | ~5 min |
+| F3 | **Render Python version alignment** | `render.yaml` says 3.9, actual runtime is 3.11 | ~10 min |
+| F4 | **`render.yaml` + `Procfile` + `gunicorn.conf.py` consistency** | Three slightly different uvicorn invocations | ~15 min |
+| F5 | **Stale `__pycache__` / `.pyc`** | Show as modified in git despite gitignore | One-shot cleanup |
+
+### G. Stretch — beyond V1
+
+Net-new product surface, multi-week:
+
+- **Meta Ad Library integration** (already STATUS's "V2 lever"). Live competitive intel rather than blogs about competitive intel.
+- **Lifecycle / CRM audit play with real data** — connect to Klaviyo / Customer.io / Braze; surface broken flows + segment gaps instead of having the user describe their setup.
+- **Creative iteration loop** — Bring-Your-Own-Image / Figma plugin → variants brief → run against Meta Ad Library benchmarks.
+- **Multi-brand workspace switcher** — once B2 (team / workspace model) lands, a brand picker in the top nav for in-house teams running multiple SKUs / DTC brands.
 
 ## How to resume tomorrow
 
