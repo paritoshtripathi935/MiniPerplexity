@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 (PAI-13 PR F) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-11 (PAI-13 PR G) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -64,6 +64,7 @@ PRs in chronological order. Each is on `main`.
 | [#46](https://github.com/paritoshtripathi935/MiniPerplexity/pull/46) | **PAI-13 / Logo mark.** Adopts Concept 1 from the Stitch brand-identity export — a "P with chat-tail" silhouette in M3 primary-container (#6750A4). Single-path SVG. New `Logo.tsx` renders the silhouette at `currentColor`. AppLayout brand chip + LoginPage hero swap "P" letterform → `<Logo />`. `public/favicon.svg` / `apple-touch-icon.svg` / `logo-mark.svg` rewritten with the new mark — replaces the indigo sparkle favicons from the pre-PAI-13 brand. |
 | [#47](https://github.com/paritoshtripathi935/MiniPerplexity/pull/47) | **PAI-13 / PR F.1 — Calc tabs + focused workspace.** Page-level tabs replace the "all four calcs stacked in column-css" layout with a single-calc workspace per Stitch. Selection persists via `paidpilot-calc-active-tab` localStorage. Tertiary breadcrumb chip top-right. PresetBar Sparkles icon dropped (last AI-decorative sparkle on this surface). Calc internals untouched. |
 | [#48](https://github.com/paritoshtripathi935/MiniPerplexity/pull/48) | **PAI-13 / PR F.2 — Scenarios as primary surface.** Lifts scenarios out of each calc's footer into a left-side primary surface per the full Stitch CAC payback mock. New `ScenariosPanel` with stacked rows (name + metric-lg headline + chip-line of inputs + delta vs. previous, semantic green/amber); new `scenarioDisplays.tsx` as single source of truth for per-calc headline + chips + compareFields; new `SaveScenarioButton` replaces the old ScenarioBar footer (collapsed pill → name input + Save). Inline Compare moves to ScenariosPanel. Each calc accepts `registerLoadHandler` so the page bridges ScenariosPanel row clicks into `loadScenario`. `useScenarios` adds same-window broadcast (custom event) so the calc's Save and ScenariosPanel's list stay in sync. Deleted `ScenarioBar.tsx`. |
+| [#50](https://github.com/paritoshtripathi935/MiniPerplexity/pull/50) | **PAI-13 / PR G — Motion audit + typography token sweep.** Closes two gaps from a post-F audit. Motion: `animate-ping` on Searching dot → custom `animate-status-blink` (calm 1Hz opacity fade, no halo); `animate-pulse` on StreamingCursor → `animate-cursor-blink` (hard 1Hz blink at `on-surface-variant`, drops the brand-color theatrics CLAUDE.md forbids); video-thumb `group-hover:scale-[1.02]` → border-color shift. Typography: ~133 arbitrary `text-[Npx]` instances swept to type-scale tokens (`text-body-base/sm/md`, `text-label-caps`, `text-h1/h2`); added `body-md` (12px) token. Deleted dead `Answer.tsx` + its type. Net -249 LOC across 23 files. |
 
 ### Migrations applied to prod DB (Neon)
 
@@ -116,17 +117,18 @@ User-selectable models (UI dropdown at the top of chat):
 
 Real candidates, ranked by leverage:
 
-0. **PAI-13 — Operator design system adoption** (in progress).
-   Stacked-PR plan, 7 slices. Full plan in
-   [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A (#35), PR B (#37),
-   PR C (#39), PR D (#41), PR D.1 (#43), PR E (#44), Logo (#46),
-   PR F.1 (#47), PR F.2 (#48) shipped.** Next up: **PR G — Polish
-   + dead-code sweep.** Plays page audit, Settings page audit,
-   remaining empty states, drop now-unused Tailwind classes /
-   colors / animations, bundle pass (consider `React.lazy`-splitting
-   the investigation route now that the home + calc surfaces have
-   grown). Low blast radius — cleanup only. Closes out the PAI-13
-   stack.
+0. **PAI-13 — Operator design system adoption** (mostly done).
+   Stacked-PR plan in [PAI_13_PLAN.md](./PAI_13_PLAN.md). **PR A
+   (#35), PR B (#37), PR C (#39), PR D (#41), PR D.1 (#43), PR E
+   (#44), Logo (#46), PR F.1 (#47), PR F.2 (#48), PR G (#50)
+   shipped.** Next up: **PR H — Plays + Settings audit + bundle.**
+   The two pages that PRs A–G didn't substantively touch. Plays
+   currently uses the old equal-weight card grid; should become a
+   list of operational rows with the new tokens. Settings ICP /
+   brand-profile form needs an operational empty-state pass.
+   Bundle: `React.lazy`-split the investigation route now that
+   home + calc surfaces have grown. Low blast radius — finishes
+   PAI-13 properly.
 
 1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
    after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
