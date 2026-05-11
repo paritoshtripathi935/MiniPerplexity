@@ -66,7 +66,7 @@ export function PlayRunModal({ play, onClose, onSubmit }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="relative w-full max-w-lg rounded-xl bg-surface shadow-dialog border border-border">
+      <div className="relative w-full max-w-lg rounded-2xl bg-surface-raised border border-border/60 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 grid place-items-center w-7 h-7 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
@@ -75,7 +75,7 @@ export function PlayRunModal({ play, onClose, onSubmit }: Props) {
           <X className="w-4 h-4" />
         </button>
         <div className="p-6">
-          <div className="flex items-center gap-1.5 text-label-caps uppercase text-fg-subtle mb-1">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
             <Sparkles className="w-3 h-3" />
             {play.category}
           </div>
@@ -135,14 +135,14 @@ export function PlayRunModal({ play, onClose, onSubmit }: Props) {
 
           <div className="mt-6 flex items-center justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>
-              Cancel
+              cancel
             </Button>
             <Button
-              variant="primary"
+              variant="gradient"
               onClick={submit}
               leadingIcon={<PlayIcon className="w-3.5 h-3.5" />}
             >
-              Run play
+              run play
             </Button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import React, { ButtonHTMLAttributes, forwardRef } from 'react';
 import clsx from 'clsx';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'gradient' | 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -16,12 +16,17 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
  * Single button system. Use this everywhere a `<button>` would otherwise be
  * styled inline. Variants encode role; size encodes density.
  *
- * - primary  → the one CTA on the screen (brand fill)
- * - secondary→ supporting action (border + surface)
+ * - gradient → the marquee CTA (matches landing-page primary). Violet→blue
+ *              gradient + violet glow. Use sparingly: at most one per surface.
+ * - primary  → the supporting CTA (brand fill, no glow). Use when gradient
+ *              would be too loud (toolbar, dense forms, modals).
+ * - secondary→ outlined ghost (border + surface). Pairs with gradient/primary.
  * - ghost    → low-weight (no border, no fill until hover)
  * - danger   → destructive
  */
 const VARIANTS: Record<Variant, string> = {
+  gradient:
+    'text-white bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] shadow-[0_0_24px_rgba(124,92,255,0.3)] hover:shadow-[0_0_32px_rgba(124,92,255,0.5)] active:scale-[0.99]',
   primary:
     'bg-brand text-brand-fg hover:bg-brand/90 active:bg-brand/80 shadow-card',
   secondary:

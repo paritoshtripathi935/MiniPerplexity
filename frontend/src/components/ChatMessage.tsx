@@ -45,7 +45,7 @@ export function ChatMessage({
 function UserTurn({ name, content }: { name: string; content: string }) {
   return (
     <div>
-      <div className="text-label-caps uppercase text-fg-subtle mb-1.5">
+      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-subtle mb-1.5">
         {name}
       </div>
       <div className="text-body-base text-fg leading-relaxed whitespace-pre-wrap">
@@ -107,10 +107,10 @@ function AssistantTurn({
   return (
     <div className="group">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-label-caps uppercase text-fg-subtle">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
           PaidPilot
         </span>
-        {(isSearching || isStreaming) && <SearchingDot label={isSearching ? 'Searching' : 'Writing'} />}
+        {(isSearching || isStreaming) && <SearchingDot label={isSearching ? 'searching' : 'writing'} />}
       </div>
 
       {isSearching && searchingUrls.length > 0 && (
@@ -156,17 +156,17 @@ function AssistantTurn({
             <ActionBtn onClick={handleCopy}>
               {copied ? (
                 <>
-                  <Check className="w-3 h-3 text-success" /> Copied
+                  <Check className="w-3 h-3 text-success" /> copied
                 </>
               ) : (
                 <>
-                  <Copy className="w-3 h-3" /> Copy
+                  <Copy className="w-3 h-3" /> copy
                 </>
               )}
             </ActionBtn>
             {onRegenerate && (
               <ActionBtn onClick={onRegenerate}>
-                <RotateCw className="w-3 h-3" /> Regenerate
+                <RotateCw className="w-3 h-3" /> regenerate
               </ActionBtn>
             )}
           </div>
@@ -210,17 +210,17 @@ function LatencyHint({ ms }: { ms: number }) {
       title={`Answer generated in ${ms}ms`}
     >
       <Clock className="w-3 h-3" aria-hidden />
-      Answered in {formatted}
+      answered in {formatted}
     </span>
   );
 }
 
 function SearchingDot({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-label-caps text-on-surface-variant">
-      {/* Calm 1Hz opacity blink — replaces the radiating animate-ping ring
-       * per PAI-13's calm-motion rule. Single dot, no halo. */}
-      <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-status-blink" />
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-fg-muted">
+      {/* Emerald pulse — "live data is moving". Matches landing's status-dot
+       * convention. (Brand violet stays reserved for engagement / active.) */}
+      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
       {label}
     </span>
   );
@@ -241,9 +241,9 @@ function StreamingCursor() {
 
 function SearchingPanel({ urls }: { urls: string[] }) {
   return (
-    <div className="mb-4 p-3 rounded-md bg-surface-sunken border border-border">
-      <div className="text-label-caps uppercase text-fg-subtle mb-2">
-        Reading sources
+    <div className="mb-4 p-3 rounded-2xl bg-surface-raised/40 border border-border/60 backdrop-blur">
+      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+        reading sources
       </div>
       <ul className="space-y-1.5 max-h-40 overflow-y-auto">
         {urls.map((url, i) => (
@@ -274,7 +274,7 @@ function CitationPill({ n, url }: { n: number; url?: string }) {
     // Index without a known URL — render as plain text so the user isn't
     // teased with a non-functional pill.
     return (
-      <span className="inline-flex items-baseline mx-0.5 px-1.5 rounded text-[10px] font-semibold tabular-nums bg-surface-sunken text-fg-subtle relative -top-[2px]">
+      <span className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-border/60 bg-surface-raised/60 font-mono text-[10px] tabular-nums text-fg-subtle relative -top-[2px]">
         {n}
       </span>
     );
@@ -285,7 +285,7 @@ function CitationPill({ n, url }: { n: number; url?: string }) {
       target="_blank"
       rel="noopener noreferrer"
       title={url}
-      className="inline-flex items-baseline mx-0.5 px-1.5 rounded text-[10px] font-semibold tabular-nums bg-brand-subtle text-brand hover:bg-brand hover:text-brand-fg transition-colors no-underline relative -top-[2px]"
+      className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-brand hover:border-brand/60 hover:bg-brand/15 transition-colors no-underline relative -top-[2px]"
     >
       {n}
     </a>
@@ -400,8 +400,8 @@ function NextStepChips({
   if (!loading && (!items || items.length === 0)) return null;
   return (
     <div className="mt-4 pt-3 border-t border-border/60">
-      <div className="text-label-caps uppercase text-fg-subtle mb-2">
-        Next steps
+      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+        next steps
       </div>
       <div className="flex flex-col gap-1.5">
         {loading && (!items || items.length === 0)
@@ -410,9 +410,9 @@ function NextStepChips({
               <button
                 key={text}
                 onClick={() => onSubmit(text)}
-                className="text-left inline-flex items-start gap-1.5 px-3 py-2 rounded-md text-body-sm text-fg-muted bg-surface-sunken hover:bg-brand-subtle hover:text-brand border border-transparent hover:border-brand/30 transition-colors"
+                className="text-left inline-flex items-start gap-1.5 px-3 py-2 rounded-md text-body-sm text-fg-muted bg-surface-raised/40 hover:bg-brand/10 hover:text-fg border border-border/40 hover:border-brand/40 transition-colors"
               >
-                <span className="text-fg-subtle">→</span>
+                <span className="text-brand/70">→</span>
                 <span className="leading-snug">{text}</span>
               </button>
             ))}

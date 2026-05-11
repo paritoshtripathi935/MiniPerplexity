@@ -211,15 +211,15 @@ export function CommandPalette() {
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/40"
+        className="fixed inset-0 bg-fg/40 backdrop-blur-sm"
         aria-hidden
         onClick={close}
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-[calc(100%-2rem)] max-w-[520px] max-h-[440px] flex flex-col rounded-card bg-surface-container-high border border-outline-variant shadow-dialog overflow-hidden">
+      <div className="relative z-10 w-[calc(100%-2rem)] max-w-[520px] max-h-[440px] flex flex-col rounded-2xl bg-surface-raised border border-border/60 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] overflow-hidden">
         {/* Search input */}
-        <div className="flex-none px-4 py-3 border-b border-outline-variant/70">
+        <div className="flex-none px-4 py-3 border-b border-border/60">
           <Command.Input
             value={search}
             onValueChange={setSearch}

@@ -161,8 +161,8 @@ function RailToggle({
         <CollapsedBadges sourceCount={sourceCount} videoCount={videoCount} />
       )}
       {expanded && (
-        <span className="text-label-caps uppercase text-fg-subtle pr-1">
-          Evidence
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 pr-1">
+          evidence
         </span>
       )}
     </div>
@@ -191,11 +191,11 @@ function CollapsedBadges({
 function Badge({ icon, value }: { icon: React.ReactNode; value: number }) {
   return (
     <span
-      className="grid place-items-center w-7 h-7 rounded-md bg-surface-sunken text-fg-muted text-[10px] font-semibold relative"
+      className="grid place-items-center w-7 h-7 rounded-md border border-border/60 bg-surface-raised/60 text-fg-muted text-[10px] font-semibold relative"
       title={`${value} item${value === 1 ? '' : 's'}`}
     >
       {icon}
-      <span className="absolute -top-1 -right-1 grid place-items-center min-w-[14px] h-[14px] px-1 rounded-full bg-brand text-brand-fg text-[9px] font-bold tabular-nums">
+      <span className="absolute -top-1 -right-1 grid place-items-center min-w-[14px] h-[14px] px-1 rounded-full border border-brand/40 bg-brand/15 text-brand font-mono text-[9px] tabular-nums">
         {value > 99 ? '99+' : value}
       </span>
     </span>
@@ -205,11 +205,11 @@ function Badge({ icon, value }: { icon: React.ReactNode; value: number }) {
 function ActivePlayPanel({ play }: { play: Play }) {
   return (
     <section className="shrink-0">
-      <h3 className="text-label-caps uppercase text-fg-subtle mb-2">
-        Active play
+      <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+        active play
       </h3>
-      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-brand-subtle/40 border border-brand-subtle">
-        <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg shrink-0">
+      <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-brand/10 border border-brand/40">
+        <span className="grid place-items-center w-7 h-7 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white shrink-0 shadow-[0_0_16px_rgba(124,92,255,0.3)]">
           <PlayCircle className="w-3.5 h-3.5" strokeWidth={2} />
         </span>
         <div className="min-w-0 flex-1">
@@ -299,9 +299,9 @@ function parseYouTubeId(url: string): string | null {
 function VideosPanel({ videos }: { videos: AggregatedVideo[] }) {
   return (
     <section className="flex-1 min-h-0 flex flex-col">
-      <h3 className="text-label-caps uppercase text-fg-subtle mb-2 flex items-center gap-1.5 shrink-0">
+      <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2 flex items-center gap-1.5 shrink-0">
         <Youtube className="w-3 h-3 text-fg-muted" />
-        Videos · {videos.length}
+        videos · {videos.length}
       </h3>
       <div className="grid grid-cols-2 gap-2 overflow-y-auto pr-1">
         {videos.map(v => (
@@ -313,7 +313,7 @@ function VideosPanel({ videos }: { videos: AggregatedVideo[] }) {
             title={v.title}
             className="group block"
           >
-            <div className="aspect-video rounded-md overflow-hidden bg-surface-sunken border border-border group-hover:border-outline transition-colors">
+            <div className="aspect-video rounded-md overflow-hidden bg-surface-sunken border border-border/60 group-hover:border-brand/40 transition-colors">
               <img
                 src={`https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`}
                 alt={v.title}
@@ -338,12 +338,12 @@ function SourcesPanel({ sources }: { sources: AggregatedSource[] }) {
   return (
     <section className="flex-1 min-h-0 flex flex-col">
       <div className="flex items-center justify-between mb-2 shrink-0">
-        <h3 className="text-label-caps uppercase text-fg-subtle">
-          Sources · {sources.length}
+        <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+          sources · {sources.length}
         </h3>
         {authoritativeCount > 0 && (
           <span
-            className="inline-flex items-center gap-1 text-label-caps uppercase text-brand"
+            className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.18em] text-brand"
             title={`${authoritativeCount} authoritative`}
           >
             <ShieldCheck className="w-3 h-3" strokeWidth={2.5} />

@@ -5,7 +5,6 @@ import clsx from 'clsx';
 import { putBrandProfile, type BrandProfile } from '../services/api';
 import { useBrandProfile, useCacheActions } from '../services/queries';
 import { PageHeader } from '../components/AppLayout';
-import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 
 const CHANNELS: { id: string; label: string }[] = [
@@ -29,8 +28,8 @@ interface Props {
 }
 
 const fieldCls =
-  'w-full px-3 py-2 rounded-control border border-outline-variant bg-surface text-body-sm text-on-surface placeholder:text-outline outline-none focus-visible:shadow-focus';
-const labelCls = 'block text-body-md font-medium mb-1.5 text-on-surface';
+  'w-full px-3 py-2 rounded-control border border-border bg-surface text-body-sm text-fg placeholder:text-fg-subtle outline-none focus-visible:shadow-focus';
+const labelCls = 'block text-body-md font-medium mb-1.5 text-fg';
 
 export function SettingsPage({ onUpdate }: Props) {
   const { getToken, isSignedIn } = useAuth();
@@ -109,15 +108,16 @@ export function SettingsPage({ onUpdate }: Props) {
   return (
     <>
       <PageHeader
-        title="Brand profile"
-        subtitle="Composed into the system prompt on every investigation — so answers cite the right channels, ICP, and targets."
+        eyebrow="settings"
+        title="brand profile."
+        subtitle="composed into the system prompt on every investigation — so answers cite the right channels, ICP, and targets."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 p-6 space-y-5">
+        <div className="lg:col-span-2 rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Company name</label>
+              <label className={labelCls}>company name</label>
               <input
                 value={companyName}
                 onChange={e => setCompanyName(e.target.value)}
@@ -126,7 +126,7 @@ export function SettingsPage({ onUpdate }: Props) {
               />
             </div>
             <div>
-              <label className={labelCls}>Website</label>
+              <label className={labelCls}>website</label>
               <input
                 value={website}
                 onChange={e => setWebsite(e.target.value)}
@@ -142,13 +142,13 @@ export function SettingsPage({ onUpdate }: Props) {
               value={icp}
               onChange={e => setIcp(e.target.value)}
               rows={3}
-              placeholder="Operations leads at SMB ecom brands ($1–10M ARR), mostly US, looking to cut order-fulfilment cost without hiring."
+              placeholder="operations leads at SMB ecom brands ($1–10M ARR), mostly US, looking to cut order-fulfilment cost without hiring."
               className={fieldCls}
             />
           </div>
 
           <div>
-            <label className={labelCls}>Primary channels</label>
+            <label className={labelCls}>primary channels</label>
             <div className="flex flex-wrap gap-1.5">
               {CHANNELS.map(c => {
                 const on = channels.includes(c.id);
@@ -160,8 +160,8 @@ export function SettingsPage({ onUpdate }: Props) {
                     className={clsx(
                       'h-8 px-3 rounded-control text-body-md font-medium transition-colors',
                       on
-                        ? 'bg-on-surface text-surface'
-                        : 'bg-surface border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline',
+                        ? 'bg-brand/15 text-fg border border-brand/40'
+                        : 'bg-surface border border-border text-fg-muted hover:text-fg hover:border-border-strong',
                     )}
                   >
                     {on && <Check className="inline w-3 h-3 mr-1 -mt-0.5" />}
@@ -174,7 +174,7 @@ export function SettingsPage({ onUpdate }: Props) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Target CAC ($)</label>
+              <label className={labelCls}>target CAC ($)</label>
               <input
                 type="number"
                 inputMode="decimal"
@@ -185,7 +185,7 @@ export function SettingsPage({ onUpdate }: Props) {
               />
             </div>
             <div>
-              <label className={labelCls}>Target ROAS (×)</label>
+              <label className={labelCls}>target ROAS (×)</label>
               <input
                 type="number"
                 inputMode="decimal"
@@ -199,18 +199,18 @@ export function SettingsPage({ onUpdate }: Props) {
           </div>
 
           <div>
-            <label className={labelCls}>Brand voice <span className="text-fg-subtle font-normal">(optional)</span></label>
+            <label className={labelCls}>brand voice <span className="text-fg-subtle font-normal">(optional)</span></label>
             <textarea
               value={voice}
               onChange={e => setVoice(e.target.value)}
               rows={2}
-              placeholder="Direct, lightly playful, never corporate. Avoid superlatives."
+              placeholder="direct, lightly playful, never corporate. avoid superlatives."
               className={fieldCls}
             />
           </div>
 
           <div>
-            <label className={labelCls}>Current campaigns <span className="text-fg-subtle font-normal">(optional)</span></label>
+            <label className={labelCls}>current campaigns <span className="text-fg-subtle font-normal">(optional)</span></label>
             <textarea
               value={campaigns}
               onChange={e => setCampaigns(e.target.value)}
@@ -229,26 +229,26 @@ export function SettingsPage({ onUpdate }: Props) {
           <div className="flex items-center justify-end gap-3 pt-2">
             {savedAt && Date.now() - savedAt < 4000 && (
               <span className="text-body-md text-success inline-flex items-center gap-1">
-                <Check className="w-3 h-3" /> Saved
+                <Check className="w-3 h-3" /> saved
               </span>
             )}
-            <Button variant="primary" onClick={save} loading={saving} leadingIcon={<Save className="w-3.5 h-3.5" />}>
-              {saving ? 'Saving' : 'Save profile'}
+            <Button variant="gradient" onClick={save} loading={saving} leadingIcon={<Save className="w-3.5 h-3.5" />}>
+              {saving ? 'saving' : 'save profile'}
             </Button>
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-5 h-fit">
-          <h2 className="font-display font-semibold text-body-base tracking-tight mb-3">
-            How this is used
-          </h2>
-          <ul className="text-body-sm text-on-surface-variant space-y-2.5 leading-relaxed">
-            <li><span className="text-on-surface">Every investigation</span> gets your brand context in the system prompt.</li>
-            <li><span className="text-on-surface">Plays</span> personalise their output to your channels and ICP.</li>
-            <li><span className="text-on-surface">Targets</span> sanity-check your "is this CAC normal?" questions.</li>
-            <li>Stored on Neon, scoped to your account. Never shared.</li>
+        <div className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-5 h-fit">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+            how it's used
+          </p>
+          <ul className="text-body-sm text-fg-muted space-y-2.5 leading-relaxed">
+            <li><span className="text-fg">every investigation</span> gets your brand context in the system prompt.</li>
+            <li><span className="text-fg">plays</span> personalise their output to your channels and ICP.</li>
+            <li><span className="text-fg">targets</span> sanity-check your "is this CAC normal?" questions.</li>
+            <li>stored on Neon, scoped to your account. never shared.</li>
           </ul>
-        </Card>
+        </div>
       </div>
     </>
   );

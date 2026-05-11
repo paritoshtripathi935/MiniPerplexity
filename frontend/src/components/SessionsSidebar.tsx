@@ -145,13 +145,13 @@ export function SessionsSidebar({
     <div className="flex flex-col h-full">
       <div className="p-3 space-y-2 border-b border-border">
         <Button
-          variant="primary"
+          variant="gradient"
           size="sm"
           onClick={onNewInvestigation}
           leadingIcon={<Plus className="w-3.5 h-3.5" />}
           className="w-full justify-center"
         >
-          New investigation
+          new investigation
         </Button>
 
         <SignedIn>
@@ -160,7 +160,7 @@ export function SessionsSidebar({
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search history"
+              placeholder="search history"
               className="w-full pl-8 pr-7 h-8 rounded-md text-body-md bg-surface border border-border placeholder:text-fg-subtle outline-none focus-visible:shadow-focus"
             />
             {query && (
@@ -180,14 +180,14 @@ export function SessionsSidebar({
               onChange={e => setIncludeArchived(e.target.checked)}
               className="w-3 h-3 accent-brand"
             />
-            Show archived
+            show archived
           </label>
         </SignedIn>
       </div>
 
       <SignedOut>
         <div className="px-4 py-6 text-body-sm text-fg-muted">
-          Sign in to keep your investigations across devices.
+          sign in to keep your investigations across devices.
         </div>
       </SignedOut>
 
@@ -201,8 +201,8 @@ export function SessionsSidebar({
 
           {searchResults !== null ? (
             <div>
-              <div className="px-2 pb-1.5 text-label-caps uppercase text-fg-subtle">
-                {searching ? 'Searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
+              <div className="px-2 pb-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+                {searching ? 'searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
               </div>
               {searchResults.map(hit => (
                 <button
@@ -221,17 +221,17 @@ export function SessionsSidebar({
                 </button>
               ))}
               {!searching && searchResults.length === 0 && (
-                <div className="px-3 py-3 text-body-sm text-fg-muted">No matches.</div>
+                <div className="px-3 py-3 text-body-sm text-fg-muted">no matches.</div>
               )}
             </div>
           ) : (
             <ul className="space-y-0.5">
               {loading && sessions.length === 0 && (
-                <li className="px-3 py-2 text-body-sm text-fg-muted">Loading…</li>
+                <li className="px-3 py-2 text-body-sm text-fg-muted">loading…</li>
               )}
               {!loading && sessions.length === 0 && (
                 <li className="px-3 py-2 text-body-sm text-fg-muted">
-                  No investigations yet. Start by asking what changed, what to test, or what to scale.
+                  no investigations yet. start by asking what changed, what to test, or what to scale.
                 </li>
               )}
               {sessions.map(s => {

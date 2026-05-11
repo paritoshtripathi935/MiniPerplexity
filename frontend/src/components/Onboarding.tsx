@@ -104,7 +104,7 @@ export function Onboarding({ onComplete }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="relative w-full max-w-xl rounded-xl bg-surface shadow-dialog border border-border">
+      <div className="relative w-full max-w-xl rounded-2xl bg-surface-raised border border-border/60 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]">
         <button
           onClick={() => finish(true)}
           title="Skip"
@@ -126,17 +126,17 @@ export function Onboarding({ onComplete }: Props) {
               />
             ))}
           </div>
-          <p className="text-[11px] text-fg-subtle mb-5">
-            Step {step + 1} of {TOTAL_STEPS} · skip anytime
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-subtle mb-5">
+            step {step + 1} of {TOTAL_STEPS} · skip anytime
           </p>
 
           {step === 0 && (
             <>
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
-                Welcome to PaidPilot
+                welcome to PaidPilot.
               </h2>
               <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
-                A few quick questions so every chat is grounded in your brand. You can edit these later in Settings.
+                a few quick questions so every chat is grounded in your brand. you can edit these later in settings.
               </p>
               <div className="space-y-3">
                 <div>
@@ -164,10 +164,10 @@ export function Onboarding({ onComplete }: Props) {
           {step === 1 && (
             <>
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
-                Who's your customer?
+                who's your customer?
               </h2>
               <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
-                One paragraph is enough. Roles, company size, geography, what they're trying to do.
+                one paragraph is enough — roles, company size, geography, what they're trying to do.
               </p>
               <textarea
                 value={icp}
@@ -182,10 +182,10 @@ export function Onboarding({ onComplete }: Props) {
           {step === 2 && (
             <>
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
-                Where do you run paid?
+                where do you run paid?
               </h2>
               <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
-                Pick the channels you currently spend on. We'll bias recommendations toward these.
+                pick the channels you currently spend on. we'll bias recommendations toward these.
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {CHANNELS.map(c => {
@@ -198,7 +198,7 @@ export function Onboarding({ onComplete }: Props) {
                       className={clsx(
                         'h-8 px-3 rounded-md text-body-md font-medium transition-colors duration-150',
                         on
-                          ? 'bg-fg text-fg-inverted'
+                          ? 'bg-brand/15 text-fg border border-brand/40'
                           : 'bg-surface border border-border text-fg-muted hover:text-fg hover:bg-surface-sunken'
                       )}
                     >
@@ -214,14 +214,14 @@ export function Onboarding({ onComplete }: Props) {
           {step === 3 && (
             <>
               <h2 className="font-display text-[20px] font-semibold tracking-tight mb-1">
-                Targets
+                targets.
               </h2>
               <p className="text-body-sm text-fg-muted mb-5 leading-relaxed">
-                Roughly — used as a sanity check when you ask "is this number normal?"
+                roughly — used as a sanity check when you ask "is this number normal?"
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>Target CAC ($)</label>
+                  <label className={labelCls}>target CAC ($)</label>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -232,7 +232,7 @@ export function Onboarding({ onComplete }: Props) {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Target ROAS (×)</label>
+                  <label className={labelCls}>target ROAS (×)</label>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -261,27 +261,27 @@ export function Onboarding({ onComplete }: Props) {
               disabled={step === 0}
               leadingIcon={<ArrowLeft className="w-3.5 h-3.5" />}
             >
-              Back
+              back
             </Button>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={() => finish(true)}>
-                Skip for now
+                skip for now
               </Button>
               {step < TOTAL_STEPS - 1 ? (
                 <Button
-                  variant="primary"
+                  variant="gradient"
                   onClick={() => setStep(s => s + 1)}
                   trailingIcon={<ArrowRight className="w-3.5 h-3.5" />}
                 >
-                  Next
+                  next
                 </Button>
               ) : (
                 <Button
-                  variant="primary"
+                  variant="gradient"
                   onClick={() => finish(true)}
                   trailingIcon={<Check className="w-3.5 h-3.5" />}
                 >
-                  Finish
+                  finish
                 </Button>
               )}
             </div>
