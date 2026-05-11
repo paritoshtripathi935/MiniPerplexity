@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Calculators,
   PresetBar,
   PresetProvider,
+  ScenariosPanel,
   CALC_DEFS,
   type CalcId,
 } from '../components/calculators';
+import type { Scenario } from '../components/calculators/useScenarios';
 
 interface Props {
   darkMode: boolean;
@@ -21,18 +23,21 @@ function readActiveCalc(): CalcId {
 }
 
 /**
- * Calculators workspace — tabs at the top, one calculator at a time below.
+ * Calculators workspace — tabs at the top, scenarios primary on the left,
+ * active calc on the right.
  *
- * Replaces the earlier "all four calcs stacked in a column-css layout" with
- * a focused single-calc workspace (PAI-13 / PR F.1). One dominant working
- * surface per the Stitch operator design language; scenarios + insights live
- * inside each calculator's card (PR F.2 will lift scenarios to a left-side
- * primary surface).
+ * PR F.2 lifts the scenarios list out of each calc's footer into a single
+ * page-level left-side surface (per the Stitch cac_payback_calculator_dark
+ * mock). The active calc's loadScenario is hooked into a ref the page
+ * holds; clicking a scenario row in ScenariosPanel calls through it to
+ * rehydrate the calc inputs. Save lives inside the calc (it owns the
+ * current input state); ScenariosPanel handles load / delete / duplicate /
+ * compare.
  */
 export function CalculatorsPage({}: Props) {
   const [active, setActive] = useState<CalcId>(() => readActiveCalc());
+  const loadHandlerRef = useRef<((s: Scenario) => void) | null>(null);
 
-  // Persist tab selection so reloads land back on the user's last calc.
   useEffect(() => {
     try {
       window.localStorage.setItem(ACTIVE_TAB_KEY, active);
@@ -45,7 +50,6 @@ export function CalculatorsPage({}: Props) {
 
   return (
     <PresetProvider>
-      {/* Top row: title + tertiary breadcrumb chip per Stitch. */}
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-h1 text-on-surface">{activeDef.label}</h1>
@@ -61,9 +65,6 @@ export function CalculatorsPage({}: Props) {
         </span>
       </header>
 
-      {/* Calculator tabs. Pill row, no decorative chrome — selected tab gets
-          a 2px primary left bar treatment via inset shadow plus a tint
-          background. Matches the operational ledger aesthetic. */}
       <nav className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-outline-variant pb-px">
         {CALC_DEFS.map(c => {
           const isActive = c.id === active;
@@ -95,8 +96,28 @@ export function CalculatorsPage({}: Props) {
         <PresetBar />
       </div>
 
-      {/* Single calc, full width. */}
-      <Calculators activeCalc={active} />
+      {/* Two-column workspace: scenarios primary (left ~60%), calc (right
+          ~40%) on lg+. Stacks under lg with scenarios above the calc. */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-3 min-w-0">
+          {/* Remount ScenariosPanel on tab switch so its internal compare
+              state resets when the calc changes. */}
+          <ScenariosPanel
+            key={active}
+            calcId={active}
+            onLoad={s => loadHandlerRef.current?.(s)}
+          />
+        </div>
+        <div className="lg:col-span-2 min-w-0">
+          <Calculators
+            key={active}
+            activeCalc={active}
+            registerLoadHandler={fn => {
+              loadHandlerRef.current = fn;
+            }}
+          />
+        </div>
+      </div>
     </PresetProvider>
   );
 }

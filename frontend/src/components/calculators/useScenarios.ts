@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CalcMode } from './ModeToggle';
 
 const STORAGE_KEY = 'paidpilot.calc.scenarios.v1';
+/** Same-window broadcast so two hook instances (e.g. ScenariosPanel + the
+ * active calc's Save button) stay in sync after writes. The browser's
+ * native `storage` event only fires cross-tab — within one tab we need our
+ * own ping. */
+const CHANGE_EVENT = 'paidpilot:scenarios-changed';
 
 export interface Scenario {
   id: string;
@@ -28,6 +33,8 @@ function readStore(): Store {
 function writeStore(store: Store) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    // Broadcast in-window so other useScenarios instances pick this up.
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
     /* quota / disabled — silent */
   }
@@ -36,14 +43,19 @@ function writeStore(store: Store) {
 export function useScenarios(calcId: string) {
   const [scenarios, setScenarios] = useState<Scenario[]>(() => readStore()[calcId] ?? []);
 
-  // Cross-tab sync.
+  // Cross-tab sync (storage event) + same-window sync (custom event).
   useEffect(() => {
+    const sync = () => setScenarios(readStore()[calcId] ?? []);
     const onStorage = (e: StorageEvent) => {
       if (e.key !== STORAGE_KEY) return;
-      setScenarios(readStore()[calcId] ?? []);
+      sync();
     };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener(CHANGE_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(CHANGE_EVENT, sync);
+    };
   }, [calcId]);
 
   const persist = useCallback(
