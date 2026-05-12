@@ -51,11 +51,76 @@ CREATE TRIGGER trg_users_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =============================================================================
+-- projects  (Project = Brand. One user → many projects.)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS projects (
+    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name         text        NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    archived_at  timestamptz
+);
+
+DROP TRIGGER IF EXISTS trg_projects_updated_at ON projects;
+CREATE TRIGGER trg_projects_updated_at
+    BEFORE UPDATE ON projects
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Case-insensitive unique project name per user, live rows only.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_projects_user_name_live
+    ON projects (user_id, lower(name))
+    WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_projects_user_created
+    ON projects (user_id, created_at DESC)
+    WHERE archived_at IS NULL;
+
+-- =============================================================================
+-- campaigns  (real-world marketing campaigns: time + goal bounded.
+--             Active campaign drives the app's global scope.)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS campaigns (
+    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id   uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name         text        NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+    objective    text        CHECK (objective IS NULL OR length(objective) <= 500),
+    starts_on    date,
+    ends_on      date,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    archived_at  timestamptz,
+    CHECK (starts_on IS NULL OR ends_on IS NULL OR starts_on <= ends_on)
+);
+
+DROP TRIGGER IF EXISTS trg_campaigns_updated_at ON campaigns;
+CREATE TRIGGER trg_campaigns_updated_at
+    BEFORE UPDATE ON campaigns
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_campaigns_project_name_live
+    ON campaigns (project_id, lower(name))
+    WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_campaigns_project_created
+    ON campaigns (project_id, created_at DESC)
+    WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_campaigns_active_window
+    ON campaigns (project_id, starts_on, ends_on)
+    WHERE archived_at IS NULL;
+
+-- =============================================================================
 -- sessions  (replaces in-memory chat_sessions dict)
+-- Every authenticated session is anchored to exactly one (project, campaign).
+-- project_id is snapshotted alongside campaign_id so the system-prompt
+-- composition path is two PK lookups with no join.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS sessions (
     id                uuid        PRIMARY KEY,
     user_id           uuid        REFERENCES users(id) ON DELETE SET NULL,
+    project_id        uuid        NOT NULL REFERENCES projects(id)  ON DELETE CASCADE,
+    campaign_id       uuid        NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     title             text,
     created_at        timestamptz NOT NULL DEFAULT now(),
     last_accessed_at  timestamptz NOT NULL DEFAULT now(),
@@ -67,6 +132,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user_last_accessed
     ON sessions (user_id, last_accessed_at DESC)
     WHERE user_id IS NOT NULL;
+
+-- Hot path: list sessions in the active campaign, newest first.
+CREATE INDEX IF NOT EXISTS idx_sessions_campaign_last_accessed
+    ON sessions (campaign_id, last_accessed_at DESC)
+    WHERE is_archived = false;
+
+-- Secondary: cross-campaign list within a project.
+CREATE INDEX IF NOT EXISTS idx_sessions_project_last_accessed
+    ON sessions (project_id, last_accessed_at DESC)
+    WHERE is_archived = false;
 
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
     ON sessions (expires_at)
