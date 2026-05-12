@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.clerk import ClerkAuthError, ClerkClaims, verify_token
 from app.db.dependencies import get_db
 from app.db.models import User
+from app.db.repository import ensure_default_project_and_campaign
 
 
 def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
@@ -54,6 +55,12 @@ async def _upsert_user(db: AsyncSession, claims: ClerkClaims) -> User:
     )
     result = await db.execute(stmt)
     user = result.scalar_one()
+
+    # Idempotent: ensure this user owns a default (project, campaign) so
+    # downstream NOT NULL session FKs always resolve. Cheap PK-style lookups
+    # on the hot path; only does inserts the first time we see a user.
+    await ensure_default_project_and_campaign(db, user.id)
+
     await db.commit()
     return user
 
