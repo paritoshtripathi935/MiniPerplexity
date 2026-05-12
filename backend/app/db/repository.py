@@ -655,6 +655,218 @@ async def get_campaign_for_user(
     ).scalar_one_or_none()
 
 
+# ---------- Mutations: projects + campaigns --------------------------------
+class ConflictError(Exception):
+    """Name collides with an existing live project / campaign."""
+
+
+class InvariantError(Exception):
+    """App-layer invariant violated (e.g. would leave user with zero live
+    projects, or project with zero live campaigns). Caller turns into 409."""
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    """Detect Postgres unique-constraint failures inside async wrappers.
+
+    SQLAlchemy wraps the asyncpg error; we look for the SQLSTATE on the
+    innermost cause. Used by the project / campaign mutators so the API
+    can map cleanly to 409 Conflict.
+    """
+    inner = getattr(exc, "orig", exc)
+    pgcode = getattr(inner, "sqlstate", None) or getattr(inner, "pgcode", None)
+    return pgcode == "23505"  # unique_violation
+
+
+async def create_project(
+    db: AsyncSession, user_id: uuid.UUID, name: str
+) -> Project:
+    """Insert a new project for this user. Raises ConflictError on duplicate
+    case-insensitive name among the user's live projects."""
+    project = Project(user_id=user_id, name=name.strip())
+    db.add(project)
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(f"project name '{name}' already in use") from exc
+        raise
+    return project
+
+
+async def rename_project(
+    db: AsyncSession, project_id: uuid.UUID, name: str
+) -> Project:
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise LookupError("project not found")
+    project.name = name.strip()
+    project.updated_at = _now()
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(f"project name '{name}' already in use") from exc
+        raise
+    return project
+
+
+async def _count_live_projects(db: AsyncSession, user_id: uuid.UUID) -> int:
+    return int(
+        (
+            await db.execute(
+                select(func.count(Project.id)).where(
+                    Project.user_id == user_id,
+                    Project.archived_at.is_(None),
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def archive_project(
+    db: AsyncSession, project: Project
+) -> Project:
+    """Soft-archive a project. Refuses if it would leave the owner with zero
+    live projects (keeps the active-campaign localStorage pointer valid)."""
+    if project.archived_at is not None:
+        return project
+    live = await _count_live_projects(db, project.user_id)
+    if live <= 1:
+        raise InvariantError("can't archive your only live project")
+    project.archived_at = _now()
+    project.updated_at = _now()
+    await db.flush()
+    return project
+
+
+async def unarchive_project(db: AsyncSession, project: Project) -> Project:
+    if project.archived_at is None:
+        return project
+    project.archived_at = None
+    project.updated_at = _now()
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(
+                f"project name '{project.name}' already taken by a live project"
+            ) from exc
+        raise
+    return project
+
+
+async def create_campaign(
+    db: AsyncSession,
+    project_id: uuid.UUID,
+    name: str,
+    *,
+    objective: Optional[str] = None,
+    starts_on=None,
+    ends_on=None,
+) -> Campaign:
+    campaign = Campaign(
+        project_id=project_id,
+        name=name.strip(),
+        objective=objective,
+        starts_on=starts_on,
+        ends_on=ends_on,
+    )
+    db.add(campaign)
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(f"campaign name '{name}' already in use") from exc
+        raise
+    return campaign
+
+
+async def update_campaign(
+    db: AsyncSession,
+    campaign: Campaign,
+    *,
+    name: Optional[str] = None,
+    objective: Optional[str] = None,
+    starts_on=None,
+    ends_on=None,
+    clear_starts_on: bool = False,
+    clear_ends_on: bool = False,
+) -> Campaign:
+    """Field-by-field update. `objective` / `starts_on` / `ends_on` use
+    `None` to mean "leave alone"; pass `clear_*=True` to explicitly null
+    a date (PATCH-with-null semantics)."""
+    if name is not None:
+        campaign.name = name.strip()
+    if objective is not None:
+        campaign.objective = objective
+    if starts_on is not None:
+        campaign.starts_on = starts_on
+    elif clear_starts_on:
+        campaign.starts_on = None
+    if ends_on is not None:
+        campaign.ends_on = ends_on
+    elif clear_ends_on:
+        campaign.ends_on = None
+    campaign.updated_at = _now()
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(f"campaign name '{name}' already in use") from exc
+        raise
+    return campaign
+
+
+async def _count_live_campaigns(db: AsyncSession, project_id: uuid.UUID) -> int:
+    return int(
+        (
+            await db.execute(
+                select(func.count(Campaign.id)).where(
+                    Campaign.project_id == project_id,
+                    Campaign.archived_at.is_(None),
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def archive_campaign(db: AsyncSession, campaign: Campaign) -> Campaign:
+    """Soft-archive a campaign. Refuses if it would leave the project with
+    zero live campaigns (every project must have at least one for new
+    sessions to anchor to)."""
+    if campaign.archived_at is not None:
+        return campaign
+    live = await _count_live_campaigns(db, campaign.project_id)
+    if live <= 1:
+        raise InvariantError("can't archive the only live campaign in this project")
+    campaign.archived_at = _now()
+    campaign.updated_at = _now()
+    await db.flush()
+    return campaign
+
+
+async def unarchive_campaign(db: AsyncSession, campaign: Campaign) -> Campaign:
+    if campaign.archived_at is None:
+        return campaign
+    campaign.archived_at = None
+    campaign.updated_at = _now()
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(
+                f"campaign name '{campaign.name}' already taken by a live campaign"
+            ) from exc
+        raise
+    return campaign
+
+
 # ---------- Brand profile (project-keyed after migration 007) --------------
 async def get_brand_profile(
     db: AsyncSession, project_id: uuid.UUID
