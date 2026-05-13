@@ -258,13 +258,43 @@ Net-new product surface, multi-week:
 - **Creative iteration loop** — Bring-Your-Own-Image / Figma plugin → variants brief → run against Meta Ad Library benchmarks.
 - **Multi-brand workspace switcher** — once B2 (team / workspace model) lands, a brand picker in the top nav for in-house teams running multiple SKUs / DTC brands.
 
-### H. Projects + campaigns hierarchy
+### H. Projects + campaigns hierarchy ✅ SHIPPED 2026-05-13
 
-Today everything (sessions, brand_profile) hangs off `user_id` directly.
-The mental model marketers actually carry is **brand → marketing
-campaign → the work I did on it**. This category restructures the data
-model to match. Migration `007_projects_campaigns.sql` is written and
-ready; app + frontend changes follow.
+End-to-end restructure from user-scoped to **project (= brand) →
+campaign → session**. Shipped in a 7-PR stack:
+
+| # | Topic |
+|---|---|
+| [#61](https://github.com/paritoshtripathi935/MiniPerplexity/pull/61) | Foundation — migration 007, schema.sql post-007, Category H roadmap, STITCH_PROMPTS_H.md |
+| [#64](https://github.com/paritoshtripathi935/MiniPerplexity/pull/64) | Backend ORM — Project + Campaign models; BrandProfile re-keyed to project_id PK; Session anchored with NOT NULL FKs; `ensure_default_project_and_campaign` on auth-upsert |
+| [#65](https://github.com/paritoshtripathi935/MiniPerplexity/pull/65) | REST API — 14 endpoints under /projects, /projects/{id}/campaigns, /projects/{id}/brand-profile |
+| [#66](https://github.com/paritoshtripathi935/MiniPerplexity/pull/66) | Frontend — top-nav campaign switcher, ActiveCampaignProvider, localStorage source-of-truth |
+| [#67](https://github.com/paritoshtripathi935/MiniPerplexity/pull/67) | Frontend — /settings/projects list + /settings/projects/:id with tabs (campaigns | brand profile) + CampaignDrawer |
+| [#68](https://github.com/paritoshtripathi935/MiniPerplexity/pull/68) | Frontend — 3-step onboarding (project → brand → first campaign) renames the default project + General campaign in place |
+| [#69](https://github.com/paritoshtripathi935/MiniPerplexity/pull/69) | Migration 008 (drop brand_profiles.user_id) + active-campaign context in system prompt |
+
+Migrations 007 + 008 are live on Neon prod. Backfill landed cleanly:
+9 projects (6× "My Brand", 2× "Parspec", 1× "Hotel Superhero"), 9 "General"
+campaigns, 5 brand_profiles re-keyed, 5 sessions reparented, anonymous
+sessions deleted.
+
+Frontend design prompts live in
+[STITCH_PROMPTS_H.md](./STITCH_PROMPTS_H.md). First generation sits in
+`~/Downloads/stitch_paidpilot_projects_campaigns/`.
+
+**Still deferred (separate work):**
+
+- Filter session list / Home / Plays / Calc surfaces by active
+  campaign. Needs backend `?campaign_id=` query support too. Tracked as
+  follow-up; not blocking beta usage since the active-campaign scope
+  affects new sessions and system-prompt grounding rather than what
+  shows up in the sidebar.
+- Calculator scenarios stay localStorage. Re-key to campaign when
+  promoted to DB.
+- Workspace / team model (B2) — projects own `user_id` for now; add
+  `workspace_id` later without touching campaign or session FKs.
+
+### H (original) — design + plan reference
 
 Frontend design prompts live in
 [STITCH_PROMPTS_H.md](./STITCH_PROMPTS_H.md) (surface prompts + collapsible
