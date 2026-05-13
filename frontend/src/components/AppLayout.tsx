@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { Calculator, Home, PlayCircle, Search, Settings, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
+import { ActiveCampaignProvider } from './ActiveCampaign';
+import { CampaignSwitcher } from './CampaignSwitcher';
 import {
   CommandPalette,
   CommandPaletteProvider,
@@ -29,10 +31,12 @@ const NAV = [
  */
 export function AppLayout(props: Props) {
   return (
-    <CommandPaletteProvider>
-      <AppLayoutInner {...props} />
-      <CommandPalette />
-    </CommandPaletteProvider>
+    <ActiveCampaignProvider>
+      <CommandPaletteProvider>
+        <AppLayoutInner {...props} />
+        <CommandPalette />
+      </CommandPaletteProvider>
+    </ActiveCampaignProvider>
   );
 }
 
@@ -58,10 +62,12 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
             <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg">
               <Logo className="w-4 h-4" />
             </span>
-            <span className="font-display font-semibold tracking-tight text-body-base">
+            <span className="font-display font-semibold tracking-tight text-body-base hidden sm:inline">
               PaidPilot
             </span>
           </NavLink>
+
+          <CampaignSwitcher />
 
           <nav className="flex-1 flex items-center gap-0.5 overflow-x-auto">
             {NAV.map(item => {

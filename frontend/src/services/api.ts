@@ -431,6 +431,182 @@ export async function getNextSteps(
   return await response.json();
 }
 
+// ---------- Projects + Campaigns ------------------------------------------
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface CampaignSummary {
+  id: string;
+  project_id: string;
+  name: string;
+  objective: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface CampaignInput {
+  name: string;
+  objective?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+}
+
+async function jsonRequest<T>(
+  url: string,
+  init: RequestInit,
+  getToken: GetToken,
+): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+      ...(await authHeaders(getToken)),
+    },
+  });
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      // ignore
+    }
+    const err = new Error(detail || `${response.status} ${response.statusText}`);
+    (err as any).status = response.status;
+    throw err;
+  }
+  return (await response.json()) as T;
+}
+
+export async function listProjects(
+  getToken: GetToken,
+  opts: { includeArchived?: boolean } = {},
+): Promise<ProjectSummary[]> {
+  const qs = opts.includeArchived ? '?include_archived=true' : '';
+  return jsonRequest<ProjectSummary[]>(
+    `${API_HOST}/api/v1/projects${qs}`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function createProject(
+  name: string,
+  getToken: GetToken,
+): Promise<ProjectSummary> {
+  return jsonRequest<ProjectSummary>(
+    `${API_HOST}/api/v1/projects`,
+    { method: 'POST', body: JSON.stringify({ name }) },
+    getToken,
+  );
+}
+
+export async function renameProject(
+  projectId: string,
+  name: string,
+  getToken: GetToken,
+): Promise<ProjectSummary> {
+  return jsonRequest<ProjectSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}`,
+    { method: 'PATCH', body: JSON.stringify({ name }) },
+    getToken,
+  );
+}
+
+export async function archiveProject(
+  projectId: string,
+  getToken: GetToken,
+): Promise<ProjectSummary> {
+  return jsonRequest<ProjectSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}/archive`,
+    { method: 'POST' },
+    getToken,
+  );
+}
+
+export async function unarchiveProject(
+  projectId: string,
+  getToken: GetToken,
+): Promise<ProjectSummary> {
+  return jsonRequest<ProjectSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}/unarchive`,
+    { method: 'POST' },
+    getToken,
+  );
+}
+
+export async function listCampaigns(
+  projectId: string,
+  getToken: GetToken,
+  opts: { includeArchived?: boolean } = {},
+): Promise<CampaignSummary[]> {
+  const qs = opts.includeArchived ? '?include_archived=true' : '';
+  return jsonRequest<CampaignSummary[]>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns${qs}`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function createCampaign(
+  projectId: string,
+  payload: CampaignInput,
+  getToken: GetToken,
+): Promise<CampaignSummary> {
+  return jsonRequest<CampaignSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns`,
+    { method: 'POST', body: JSON.stringify(payload) },
+    getToken,
+  );
+}
+
+export async function updateCampaign(
+  projectId: string,
+  campaignId: string,
+  payload: Partial<CampaignInput>,
+  getToken: GetToken,
+): Promise<CampaignSummary> {
+  return jsonRequest<CampaignSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+    getToken,
+  );
+}
+
+export async function archiveCampaign(
+  projectId: string,
+  campaignId: string,
+  getToken: GetToken,
+): Promise<CampaignSummary> {
+  return jsonRequest<CampaignSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/archive`,
+    { method: 'POST' },
+    getToken,
+  );
+}
+
+export async function unarchiveCampaign(
+  projectId: string,
+  campaignId: string,
+  getToken: GetToken,
+): Promise<CampaignSummary> {
+  return jsonRequest<CampaignSummary>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/unarchive`,
+    { method: 'POST' },
+    getToken,
+  );
+}
+
 // ---------- Plays history -------------------------------------------------
 
 export interface PlayHistoryItem {
