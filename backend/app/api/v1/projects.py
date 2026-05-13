@@ -634,8 +634,11 @@ class CreativeUploadOut(BaseModel):
     # The application's view of which provider this key lives in.
     # Echoed so the confirm-upload payload doesn't need to re-derive it.
     provider: str
-    # Form fields the browser must include in the multipart body when
-    # method=POST. Empty / absent for PUT-style providers (R2).
+    # When set: the multipart field name the file goes under.
+    # When null: raw-body upload (PUT with the file's Content-Type).
+    body_field: Optional[str] = None
+    # Extra form fields to include in the multipart body BEFORE the
+    # file. Empty for providers that don't gate via policy fields.
     fields: dict[str, str] = Field(default_factory=dict)
 
 
@@ -739,6 +742,7 @@ async def create_creative_upload_url(
         method=presigned.method,
         expires_in=300,
         provider=storage.name,
+        body_field=presigned.body_field,
         fields=dict(presigned.fields or {}),
     )
 
