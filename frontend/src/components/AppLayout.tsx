@@ -16,6 +16,7 @@ import {
   CommandPaletteProvider,
   useCommandPalette,
 } from './CommandPalette';
+import { CitationDrawer, CitationDrawerProvider } from './CitationDrawer';
 import { Logo } from './Logo';
 
 interface Props {
@@ -35,8 +36,11 @@ export function AppLayout(props: Props) {
     <ActiveCampaignProvider>
       <SidebarProvider>
         <CommandPaletteProvider>
-          <AppLayoutInner {...props} />
-          <CommandPalette />
+          <CitationDrawerProvider>
+            <AppLayoutInner {...props} />
+            <CommandPalette />
+            <CitationDrawer />
+          </CitationDrawerProvider>
         </CommandPaletteProvider>
       </SidebarProvider>
     </ActiveCampaignProvider>
