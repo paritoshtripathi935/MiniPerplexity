@@ -3,8 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useUser } from '@clerk/clerk-react';
 import { Brain, Check, ChevronDown, Clock, Copy, RotateCw } from 'lucide-react';
-import type { Message } from '../types';
+import type { Message, MessageSearchResult } from '../types';
 import { getDomain } from '../utils/url';
+import { useCitationDrawer } from './CitationDrawer';
 
 /**
  * Some chat models (qwq-32b, gpt-oss with reasoning enabled, the deepseek-r1
@@ -138,25 +139,30 @@ function AssistantTurn({
     }
   };
 
-  // Citation index → URL map for the inline `[N]` pills. The right rail
-  // owns the aggregated source list; clicking a pill jumps you straight
-  // to the cited page in a new tab. We preserve search_results order so
-  // [N] matches what the LLM saw in its "Sources for this turn" block.
-  const sourceUrls = useMemo(() => {
-    const urls: string[] = [];
-    for (const r of message.search_results ?? []) {
-      if (r.source) urls.push(r.source);
+  // Citation index → search-result map for the inline `[N]` pills. The
+  // right rail owns the aggregated source list; clicking a pill opens
+  // the CitationDrawer with the quoted excerpt the LLM was conditioned
+  // on. We preserve search_results order so [N] matches what the LLM
+  // saw in its "Sources for this turn" block.
+  const sourceResults = useMemo<MessageSearchResult[]>(() => {
+    if (message.search_results && message.search_results.length > 0) {
+      return message.search_results;
     }
-    if (urls.length === 0) {
-      // Fallback for legacy turns where only the bare citations list landed.
-      for (const s of message.sources ?? []) {
-        if (s.url) urls.push(s.url);
-      }
-    }
-    return urls;
+    // Fallback for legacy turns where only the bare citations list
+    // landed — synthesize stub results so pills still render + open
+    // (drawer shows "no excerpt was captured" gracefully).
+    return (message.sources ?? []).map(s => ({
+      source: s.url,
+      title: s.title,
+      type: s.type ?? 'web',
+      snippet: undefined,
+    }));
   }, [message.search_results, message.sources]);
 
-  const components = useMemo(() => makeMarkdownComponents(sourceUrls), [sourceUrls]);
+  const components = useMemo(
+    () => makeMarkdownComponents(sourceResults),
+    [sourceResults],
+  );
 
   return (
     <div className="group">
@@ -378,10 +384,18 @@ function SearchingPanel({ urls }: { urls: string[] }) {
 // ---------- Citation rendering --------------------------------------------
 const CITE_RE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
 
-function CitationPill({ n, url }: { n: number; url?: string }) {
-  if (!url) {
-    // Index without a known URL — render as plain text so the user isn't
-    // teased with a non-functional pill.
+function CitationPill({
+  n,
+  results,
+}: {
+  n: number;
+  /** Full message-level results so the drawer can step prev/next through
+   *  siblings. When omitted (no resolution), renders as inert. */
+  results?: MessageSearchResult[];
+}) {
+  const { open } = useCitationDrawer();
+  const result = results && n >= 1 && n <= results.length ? results[n - 1] : null;
+  if (!result || !result.source) {
     return (
       <span className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-border/60 bg-surface-raised/60 font-mono text-[10px] tabular-nums text-fg-subtle relative -top-[2px]">
         {n}
@@ -389,27 +403,26 @@ function CitationPill({ n, url }: { n: number; url?: string }) {
     );
   }
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={url}
-      className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-brand hover:border-brand/60 hover:bg-brand/15 transition-colors no-underline relative -top-[2px]"
+    <button
+      type="button"
+      onClick={() => open(results!, n - 1)}
+      title={result.title || result.source}
+      className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-brand hover:border-brand/60 hover:bg-brand/15 focus-visible:shadow-focus transition-colors relative -top-[2px]"
     >
       {n}
-    </a>
+    </button>
   );
 }
 
 /**
  * Walk a children tree and replace `[N]` / `[N, M]` markers with citation
- * pills that link to the source URL. Recurses into element children via
+ * pills that open the drawer. Recurses into element children via
  * React.cloneElement so markers nested in <em>, <strong>, <code>, etc.
  * work without extra component overrides.
  */
 function walkCitations(
   node: React.ReactNode,
-  urls: string[],
+  results: MessageSearchResult[],
   keyBase: string,
 ): React.ReactNode {
   if (typeof node === 'string') {
@@ -425,7 +438,7 @@ function walkCitations(
       // the prose between [N] markers when N pointed out of range.
       if (m.index > last) out.push(node.slice(last, m.index));
       const valid = parsed.filter(
-        n => Number.isFinite(n) && n >= 1 && n <= urls.length,
+        n => Number.isFinite(n) && n >= 1 && n <= results.length,
       );
       if (valid.length > 0) {
         valid.forEach((n, i) => {
@@ -433,7 +446,7 @@ function walkCitations(
             <CitationPill
               key={`${keyBase}-${m!.index}-${i}`}
               n={n}
-              url={urls[n - 1]}
+              results={results}
             />,
           );
         });
@@ -448,7 +461,7 @@ function walkCitations(
               <CitationPill
                 key={`${keyBase}-${m!.index}-x${i}`}
                 n={n}
-                url={undefined}
+                results={undefined}
               />,
             );
           });
@@ -467,7 +480,7 @@ function walkCitations(
   if (Array.isArray(node)) {
     return node.map((c, i) => (
       <React.Fragment key={`${keyBase}-${i}`}>
-        {walkCitations(c, urls, `${keyBase}-${i}`)}
+        {walkCitations(c, results, `${keyBase}-${i}`)}
       </React.Fragment>
     ));
   }
@@ -477,23 +490,23 @@ function walkCitations(
     return React.cloneElement(
       node,
       undefined,
-      walkCitations(childProps.children, urls, `${keyBase}-c`),
+      walkCitations(childProps.children, results, `${keyBase}-c`),
     );
   }
   return node;
 }
 
-function makeMarkdownComponents(urls: string[]) {
-  // Run the walker even when urls is empty so `[N]` markers in the prose
-  // become inert pills rather than getting orphaned as raw text — keeps the
-  // citation affordance consistent whether or not search results came
-  // through with the message.
+function makeMarkdownComponents(results: MessageSearchResult[]) {
+  // Run the walker even when results is empty so `[N]` markers in the
+  // prose become inert pills rather than getting orphaned as raw text —
+  // keeps the citation affordance consistent whether or not search
+  // results came through with the message.
   const wrap = (Tag: keyof JSX.IntrinsicElements) =>
     function WrappedTag({ children, node, ...rest }: any) {
       return React.createElement(
         Tag,
         rest,
-        walkCitations(children, urls, `${Tag}`),
+        walkCitations(children, results, `${Tag}`),
       );
     };
   return {

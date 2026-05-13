@@ -192,6 +192,11 @@ export default {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(0)' },
         },
+        // Right-side slide-over for the citation drawer.
+        'slide-in-right': {
+          '0%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
       },
       animation: {
         'fade-in-up': 'fade-in-up 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
@@ -200,6 +205,7 @@ export default {
         'cursor-blink': 'cursor-blink 1s steps(1, end) infinite',
         'page-enter': 'page-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both',
         'slide-in-left': 'slide-in-left 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'slide-in-right': 'slide-in-right 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },
