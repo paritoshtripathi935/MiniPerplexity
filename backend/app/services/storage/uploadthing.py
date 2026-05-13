@@ -1,32 +1,39 @@
 """UploadThing implementation of StorageProvider.
 
-UploadThing (https://uploadthing.com) is a file-upload SaaS with a
-generous free tier (2 GB, no credit card to start). They expose a REST
-API alongside their first-party JS SDK; this module talks to the REST
-API directly so the backend stays language-agnostic.
+UploadThing (https://uploadthing.com) is a file-upload SaaS with a 2 GB
+free tier (no credit card to start). They expose a REST API alongside
+their first-party JS SDK; this module talks to the REST API directly
+so the backend stays language-agnostic.
 
-We target the v6 REST surface:
-  - POST https://api.uploadthing.com/v6/uploadFiles  — register files
-  - POST https://api.uploadthing.com/v6/deleteFiles  — remove files
+End-to-end flow (verified against the live API on 2026-05-14):
 
-The v6 endpoints are stable + work with the same API key issued by
-the dashboard. v7's `prepareUpload` is similar in shape; if a future
-deploy needs it, the changes are localised here.
+  1. POST https://api.uploadthing.com/v7/prepareUpload
+     Body: { fileName, fileSize, fileType, acl, contentDisposition }
+     Returns: { url, key }
+       - `url` is a pre-signed ingestion URL with all file metadata in
+         query params + an HMAC signature. Valid for ~5 minutes.
+       - `key` is the eventual file key, stable for the lifetime of
+         the row. We persist this in `storage_key`.
 
-Flow:
-  1. Backend POSTs file metadata to /v6/uploadFiles.
-  2. UploadThing returns a presigned URL + form fields + the eventual
-     file key + file URL.
-  3. Frontend POSTs the file as multipart/form-data to that URL.
-  4. Backend confirms the metadata into our DB (key + filename + ...).
-  5. Files are served from `https://utfs.io/f/<key>` (public ACL) or
-     `https://<appId>.ufs.sh/f/<key>` (per-app subdomain).
+  2. PUT to the returned `url` with the file as multipart/form-data,
+     field name "file". The PUT response carries the final CDN URL
+     (we ignore it — we derive the URL from `key` + `app_id`).
 
-File URLs are stable as long as the key exists. ACL is "public-read"
-by default — fine for marketing creatives (unguessable keys, but anyone
-with the URL can fetch). Locking down via signed URLs would require
-ACL="private" + a /requestFileAccess call on every download; we keep
-the simple model unless the threat model changes.
+  3. File is served at `https://<app_id>.ufs.sh/f/<key>` (per-app
+     subdomain) or `https://utfs.io/f/<key>` (legacy shared host).
+     ACL=public-read keeps download flows simple — unguessable keys,
+     anyone-with-the-URL access. Locking down via signed URLs would
+     require ACL=private + /requestFileAccess on every download.
+
+  4. POST https://api.uploadthing.com/v6/deleteFiles
+     Body: { fileKeys: [key] }
+     Returns: { success, deletedCount }. The endpoint stayed on v6 in
+     UploadThing's v7 migration; same API key works.
+
+Auth: either `UPLOADTHING_TOKEN` (the v7 base64-encoded JSON token from
+the dashboard — preferred, gives us app_id for per-app subdomain URLs)
+or `UPLOADTHING_SECRET` (legacy raw "sk_live_..." key — works, but URLs
+fall back to utfs.io).
 """
 from __future__ import annotations
 
@@ -45,9 +52,6 @@ from app.services.storage.base import (
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.uploadthing.com"
-# v7 introduced per-app subdomains (<appId>.ufs.sh). Older keys still
-# resolve under utfs.io; we prefer the per-app form when we know the
-# app id (extracted from UPLOADTHING_TOKEN) and fall back otherwise.
 FILE_URL_LEGACY = "https://utfs.io/f/{key}"
 FILE_URL_PER_APP = "https://{app_id}.ufs.sh/f/{key}"
 
@@ -71,27 +75,21 @@ class UploadThingStorage:
             )
         self._api_key = api_key
         self._app_id = app_id
-        # Short timeouts — these are control-plane calls (no bytes).
-        # The browser does the heavy lifting against the presigned URL.
+        # Short timeouts — control-plane only; no bytes flow through
+        # this client. The browser does the heavy lifting.
         self._client = httpx.Client(
             base_url=API_BASE,
             timeout=15.0,
             headers={
                 "x-uploadthing-api-key": api_key,
                 "Content-Type": "application/json",
-                # UploadThing checks an app version header on some
-                # endpoints. Pin to a recent stable.
-                "x-uploadthing-version": "6.10.0",
             },
         )
 
     @classmethod
     def from_token(cls, token: str) -> "UploadThingStorage":
         """Construct from the v7-style UPLOADTHING_TOKEN — a base64
-        JSON object carrying apiKey + appId + regions.
-
-        Falls through cleanly if the token isn't actually v7 (raw
-        api_key); the caller decides which env var to use."""
+        JSON object carrying apiKey + appId + regions."""
         try:
             decoded = base64.b64decode(token).decode("utf-8")
             obj = json.loads(decoded)
@@ -110,71 +108,64 @@ class UploadThingStorage:
         max_size_bytes: int,
         expires_in: int = 300,
     ) -> PresignedUpload:
-        """Register an upload + return the presigned POST destination.
+        """Register an upload via /v7/prepareUpload.
 
-        Note: UploadThing assigns its own opaque `key` server-side; the
-        `key` argument coming in (e.g. `campaigns/<uuid>/<uuid>.pdf`)
-        becomes our `customId` instead, so we can correlate the file
-        back to the campaign without a separate lookup. The returned
-        `PresignedUpload.storage_key` is UploadThing's assigned key —
-        that's what we persist for delete + URL reconstruction.
+        Note: UploadThing assigns its own opaque storage key
+        server-side — we don't get to specify it. The `key` arg coming
+        in (e.g. `campaigns/<uuid>/<uuid>.<ext>`) is reduced to just
+        the filename for display; the returned `PresignedUpload.
+        storage_key` is what UploadThing assigned.
         """
         _ = expires_in  # UploadThing's presign expiry is fixed server-side.
-        # Filename inside UploadThing's bucket. They use the basename
-        # of `name` for the file slug; preserve the extension so
-        # Content-Type and the rendered preview Just Work.
-        # Their `name` field is just for display; the key is what we
-        # round-trip in storage_key.
+        # Use the basename so UploadThing's "x-ut-file-name" reflects
+        # something useful. The DB row keeps the original `filename`
+        # from the user; this is purely an UploadThing-side label.
         filename = key.rsplit("/", 1)[-1]
-        # ACL: public-read keeps download flows simple (unguessable
-        # key + public URL). Marketing creatives don't need signed
-        # downloads for v1. Switch to "private" + /requestFileAccess
-        # when the threat model demands it.
         body = {
-            "files": [
-                {
-                    "name": filename,
-                    "type": content_type,
-                    "size": max_size_bytes,
-                    # customId lets us look the file up by our own id
-                    # later (e.g. for audits) without keeping a map of
-                    # uploadthing-key → our-key.
-                    "customId": key,
-                }
-            ],
+            "fileName": filename,
+            "fileSize": max_size_bytes,
+            "fileType": content_type,
+            # public-read keeps download flows simple. Unguessable
+            # keys are the access-control mechanism.
             "acl": "public-read",
             "contentDisposition": "inline",
         }
         try:
-            resp = self._client.post("/v6/uploadFiles", json=body)
+            resp = self._client.post("/v7/prepareUpload", json=body)
             resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Include the response body in logs — UploadThing's 400s
+            # usually carry a useful "expected X, got Y" payload.
+            logger.warning(
+                "UploadThing /v7/prepareUpload failed: status=%s body=%s",
+                e.response.status_code,
+                e.response.text[:500],
+            )
+            raise RuntimeError(
+                f"UploadThing presign failed ({e.response.status_code}): "
+                f"{e.response.text[:200]}"
+            ) from e
         except httpx.HTTPError as e:
             logger.exception("UploadThing presign request failed")
             raise RuntimeError(f"UploadThing presign failed: {e}") from e
 
         payload = resp.json()
-        # Defensive: v6 returns `data` as the array; v7 returns it
-        # at the top level. Handle both.
-        rows = payload.get("data") or payload.get("files") or payload
-        if isinstance(rows, dict):
-            rows = [rows]
-        if not rows:
-            raise RuntimeError(f"UploadThing returned empty payload: {payload!r}")
-        row = rows[0]
-
-        upload_url = row.get("url") or row.get("presignedUrl")
-        fields = row.get("fields") or {}
-        assigned_key = row.get("key") or row.get("fileKey")
+        upload_url = payload.get("url")
+        assigned_key = payload.get("key")
         if not (upload_url and assigned_key):
             raise RuntimeError(
-                f"UploadThing payload missing url/key: {row!r}"
+                f"UploadThing payload missing url/key: {payload!r}"
             )
 
+        # The PUT below at the returned URL must use multipart/form-data
+        # with the file under field name "file". Verified against the
+        # live ingestion endpoint — raw-body PUTs return 415.
         return PresignedUpload(
             upload_url=upload_url,
             storage_key=assigned_key,
-            method="POST",
-            fields=fields,
+            method="PUT",
+            body_field="file",
+            fields={},
         )
 
     def presigned_download(
@@ -184,17 +175,28 @@ class UploadThingStorage:
         filename: Optional[str] = None,
         expires_in: int = 3600,
     ) -> str:
-        """For public-read files, the file URL itself is the access
-        URL — no signing needed. `filename` is ignored here because
-        Content-Disposition was set at upload time."""
+        """For public-read files the CDN URL itself is the access URL —
+        no signing needed. `filename` is ignored: Content-Disposition was
+        set at upload time (inline → browser renders inline, attachment
+        → browser downloads). UploadThing files are accessed at:
+
+            https://<app_id>.ufs.sh/f/<key>       (per-app, v7)
+            https://utfs.io/f/<key>               (legacy shared)
+
+        We prefer the per-app subdomain when app_id is known (extracted
+        from the v7 token); legacy mode falls back to utfs.io.
+        """
         _ = filename, expires_in
         if self._app_id:
             return FILE_URL_PER_APP.format(app_id=self._app_id, key=key)
         return FILE_URL_LEGACY.format(key=key)
 
     def delete(self, *, key: str) -> None:
-        """Hit /v6/deleteFiles. Idempotent: an unknown key returns 200
-        in UploadThing's contract, no special handling needed."""
+        """POST /v6/deleteFiles. Idempotent: an unknown key returns 200
+        with deletedCount=0 (verified against the live API). The
+        delete-files endpoint stayed on v6 in UploadThing's v7
+        migration; same API key works.
+        """
         try:
             resp = self._client.post(
                 "/v6/deleteFiles", json={"fileKeys": [key]}

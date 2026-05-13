@@ -22,22 +22,34 @@ class StorageNotConfiguredError(RuntimeError):
 class PresignedUpload:
     """Returned by `presigned_upload`.
 
-    Two upload shapes are supported via `method`:
-      - "PUT"   — browser sends the raw bytes as the request body,
-                  with Content-Type matching what we signed for. Used
-                  by S3-compatible backends (R2, S3, GCS, B2).
-      - "POST"  — browser sends multipart/form-data with `fields`
-                  appended before the file. Used by UploadThing and
-                  any provider that gates uploads with policy fields.
+    Three upload shapes are supported, gated on `body_field`:
 
-    `fields` is empty for PUT-style uploads.
+      - `body_field = None` — raw-bytes upload. Browser sets the
+        request body to the file blob and Content-Type to the file's
+        mime. The provider validates Content-Type matches what was
+        signed. Used by R2 + S3-compatible providers (method=PUT).
+
+      - `body_field = "file"` (any non-None string) — multipart
+        upload. Browser builds a multipart/form-data body with any
+        `fields` appended first, then the file under the given field
+        name. Browser sets the multipart boundary; we must NOT set
+        Content-Type manually. Used by UploadThing (method=PUT,
+        body_field="file") and S3 POST policy (method=POST,
+        body_field="file", fields=policy-fields).
+
+    `method` is the HTTP verb — independent of upload shape. UploadThing
+    happens to use PUT-multipart, S3 POST policy uses POST-multipart,
+    R2 uses PUT-raw.
     """
     upload_url: str
     storage_key: str
     method: str
-    # Form fields the browser MUST include in the multipart body
-    # alongside the file when method=POST. Order matters in S3 POST
-    # policy but most providers (UploadThing, S3) accept any order.
+    # When set: the multipart field name the file goes under.
+    # When None: raw-body upload (PUT with the file's Content-Type).
+    body_field: Optional[str] = None
+    # Extra form fields to include in the multipart body BEFORE the
+    # file. Order can matter (S3 POST policy). Empty for providers
+    # that don't gate via policy fields.
     fields: dict = field(default_factory=dict)
 
 

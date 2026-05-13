@@ -848,8 +848,12 @@ export interface CreativeUploadAuth {
   method: string;
   expires_in: number;
   provider: string;
-  /** Form fields to include alongside the file when method=POST.
-   *  Empty (or absent) for PUT-style providers (R2). */
+  /** When set: the multipart field name the file goes under (e.g.
+   *  "file"). When null: raw-body upload — set Content-Type to the
+   *  file's mime + send the blob as the request body. */
+  body_field?: string | null;
+  /** Extra form fields to include in the multipart body BEFORE the
+   *  file. Empty for providers that don't gate via policy fields. */
   fields?: Record<string, string>;
 }
 
@@ -964,29 +968,28 @@ export async function uploadCreative(
     getToken,
   );
 
-  // Direct upload to the provider. Two shapes:
-  //   PUT  — raw bytes, Content-Type matches what we signed for
-  //          (R2 + S3-compatible providers).
-  //   POST — multipart/form-data with provider-issued policy fields
-  //          appended BEFORE the file (UploadThing + S3 POST policy).
-  //          The browser sets the multipart boundary; do NOT set
-  //          Content-Type manually or the boundary will be wrong.
+  // Direct upload to the provider. `body_field` is the discriminator:
+  //   set    — multipart/form-data with `fields` appended first, then
+  //            the file under `body_field`. Browser sets the multipart
+  //            boundary; do NOT set Content-Type manually. Used by
+  //            UploadThing (method=PUT) and S3 POST policy (method=POST).
+  //   unset  — raw-body upload. Browser sends the file as the body;
+  //            Content-Type matches what we signed for. Used by R2
+  //            and S3-compatible PUT-presigned URLs.
+  const method = (auth.method || 'PUT').toUpperCase();
   let providerResp: Response;
-  if ((auth.method || 'PUT').toUpperCase() === 'POST') {
+  if (auth.body_field) {
     const form = new FormData();
     for (const [k, v] of Object.entries(auth.fields ?? {})) {
       form.append(k, v);
     }
-    // Most providers (S3, UploadThing) require `file` as the last
-    // field. Use the original filename so the response carries it.
-    form.append('file', file, file.name);
-    providerResp = await fetch(auth.upload_url, {
-      method: 'POST',
-      body: form,
-    });
+    // Most providers want the file as the last field of the multipart
+    // body. Use the original filename so the response carries it.
+    form.append(auth.body_field, file, file.name);
+    providerResp = await fetch(auth.upload_url, { method, body: form });
   } else {
     providerResp = await fetch(auth.upload_url, {
-      method: 'PUT',
+      method,
       headers: { 'Content-Type': mime },
       body: file,
     });
