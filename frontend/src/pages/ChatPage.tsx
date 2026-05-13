@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
-import { ChevronLeft, ChevronRight, Youtube } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Youtube } from 'lucide-react';
 import clsx from 'clsx';
 import { ChatMessage } from '../components/ChatMessage';
 import { SearchBar, type ComposerHandle } from '../components/SearchBar';
@@ -514,20 +514,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
       {/* Sessions sidebar — collapsible (PAI-14). When collapsed, hidden
-          entirely so the chat reclaims ~288px of horizontal space; a
-          thin chevron rail at the left edge expands it back. */}
-      <div className="hidden md:block h-full">
-        {sessionsCollapsed ? (
-          <button
-            type="button"
-            onClick={toggleSessionsCollapsed}
-            aria-label="show chat history"
-            title="show chat history"
-            className="group flex flex-col items-center justify-center h-full w-3 hover:w-5 border-r border-border bg-surface-sunken/60 hover:bg-surface-sunken transition-[width,background-color] duration-150"
-          >
-            <ChevronRight className="w-3 h-3 text-fg-subtle/0 group-hover:text-fg-subtle transition-colors" />
-          </button>
-        ) : (
+          entirely so the chat reclaims ~288px of horizontal space. The
+          toggle button lives at the far left of the chat header below
+          (single affordance for both directions). */}
+      {!sessionsCollapsed && (
+        <div className="hidden md:block h-full">
           <aside className="flex flex-col h-full w-72 shrink-0 border-r border-border bg-surface-sunken">
             <SessionsSidebar
               darkMode={darkMode}
@@ -536,17 +527,29 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               onNewInvestigation={handleNewInvestigation}
               refreshSignal={sidebarRefresh}
               campaignId={campaignId || null}
-              onCollapse={toggleSessionsCollapsed}
             />
           </aside>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col min-w-0 bg-surface relative">
-        {/* Always-visible investigation header — title + status chips +
-            optional videos chip + ModelSelector. One bar that's always
-            in view. */}
+        {/* Always-visible investigation header — sidebar toggle + title
+            + status chips + optional videos chip + ModelSelector. One
+            bar that's always in view. */}
         <div className="border-b border-border bg-surface px-4 sm:px-6 h-12 flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={toggleSessionsCollapsed}
+            aria-label={sessionsCollapsed ? 'show chat history' : 'hide chat history'}
+            title={sessionsCollapsed ? 'show chat history' : 'hide chat history'}
+            className="hidden md:grid place-items-center w-7 h-7 -ml-1 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken/60 transition-colors shrink-0"
+          >
+            {sessionsCollapsed ? (
+              <PanelLeftOpen className="w-4 h-4" />
+            ) : (
+              <PanelLeftClose className="w-4 h-4" />
+            )}
+          </button>
           <div className="flex-1 min-w-0 flex items-center gap-3">
             <div className="text-body-base font-medium text-fg truncate">
               {conversationTitle}
