@@ -30,6 +30,7 @@ import {
   BookOpen,
   Calculator,
   ChevronRight,
+  FolderKanban,
   HelpCircle,
   Home,
   PanelLeftClose,
@@ -139,7 +140,13 @@ const NAV: Array<{
   { to: '/investigations', label: 'investigations', icon: Search },
   { to: '/plays', label: 'plays', icon: PlayCircle },
   { to: '/calc', label: 'calculators', icon: Calculator },
-  { to: '/settings', label: 'settings', icon: Settings },
+  // Settings sub-pages — projects + campaigns gets its own top-level
+  // entry because it's the high-traffic part of settings (per the
+  // operator-tool design). `end: false` on projects so the detail page
+  // (/settings/projects/:id) keeps the row highlighted; `end: true` on
+  // settings so the projects sub-route doesn't double-highlight.
+  { to: '/settings/projects', label: 'projects', icon: FolderKanban },
+  { to: '/settings', label: 'settings', icon: Settings, end: true },
 ];
 
 interface Props {
