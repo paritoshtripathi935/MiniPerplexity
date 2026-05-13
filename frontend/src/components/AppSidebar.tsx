@@ -140,12 +140,11 @@ const NAV: Array<{
   { to: '/investigations', label: 'investigations', icon: Search },
   { to: '/plays', label: 'plays', icon: PlayCircle },
   { to: '/calc', label: 'calculators', icon: Calculator },
-  // Settings sub-pages — projects + campaigns gets its own top-level
-  // entry because it's the high-traffic part of settings (per the
-  // operator-tool design). `end: false` on projects so the detail page
-  // (/settings/projects/:id) keeps the row highlighted; `end: true` on
-  // settings so the projects sub-route doesn't double-highlight.
-  { to: '/settings/projects', label: 'projects', icon: FolderKanban },
+  // Projects + campaigns gets its own top-level entry — it's the
+  // navigation pivot now (top-nav switcher lands you on a project, you
+  // dive into a campaign from there). `end: false` so /projects/:id and
+  // /projects/:id/c/:cid keep this row highlighted.
+  { to: '/projects', label: 'projects', icon: FolderKanban },
   { to: '/settings', label: 'settings', icon: Settings, end: true },
 ];
 

@@ -1,38 +1,36 @@
 /**
- * Top-nav campaign switcher (Category H / H4).
+ * Top-nav project switcher.
  *
- * Pill in the header showing `<project-color-dot> <project> · <campaign> ▾`.
- * Click opens a popover with all live projects + their campaigns; selecting
- * a campaign updates the global active context (localStorage-backed) and
- * the whole app rescopes.
+ * Pill in the header showing the active project. Clicking opens a
+ * popover with a search input and the full project list; selecting a
+ * project routes to /projects/:id (its home), where the user picks
+ * which campaign to dive into. The popover does NOT list campaigns —
+ * campaign selection happens inside the project page.
  *
- * Layered on top of the SWR-cached projects + campaigns hooks via
- * <ActiveCampaignProvider>, so any other consumer (settings page, command
- * palette) shares the same data + invalidation path.
+ * Footer: inline "+ new project" form. Mirrors the project list page's
+ * create flow so a fresh project plus its default "General" campaign
+ * land in one round-trip.
  *
- * v1 scope: select existing project + campaign. Create-project / create-
- * campaign footer buttons trigger inline mini-forms in the popover. Once
- * the Settings projects page (H5) lands, the footer buttons will deep-link
- * there instead of inlining the form.
+ * Naming kept as CampaignSwitcher for compatibility with existing
+ * imports across the app; the surface is now project-first.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react';
+import { ChevronDown, Plus, Search } from 'lucide-react';
 import {
   projectColor,
   useActiveCampaign,
-  useSwapActiveContext,
 } from './ActiveCampaign';
 import {
   createCampaign,
   createProject,
-  listCampaigns,
-  type CampaignSummary,
   type ProjectSummary,
 } from '../services/api';
-import { QK, useCacheActions } from '../services/queries';
+import { QK } from '../services/queries';
 import { useSWRConfig } from 'swr';
+import { Button } from './ui/Button';
 
 export function CampaignSwitcher() {
   const { activeProject, activeCampaign, projects } = useActiveCampaign();
@@ -40,7 +38,6 @@ export function CampaignSwitcher() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Click-outside + Escape to close.
   useEffect(() => {
     if (!open) return;
     function onPointer(e: MouseEvent) {
@@ -60,8 +57,6 @@ export function CampaignSwitcher() {
     };
   }, [open]);
 
-  // Don't render anything until we have at least one project to display —
-  // avoids a flash of empty pill on first auth.
   if (!activeProject || projects.length === 0) {
     return (
       <div className="hidden md:flex items-center h-8 px-3 rounded-xl border border-border/60 bg-surface-raised/40 text-fg-subtle text-body-sm">
@@ -72,7 +67,7 @@ export function CampaignSwitcher() {
   }
 
   const color = projectColor(activeProject.id);
-  const campaignLabel = activeCampaign?.name || '—';
+  const subline = activeCampaign?.name;
 
   return (
     <div className="relative">
@@ -84,17 +79,15 @@ export function CampaignSwitcher() {
         aria-expanded={open}
         className={clsx(
           'inline-flex items-center h-8 pl-2.5 pr-2 rounded-xl border text-body-sm transition-colors duration-150',
-          'min-w-0 max-w-[260px]',
+          'min-w-0 max-w-[240px]',
           open
             ? 'border-brand/40 bg-brand/5'
             : 'border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60',
         )}
-        title={`${activeProject.name} · ${campaignLabel}`}
+        title={subline ? `${activeProject.name} · ${subline}` : activeProject.name}
       >
         <span className={clsx('w-1.5 h-1.5 rounded-full mr-2 shrink-0', color.dot)} />
         <span className="text-fg font-medium truncate">{activeProject.name}</span>
-        <span className="text-fg-subtle mx-1.5">·</span>
-        <span className="text-fg-muted truncate">{campaignLabel}</span>
         <ChevronDown
           className={clsx(
             'w-3.5 h-3.5 ml-1.5 shrink-0 text-fg-subtle transition-transform',
@@ -107,8 +100,8 @@ export function CampaignSwitcher() {
         <div
           ref={popoverRef}
           role="dialog"
-          aria-label="Switch project or campaign"
-          className="absolute left-0 top-[calc(100%+8px)] z-50 w-[360px] rounded-xl border border-border/60 bg-surface-raised/90 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
+          aria-label="Switch project"
+          className="absolute left-0 top-[calc(100%+8px)] z-50 w-[320px] rounded-xl border border-border/60 bg-surface-raised/90 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)]"
         >
           <SwitcherBody onClose={() => setOpen(false)} />
         </div>
@@ -122,42 +115,23 @@ export function CampaignSwitcher() {
 /* -------------------------------------------------------------------- */
 
 function SwitcherBody({ onClose }: { onClose: () => void }) {
-  const { projects, activeProject, activeCampaign, campaigns } = useActiveCampaign();
-  // Which project is expanded in the popover (defaults to active).
-  const [expandedId, setExpandedId] = useState<string>(
-    activeProject?.id || projects[0]?.id || '',
-  );
+  const navigate = useNavigate();
+  const { projects, activeProject } = useActiveCampaign();
   const [query, setQuery] = useState('');
-  const normalizedQuery = query.trim().toLowerCase();
+  const q = query.trim().toLowerCase();
 
-  // Filter projects on name. When the query matches a campaign name inside
-  // a project, surface the parent project too (so the user can drill in).
-  // We don't have all campaigns for non-active projects pre-loaded, so the
-  // campaign-name match only applies to the active project's campaign list.
-  const filteredProjects = useMemo(() => {
-    if (!normalizedQuery) return projects;
-    return projects.filter(p => {
-      if (p.name.toLowerCase().includes(normalizedQuery)) return true;
-      if (p.id === activeProject?.id) {
-        return campaigns.some(c =>
-          !c.archived_at && c.name.toLowerCase().includes(normalizedQuery),
-        );
-      }
-      return false;
-    });
-  }, [projects, campaigns, normalizedQuery, activeProject?.id]);
+  const filtered = useMemo(() => {
+    if (!q) return projects;
+    return projects.filter(p => p.name.toLowerCase().includes(q));
+  }, [projects, q]);
 
-  // Auto-expand the active project's row when a query is typed so the user
-  // sees matching campaigns inline. Switching expansion mid-search is still
-  // allowed; we only seed on first keystroke.
-  useEffect(() => {
-    if (normalizedQuery && activeProject?.id) setExpandedId(activeProject.id);
-  }, [normalizedQuery, activeProject?.id]);
+  function pick(project: ProjectSummary) {
+    navigate(`/projects/${project.id}`);
+    onClose();
+  }
 
   return (
     <div className="py-1.5">
-      {/* Search bar — Stitch Surface 1 spec. Filters projects (and
-       *  campaigns within the active project) by substring match. */}
       <div className="px-2 pt-1 pb-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-subtle" />
@@ -166,252 +140,70 @@ function SwitcherBody({ onClose }: { onClose: () => void }) {
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="search projects + campaigns…"
+            placeholder="search projects…"
             className="w-full h-9 pl-8 pr-2.5 rounded-lg bg-surface-sunken/40 border border-border/60 text-fg text-body-sm placeholder:text-fg-subtle focus:outline-none focus:border-brand/40"
           />
         </div>
       </div>
 
-      <ul className="max-h-[360px] overflow-y-auto py-1">
-        {filteredProjects.length === 0 && (
+      <ul className="max-h-[320px] overflow-y-auto py-1">
+        {filtered.length === 0 && (
           <li className="px-3 py-3 text-body-sm text-fg-subtle italic">
             no matches for "{query}"
           </li>
         )}
-        {filteredProjects.map(p => (
-          <ProjectRow
-            key={p.id}
-            project={p}
-            expanded={p.id === expandedId}
-            isActiveProject={activeProject?.id === p.id}
-            activeCampaignId={activeCampaign?.id || null}
-            campaignsForActive={p.id === activeProject?.id ? campaigns : null}
-            campaignFilter={normalizedQuery}
-            onToggle={() => setExpandedId(prev => (prev === p.id ? '' : p.id))}
-            onPick={onClose}
-          />
-        ))}
+        {filtered.map(p => {
+          const color = projectColor(p.id);
+          const isActive = activeProject?.id === p.id;
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => pick(p)}
+                className={clsx(
+                  'w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors',
+                  isActive
+                    ? 'bg-brand/5 border-l-2 border-brand'
+                    : 'hover:bg-surface-sunken/40 border-l-2 border-transparent',
+                )}
+              >
+                <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', color.dot)} />
+                <span className="text-fg font-medium truncate flex-1">{p.name}</span>
+                {isActive && (
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand/80">
+                    current
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
       </ul>
-      <SwitcherFooter expandedProjectId={expandedId} onClose={onClose} />
+
+      <SwitcherFooter onClose={onClose} />
     </div>
   );
 }
 
-function ProjectRow({
-  project,
-  expanded,
-  isActiveProject,
-  activeCampaignId,
-  campaignsForActive,
-  campaignFilter,
-  onToggle,
-  onPick,
-}: {
-  project: ProjectSummary;
-  expanded: boolean;
-  isActiveProject: boolean;
-  activeCampaignId: string | null;
-  /** Campaigns from cache when this IS the active project — avoids
-   *  a duplicate fetch. Null for other projects (we fetch lazily). */
-  campaignsForActive: CampaignSummary[] | null;
-  /** Lowercased search query; narrows the campaign list to substring
-   *  matches when present. Empty string = no filter. */
-  campaignFilter: string;
-  onToggle: () => void;
-  onPick: () => void;
-}) {
-  const color = projectColor(project.id);
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-sunken/40 transition-colors"
-      >
-        {expanded ? (
-          <ChevronDown className="w-3.5 h-3.5 text-fg-subtle shrink-0" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-fg-subtle shrink-0" />
-        )}
-        <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', color.dot)} />
-        <span className="text-fg font-medium truncate flex-1">{project.name}</span>
-        {isActiveProject && (
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand/80">
-            current
-          </span>
-        )}
-      </button>
-
-      {expanded && (
-        <CampaignList
-          project={project}
-          activeCampaignId={activeCampaignId}
-          preloaded={campaignsForActive}
-          filter={campaignFilter}
-          onPick={onPick}
-        />
-      )}
-    </li>
-  );
-}
-
-function CampaignList({
-  project,
-  activeCampaignId,
-  preloaded,
-  filter,
-  onPick,
-}: {
-  project: ProjectSummary;
-  activeCampaignId: string | null;
-  preloaded: CampaignSummary[] | null;
-  filter: string;
-  onPick: () => void;
-}) {
-  const { getToken } = useAuth();
-  const swap = useSwapActiveContext();
-  // Lazy-fetch campaigns the first time this project is expanded (only if
-  // we don't already have them via the active-project pass-through).
-  const [campaigns, setCampaigns] = useState<CampaignSummary[]>(preloaded || []);
-  const [loading, setLoading] = useState<boolean>(preloaded === null);
-
-  useEffect(() => {
-    if (preloaded) {
-      setCampaigns(preloaded);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    listCampaigns(project.id, getToken)
-      .then(rows => {
-        if (!cancelled) setCampaigns(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setCampaigns([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [project.id, preloaded, getToken]);
-
-  const live = campaigns.filter(c => {
-    if (c.archived_at) return false;
-    if (!filter) return true;
-    return c.name.toLowerCase().includes(filter);
-  });
-
-  if (loading) {
-    return (
-      <div className="pl-9 pr-3 py-2 text-body-sm text-fg-subtle">loading campaigns…</div>
-    );
-  }
-
-  if (live.length === 0) {
-    return (
-      <div className="pl-9 pr-3 py-2 text-body-sm text-fg-subtle italic">
-        no live campaigns
-      </div>
-    );
-  }
-
-  return (
-    <ul className="pb-1">
-      {live.map(c => {
-        const isActive = c.id === activeCampaignId;
-        return (
-          <li key={c.id}>
-            <button
-              type="button"
-              onClick={() => {
-                swap(project.id, c.id);
-                onPick();
-              }}
-              className={clsx(
-                'w-full flex items-center justify-between gap-3 pl-9 pr-3 py-2 text-left hover:bg-surface-sunken/40 transition-colors',
-                'border-l-2',
-                isActive ? 'border-brand bg-brand/5' : 'border-transparent',
-              )}
-            >
-              <div className="min-w-0">
-                <div className="text-fg text-body-base truncate">{c.name}</div>
-                {c.objective && (
-                  <div className="text-fg-subtle text-body-sm truncate mt-0.5">
-                    {c.objective}
-                  </div>
-                )}
-              </div>
-              {c.starts_on && c.ends_on && (
-                <span className="font-mono text-[10px] text-fg-subtle shrink-0">
-                  {formatDateRange(c.starts_on, c.ends_on)}
-                </span>
-              )}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function formatDateRange(startISO: string, endISO: string): string {
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${fmt(startISO)} – ${fmt(endISO)}`.toLowerCase();
-}
-
 /* -------------------------------------------------------------------- */
-/* Footer: inline create-project / create-campaign forms                 */
+/* Footer: inline create-project                                         */
 /* -------------------------------------------------------------------- */
 
-type FooterMode = 'idle' | 'new-project' | 'new-campaign';
-
-function SwitcherFooter({
-  expandedProjectId,
-  onClose,
-}: {
-  expandedProjectId: string;
-  onClose: () => void;
-}) {
-  const [mode, setMode] = useState<FooterMode>('idle');
-
+function SwitcherFooter({ onClose }: { onClose: () => void }) {
+  const [creating, setCreating] = useState(false);
   return (
     <div className="border-t border-border/60 px-2 py-2">
-      {mode === 'idle' && (
-        <div className="flex items-stretch gap-1">
-          <button
-            type="button"
-            onClick={() => setMode('new-project')}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 text-body-sm transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            new project
-          </button>
-          <div className="w-px self-stretch bg-border/60" />
-          <button
-            type="button"
-            onClick={() => setMode('new-campaign')}
-            disabled={!expandedProjectId}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 text-body-sm transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            new campaign
-          </button>
-        </div>
-      )}
-      {mode === 'new-project' && (
-        <NewProjectForm onDone={onClose} onCancel={() => setMode('idle')} />
-      )}
-      {mode === 'new-campaign' && (
-        <NewCampaignForm
-          projectId={expandedProjectId}
-          onDone={onClose}
-          onCancel={() => setMode('idle')}
-        />
+      {creating ? (
+        <NewProjectForm onDone={onClose} onCancel={() => setCreating(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 text-body-sm transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          new project
+        </button>
       )}
     </div>
   );
@@ -426,8 +218,7 @@ function NewProjectForm({
 }) {
   const { getToken } = useAuth();
   const { mutate } = useSWRConfig();
-  const { invalidateCampaigns } = useCacheActions();
-  const swap = useSwapActiveContext();
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -439,20 +230,13 @@ function NewProjectForm({
     setErr(null);
     try {
       const project = await createProject(name.trim(), getToken);
-      // The backend doesn't auto-create a "General" campaign on new
-      // projects (only on user signup), so we create one inline so the
-      // newly-created project is immediately usable as an active scope.
-      const campaign = await createCampaign(
-        project.id,
-        { name: 'General' },
-        getToken,
-      );
-      // Bust caches so the popover (and any other consumer) sees the
-      // new rows on next read.
+      // Auto-add a "General" campaign so the new project is immediately
+      // usable as an active scope.
+      await createCampaign(project.id, { name: 'General' }, getToken);
       mutate(QK.projects);
-      invalidateCampaigns(project.id);
-      swap(project.id, campaign.id);
+      mutate(QK.campaigns(project.id));
       onDone();
+      navigate(`/projects/${project.id}`);
     } catch (e: any) {
       setErr(e?.message || 'failed to create project');
       setSubmitting(false);
@@ -470,13 +254,9 @@ function NewProjectForm({
         maxLength={120}
         className="flex-1 h-8 px-2.5 rounded-md bg-surface-sunken/40 border border-border/60 text-fg text-body-sm placeholder:text-fg-subtle focus:outline-none focus:border-brand/40"
       />
-      <button
-        type="submit"
-        disabled={!name.trim() || submitting}
-        className="h-8 px-3 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-sm font-medium shadow-[0_0_24px_rgba(124,92,255,0.3)] disabled:opacity-40 disabled:shadow-none"
-      >
+      <Button variant="gradient" disabled={!name.trim() || submitting}>
         {submitting ? '…' : 'create'}
-      </button>
+      </Button>
       <button
         type="button"
         onClick={onCancel}
@@ -484,77 +264,7 @@ function NewProjectForm({
       >
         cancel
       </button>
-      {err && (
-        <span className="text-rose-400 text-body-sm ml-2">{err}</span>
-      )}
-    </form>
-  );
-}
-
-function NewCampaignForm({
-  projectId,
-  onDone,
-  onCancel,
-}: {
-  projectId: string;
-  onDone: () => void;
-  onCancel: () => void;
-}) {
-  const { getToken } = useAuth();
-  const { invalidateCampaigns } = useCacheActions();
-  const swap = useSwapActiveContext();
-  const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || submitting) return;
-    setSubmitting(true);
-    setErr(null);
-    try {
-      const campaign = await createCampaign(
-        projectId,
-        { name: name.trim() },
-        getToken,
-      );
-      invalidateCampaigns(projectId);
-      swap(projectId, campaign.id);
-      onDone();
-    } catch (e: any) {
-      setErr(e?.message || 'failed to create campaign');
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="flex items-center gap-1">
-      <input
-        autoFocus
-        type="text"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="campaign name"
-        maxLength={120}
-        className="flex-1 h-8 px-2.5 rounded-md bg-surface-sunken/40 border border-border/60 text-fg text-body-sm placeholder:text-fg-subtle focus:outline-none focus:border-brand/40"
-      />
-      <button
-        type="submit"
-        disabled={!name.trim() || submitting}
-        className="h-8 px-3 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-sm font-medium shadow-[0_0_24px_rgba(124,92,255,0.3)] disabled:opacity-40 disabled:shadow-none"
-      >
-        {submitting ? '…' : 'create'}
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="h-8 px-2 text-fg-subtle hover:text-fg text-body-sm"
-      >
-        cancel
-      </button>
-      {err && (
-        <span className="text-rose-400 text-body-sm ml-2">{err}</span>
-      )}
+      {err && <span className="text-rose-400 text-body-sm ml-2">{err}</span>}
     </form>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * /settings/projects — list of the user's projects (Stitch Surface 2 +
+ * /projects — list of the user's projects (Stitch Surface 2 +
  * the projects_dashboard_list variant).
  *
  * Layout mirrors the Stitch operator-tool design:
@@ -497,7 +497,7 @@ function ProjectRow({
     >
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto_auto] items-center gap-4 lg:gap-6">
         {/* Project name + brand label + last-touched */}
-        <Link to={`/settings/projects/${project.id}`} className="min-w-0 flex items-start gap-3">
+        <Link to={`/projects/${project.id}`} className="min-w-0 flex items-start gap-3">
           <span className={clsx('w-2 h-2 rounded-full shrink-0 mt-2', color.dot)} />
           <div className="min-w-0">
             <h2 className="font-display font-semibold text-fg text-h2 truncate">
@@ -543,7 +543,7 @@ function ProjectRow({
               ))}
               {overflow > 0 && (
                 <Link
-                  to={`/settings/projects/${project.id}`}
+                  to={`/projects/${project.id}`}
                   className="inline-flex items-center h-7 px-2 rounded-lg border border-border/60 bg-surface-sunken/40 text-fg-subtle text-body-sm hover:text-fg"
                 >
                   +{overflow} more
@@ -567,7 +567,7 @@ function ProjectRow({
             {menuOpen && (
               <div className="absolute right-0 top-9 z-20 w-48 rounded-lg border border-border/60 bg-surface-raised/90 backdrop-blur shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] py-1">
                 <Link
-                  to={`/settings/projects/${project.id}`}
+                  to={`/projects/${project.id}`}
                   className="block px-3 py-2 text-body-sm text-fg hover:bg-surface-sunken/40"
                   onClick={() => setMenuOpen(false)}
                 >
