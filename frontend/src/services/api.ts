@@ -829,3 +829,161 @@ export async function getPlaysHistory(
   return await response.json();
 }
 
+// ---------- Campaign creatives -------------------------------------------
+
+export interface Creative {
+  id: string;
+  campaign_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  provider: string;
+  uploaded_at: string;
+  uploaded_by: string | null;
+}
+
+export interface CreativeUploadAuth {
+  upload_url: string;
+  storage_key: string;
+  method: string;
+  expires_in: number;
+  provider: string;
+}
+
+export const CREATIVE_MAX_BYTES = 25 * 1024 * 1024;
+export const CREATIVE_ALLOWED_MIME = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+] as const;
+
+export async function listCreatives(
+  projectId: string,
+  campaignId: string,
+  getToken: GetToken,
+): Promise<Creative[]> {
+  return jsonRequest<Creative[]>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/creatives`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function getCreativeUploadUrl(
+  projectId: string,
+  campaignId: string,
+  payload: { filename: string; mime_type: string; size_bytes: number },
+  getToken: GetToken,
+): Promise<CreativeUploadAuth> {
+  return jsonRequest<CreativeUploadAuth>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/creatives/upload-url`,
+    { method: 'POST', body: JSON.stringify(payload) },
+    getToken,
+  );
+}
+
+export async function confirmCreativeUpload(
+  projectId: string,
+  campaignId: string,
+  payload: {
+    storage_key: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    provider: string;
+  },
+  getToken: GetToken,
+): Promise<Creative> {
+  return jsonRequest<Creative>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/creatives`,
+    { method: 'POST', body: JSON.stringify(payload) },
+    getToken,
+  );
+}
+
+export async function getCreativeDownloadUrl(
+  projectId: string,
+  campaignId: string,
+  creativeId: string,
+  getToken: GetToken,
+): Promise<{ download_url: string; expires_in: number; filename: string }> {
+  return jsonRequest<{ download_url: string; expires_in: number; filename: string }>(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/creatives/${creativeId}/download-url`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function deleteCreative(
+  projectId: string,
+  campaignId: string,
+  creativeId: string,
+  getToken: GetToken,
+): Promise<void> {
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${projectId}/campaigns/${campaignId}/creatives/${creativeId}`,
+    { method: 'DELETE', headers: { ...(await authHeaders(getToken)) } },
+  );
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to delete creative: ${response.status}`);
+  }
+}
+
+/**
+ * End-to-end upload helper: ask backend for a presigned URL, PUT the
+ * file directly to the storage provider, then confirm the metadata
+ * row on success. The browser never round-trips the bytes through
+ * our backend.
+ */
+export async function uploadCreative(
+  projectId: string,
+  campaignId: string,
+  file: File,
+  getToken: GetToken,
+): Promise<Creative> {
+  if (file.size > CREATIVE_MAX_BYTES) {
+    throw new Error(
+      `file is ${(file.size / 1024 / 1024).toFixed(1)} MB; max ${CREATIVE_MAX_BYTES / 1024 / 1024} MB.`,
+    );
+  }
+  const mime = file.type || 'application/octet-stream';
+  if (!(CREATIVE_ALLOWED_MIME as readonly string[]).includes(mime)) {
+    throw new Error(`unsupported file type '${mime}'.`);
+  }
+
+  const auth = await getCreativeUploadUrl(
+    projectId,
+    campaignId,
+    { filename: file.name, mime_type: mime, size_bytes: file.size },
+    getToken,
+  );
+
+  // Direct upload to R2 (or whichever provider). Content-Type must
+  // match what we signed for, or the signature is rejected.
+  const putResp = await fetch(auth.upload_url, {
+    method: auth.method || 'PUT',
+    headers: { 'Content-Type': mime },
+    body: file,
+  });
+  if (!putResp.ok) {
+    const detail = await putResp.text().catch(() => putResp.statusText);
+    throw new Error(`upload failed: ${detail || putResp.statusText}`);
+  }
+
+  return confirmCreativeUpload(
+    projectId,
+    campaignId,
+    {
+      storage_key: auth.storage_key,
+      filename: file.name,
+      mime_type: mime,
+      size_bytes: file.size,
+      provider: auth.provider,
+    },
+    getToken,
+  );
+}
+

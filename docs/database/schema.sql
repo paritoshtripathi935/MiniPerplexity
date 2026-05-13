@@ -343,6 +343,31 @@ CREATE INDEX IF NOT EXISTS idx_ad_account_links_connection
     ON ad_account_links (provider_connection_id);
 
 -- =============================================================================
+-- campaign_creatives  (per-campaign creative assets in object storage)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS campaign_creatives (
+    id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id   uuid        NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    uploaded_by   uuid        REFERENCES users(id) ON DELETE SET NULL,
+    storage_key   text        NOT NULL,
+    filename      text        NOT NULL CHECK (length(filename) BETWEEN 1 AND 255),
+    mime_type     text        NOT NULL,
+    size_bytes    bigint      NOT NULL CHECK (size_bytes >= 0),
+    provider      text        NOT NULL DEFAULT 'r2',
+    uploaded_at   timestamptz NOT NULL DEFAULT now(),
+    archived_at   timestamptz,
+    CONSTRAINT campaign_creatives_provider_check
+        CHECK (provider IN ('r2','s3','gcs','local'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_creatives_campaign_uploaded
+    ON campaign_creatives (campaign_id, uploaded_at DESC)
+    WHERE archived_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_campaign_creatives_campaign_key
+    ON campaign_creatives (campaign_id, storage_key);
+
+-- =============================================================================
 -- Convenience: cleanup function callable from pg_cron or app worker
 -- =============================================================================
 CREATE OR REPLACE FUNCTION cleanup_expired()
