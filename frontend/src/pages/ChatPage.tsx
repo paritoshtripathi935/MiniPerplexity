@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
+import { ChevronLeft, ChevronRight, Youtube } from 'lucide-react';
+import clsx from 'clsx';
 import { ChatMessage } from '../components/ChatMessage';
 import { SearchBar, type ComposerHandle } from '../components/SearchBar';
 import { SessionsSidebar } from '../components/SessionsSidebar';
 import { PlayRunModal } from '../components/PlayRunModal';
-import { ChatRightRail } from '../components/ChatRightRail';
+import { VideosDrawer, collectVideos } from '../components/VideosDrawer';
 import { ChatEmptyState } from '../components/ChatEmptyState';
 import { ModelSelector } from '../components/ModelSelector';
 import {
@@ -76,10 +78,38 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const { invalidateSessions } = useCacheActions();
   /** Slash-selected play queued for the run modal. */
   const [slashPlay, setSlashPlay] = useState<Play | null>(null);
-  /** The play whose context is "loaded" — visible in the composer chip and
-   * right rail. Stays after the play completes so the user can see what they
-   * just ran; cleared when they start a fresh non-play turn. */
+  /** The play whose context is "loaded" — visible in the composer chip.
+   * Stays after the play completes so the user can see what they just
+   * ran; cleared when they start a fresh non-play turn. */
   const [activePlay, setActivePlay] = useState<Play | null>(null);
+  /** Open/close state for the on-demand videos drawer (PAI-14). Replaces
+   *  the always-visible right rail's Videos panel — videos now only take
+   *  pixels when the user asks for them. */
+  const [videosOpen, setVideosOpen] = useState(false);
+  /** Sessions sidebar visibility (PAI-14). Persists across cold loads so
+   *  focused-mode users keep their hidden-sidebar preference. */
+  const [sessionsCollapsed, setSessionsCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('paidpilot-chat-sessions-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleSessionsCollapsed = useCallback(() => {
+    setSessionsCollapsed(prev => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          'paidpilot-chat-sessions-collapsed',
+          next ? '1' : '0',
+        );
+      } catch {
+        /* localStorage disabled — in-memory state still works. */
+      }
+      return next;
+    });
+  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -221,7 +251,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
    * First token flips `isSearching` off and clears the placeholder
    * content. Subsequent tokens are appended. The `done` event provides
    * the persisted message id (for next-steps), the ranked search_results
-   * + citations (for the right rail), and the total latency.
+   * + citations (for the citation + videos drawers), and the total
+   * latency.
    */
   const runAnswerStream = useCallback(
     async (params: {
@@ -476,25 +507,45 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   );
   const hasStarted = turnCount > 0;
 
+  // Videos referenced anywhere in this conversation. Drives the visibility
+  // of the "videos · N" chip in the header — no chip when there are zero.
+  const videoCount = useMemo(() => collectVideos(messages).length, [messages]);
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
+      {/* Sessions sidebar — collapsible (PAI-14). When collapsed, hidden
+          entirely so the chat reclaims ~288px of horizontal space; a
+          thin chevron rail at the left edge expands it back. */}
       <div className="hidden md:block h-full">
-        <aside className="flex flex-col h-full w-72 shrink-0 border-r border-border bg-surface-sunken">
-          <SessionsSidebar
-            darkMode={darkMode}
-            activeSessionId={sessionId}
-            onSelectSession={handleSelectSession}
-            onNewInvestigation={handleNewInvestigation}
-            refreshSignal={sidebarRefresh}
-            campaignId={campaignId || null}
-          />
-        </aside>
+        {sessionsCollapsed ? (
+          <button
+            type="button"
+            onClick={toggleSessionsCollapsed}
+            aria-label="show chat history"
+            title="show chat history"
+            className="group flex flex-col items-center justify-center h-full w-3 hover:w-5 border-r border-border bg-surface-sunken/60 hover:bg-surface-sunken transition-[width,background-color] duration-150"
+          >
+            <ChevronRight className="w-3 h-3 text-fg-subtle/0 group-hover:text-fg-subtle transition-colors" />
+          </button>
+        ) : (
+          <aside className="flex flex-col h-full w-72 shrink-0 border-r border-border bg-surface-sunken">
+            <SessionsSidebar
+              darkMode={darkMode}
+              activeSessionId={sessionId}
+              onSelectSession={handleSelectSession}
+              onNewInvestigation={handleNewInvestigation}
+              refreshSignal={sidebarRefresh}
+              campaignId={campaignId || null}
+              onCollapse={toggleSessionsCollapsed}
+            />
+          </aside>
+        )}
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-surface relative">
         {/* Always-visible investigation header — title + status chips +
-            ModelSelector. Replaces the earlier dual "toolbar / scroll-
-            triggered sticky bar" pattern; one bar that's always in view. */}
+            optional videos chip + ModelSelector. One bar that's always
+            in view. */}
         <div className="border-b border-border bg-surface px-4 sm:px-6 h-12 flex items-center gap-3 shrink-0">
           <div className="flex-1 min-w-0 flex items-center gap-3">
             <div className="text-body-base font-medium text-fg truncate">
@@ -512,6 +563,22 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               </span>
             )}
           </div>
+          {videoCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setVideosOpen(true)}
+              title="open videos"
+              className={clsx(
+                'inline-flex items-center gap-1.5 h-7 px-2 rounded-md border text-body-sm transition-colors shrink-0',
+                'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
+              )}
+            >
+              <Youtube className="w-3.5 h-3.5" />
+              <span className="font-mono text-[10px] uppercase tracking-wider tabular-nums">
+                videos · {videoCount}
+              </span>
+            </button>
+          )}
           <ModelSelector
             value={me?.preferred_chat_model ?? null}
             onChange={modelId =>
@@ -572,7 +639,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         </div>
       </div>
 
-      <ChatRightRail activePlay={activePlay} messages={messages} />
+      <VideosDrawer
+        open={videosOpen}
+        onClose={() => setVideosOpen(false)}
+        messages={messages}
+      />
 
       {slashPlay && (
         <PlayRunModal
