@@ -1,5 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Lightbulb, X, Youtube } from 'lucide-react';
 import type { BrandProfile } from '../services/api';
+
+/** localStorage key for the "videos surface here" tutorial nudge. Set to
+ *  "1" once dismissed; that's the only signal — no per-investigation
+ *  tracking, the tip is a one-time global hint. */
+const VIDEOS_TIP_KEY = 'paidpilot-tip-videos-dismissed';
 
 interface Starter {
   tag: string;
@@ -49,6 +55,25 @@ export function ChatEmptyState({
 }) {
   const starters = useMemo(() => starterPrompts(profile), [profile]);
 
+  // One-time tutorial nudge pointing at the on-demand videos drawer
+  // (PAI-14). Non-blocking, dismissable, remembered forever.
+  const [showVideosTip, setShowVideosTip] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem(VIDEOS_TIP_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const dismissVideosTip = () => {
+    setShowVideosTip(false);
+    try {
+      window.localStorage.setItem(VIDEOS_TIP_KEY, '1');
+    } catch {
+      /* private mode / quota — in-memory dismissal is enough. */
+    }
+  };
+
   return (
     <div className="mt-16 sm:mt-24 animate-fade-in">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
@@ -77,6 +102,34 @@ export function ChatEmptyState({
           </button>
         ))}
       </div>
+
+      {showVideosTip && (
+        <div
+          role="status"
+          className="mt-6 flex items-start gap-3 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2.5"
+        >
+          <span className="grid place-items-center w-6 h-6 rounded-md bg-brand/15 text-brand shrink-0 mt-0.5">
+            <Lightbulb className="w-3.5 h-3.5" />
+          </span>
+          <p className="flex-1 text-body-sm text-fg-muted leading-snug">
+            tutorial videos surface automatically. when your investigation
+            finds youtube content worth watching, look for the{' '}
+            <span className="inline-flex items-baseline gap-1 align-baseline font-mono text-[10px] uppercase tracking-wider text-fg-muted">
+              <Youtube className="w-3 h-3 self-center" />
+              videos
+            </span>{' '}
+            chip at the top of this chat.
+          </p>
+          <button
+            type="button"
+            onClick={dismissVideosTip}
+            aria-label="dismiss tip"
+            className="grid place-items-center w-6 h-6 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-raised/60 shrink-0 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       <p className="text-[11px] text-fg-subtle mt-6">
         paste a URL in the composer to investigate that page specifically.
