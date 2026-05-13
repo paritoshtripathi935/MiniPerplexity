@@ -13,7 +13,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
-import { Check, FolderKanban, Moon, Sun } from 'lucide-react';
+import { Check, FolderKanban, Moon, Plug, Sun } from 'lucide-react';
 import clsx from 'clsx';
 import {
   listChatModels,
@@ -68,6 +68,7 @@ export function SettingsPage({ darkMode }: Props) {
 
         <div className="space-y-4">
           <BrandContextEntry />
+          <IntegrationsEntry />
           <AboutCard />
         </div>
       </div>
@@ -321,6 +322,30 @@ function BrandContextEntry() {
           <p className="text-body-sm text-fg-muted leading-relaxed">
             company, ICP, voice, target CAC/ROAS, and channels are scoped
             to each brand you work on. open a project to edit its profile.
+          </p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function IntegrationsEntry() {
+  return (
+    <Link
+      to="/settings/integrations"
+      className="block rounded-2xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 transition-colors p-5"
+    >
+      <div className="flex items-start gap-3">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-brand shrink-0">
+          <Plug className="w-4 h-4" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-fg font-display font-semibold mb-1">
+            connect ad platforms.
+          </h3>
+          <p className="text-body-sm text-fg-muted leading-relaxed">
+            link meta + google ads accounts so investigations can reference your
+            real spend, CPM, and CPP instead of generic benchmarks.
           </p>
         </div>
       </div>

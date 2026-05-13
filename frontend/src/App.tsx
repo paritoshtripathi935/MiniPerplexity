@@ -27,6 +27,7 @@ const importChatPage = () => import('./pages/ChatPage');
 const importPlaysPage = () => import('./pages/PlaysPage');
 const importCalculatorsPage = () => import('./pages/CalculatorsPage');
 const importSettingsPage = () => import('./pages/SettingsPage');
+const importIntegrationsPage = () => import('./pages/IntegrationsPage');
 const importProjectsListPage = () => import('./pages/ProjectsListPage');
 const importProjectDetailPage = () => import('./pages/ProjectDetailPage');
 const importCampaignHomePage = () => import('./pages/CampaignHomePage');
@@ -38,6 +39,9 @@ const CalculatorsPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   importSettingsPage().then(m => ({ default: m.SettingsPage })),
+);
+const IntegrationsPage = lazy(() =>
+  importIntegrationsPage().then(m => ({ default: m.IntegrationsPage })),
 );
 const ProjectsListPage = lazy(() =>
   importProjectsListPage().then(m => ({ default: m.ProjectsListPage })),
@@ -157,6 +161,14 @@ function AuthedShell() {
             element={
               <Suspense fallback={null}>
                 <SettingsPage darkMode={darkMode} onUpdate={p => setProfile(p)} />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings/integrations"
+            element={
+              <Suspense fallback={null}>
+                <IntegrationsPage darkMode={darkMode} />
               </Suspense>
             }
           />
