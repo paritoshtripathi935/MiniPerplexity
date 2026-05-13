@@ -1,7 +1,7 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-11 (PRs #58 + #59 — marketing landing + in-app design sweep merged) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-13 (Category H closed: project → campaign → tools hierarchy live end-to-end, PRs #61 → #79 merged) · branch: `main` (everything below is merged)
 
 ## Where we are
 
@@ -126,44 +126,53 @@ User-selectable models (UI dropdown at the top of chat):
 Real candidates, ranked by leverage:
 
 0. **PAI-13 — Operator design system adoption** ✅ **shipped end-to-end.**
-   Stacked-PR plan in [PAI_13_PLAN.md](./PAI_13_PLAN.md). All slices
-   merged: PR A (#35) M3 tokens, PR B (#37) "investigation" rename,
-   PR C (#39) ⌘K palette, PR D (#41) + D.1 (#43) operational
-   homepage, PR E (#44) investigation workspace, Logo (#46),
-   PR F.1 (#47) + F.2 (#48) calc tabs + scenarios-primary,
-   PR G (#50) motion + typography sweep, **PR H (#52) page
-   transitions + Plays/Settings + 42% bundle reduction**. The
-   product now reads as an operational workspace (Linear / Stripe /
-   Ramp territory) instead of an AI-wrapper dashboard.
+   See [PAI_13_PLAN.md](./PAI_13_PLAN.md). PRs A → H.
 
-1. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
-   after PR #31. Drop the `@router.post("/answer/{session_id}")` block in
-   `backend/app/api/v1/query_handler.py` and its model imports if no
-   other route uses them. `/answer/{session_id}/stream` remains the only
-   answer path. Keep `CloudflareChat.generate_answer` for now — it's
-   still the non-streaming sibling and may be useful for batch jobs.
+00. **Category H — projects + campaigns hierarchy** ✅ **shipped end-to-end.**
+    See § H below for the 17-PR list (core + post-H polish) and the
+    final route topology.
 
-2. **GitHub repo rename** — 5 min. Still on `paritoshtripathi935/MiniPerplexity`.
-   `gh api -X PATCH /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`
+1. **C1 — Clerk Pro vs custom sign-in UI.** "Secured by Clerk" pill is
+   hidden via a CSS hack that violates Clerk free-plan ToS. Resolve
+   before sustained prod traffic. Pro is $25/mo zero-engineering; custom
+   is ~half a day with `useSignIn()`. Compliance > features. **Most
+   urgent.**
+
+2. **A1 — Notion / Slack / PDF export.** Landing FAQ + pricing card
+   both promise it; currently only `.md` export of sessions exists.
+   ~1 day per integration. Multi-step OAuth for Notion + Slack;
+   server-side render via Pyppeteer or wkhtmltopdf for PDF.
+
+3. **A3 — Citation drawer with quoted paragraph.** Landing deep-dive
+   promises this. Backend has the snippet; need to persist the actual
+   cited span and render a drawer on pill click. ~1 day.
+
+4. **Hierarchy URL purification.** Move `/investigations`, `/plays`,
+   `/calc` UNDER the campaign URL (e.g. `/projects/:id/c/:cid/
+   investigations`). URL becomes fully authoritative for scope; the
+   localStorage active-campaign goes away. ChatPage / PlaysPage /
+   CalculatorsPage read `campaignId` from URL params instead of
+   `useActiveCampaign`. ~half day.
+
+5. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
+   after PR #31; `/answer/{session_id}/stream` is the only live path.
+
+6. **GitHub repo rename** — 5 min. Still on
+   `paritoshtripathi935/MiniPerplexity`. `gh api -X PATCH
+   /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`,
    then update README badges. Old URLs auto-redirect.
 
-3. **Mobile right rail fallback** — ~45 min. The right rail is `lg:` only,
-   so phones/tablets currently see no source list at all (sources are out
-   of the chat thread). Either show a slide-up sheet on mobile or
-   conditionally render an inline strip below `lg`.
+7. **Mobile right rail fallback** — ~45 min. Right rail is `lg:` only;
+   phones / tablets currently see no source list at all (sources are
+   out of the chat thread).
 
-4. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
-   `darkMode: boolean` prop they don't use; only `AppLayout` actually reads
-   it for the theme toggle. Frontend agent flagged it as a design-system
-   violation.
+8. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
+   `darkMode: boolean` prop they don't use; only `AppLayout` actually
+   reads it for the theme toggle.
 
-5. **Bundle size pass** — JS bundle grew 209 → 460 kB (gzip 64 → 137 kB)
-   over the session. `React.lazy`-splitting the chat route would help the
-   home/plays initial load.
-
-V2 lever (multi-day): **Meta Ad Library integration** — the differentiator
-that justifies the rebrand. Schema can lean on existing sessions /
-search_results / citations.
+V2 lever (multi-day): **Meta Ad Library integration** — the
+differentiator that justifies the rebrand. Schema can lean on existing
+sessions / search_results / citations.
 
 ## Future roadmap
 
@@ -261,7 +270,11 @@ Net-new product surface, multi-week:
 ### H. Projects + campaigns hierarchy ✅ SHIPPED 2026-05-13
 
 End-to-end restructure from user-scoped to **project (= brand) →
-campaign → session**. Shipped in a 7-PR stack:
+campaign → session → tools**. Plus the post-H polish landed the
+hierarchy as a routed flow (top-nav switches project; project home
+lists campaigns; campaign home launches investigations / plays / calc).
+
+**Core stack (Category H plan):**
 
 | # | Topic |
 |---|---|
@@ -269,30 +282,81 @@ campaign → session**. Shipped in a 7-PR stack:
 | [#64](https://github.com/paritoshtripathi935/MiniPerplexity/pull/64) | Backend ORM — Project + Campaign models; BrandProfile re-keyed to project_id PK; Session anchored with NOT NULL FKs; `ensure_default_project_and_campaign` on auth-upsert |
 | [#65](https://github.com/paritoshtripathi935/MiniPerplexity/pull/65) | REST API — 14 endpoints under /projects, /projects/{id}/campaigns, /projects/{id}/brand-profile |
 | [#66](https://github.com/paritoshtripathi935/MiniPerplexity/pull/66) | Frontend — top-nav campaign switcher, ActiveCampaignProvider, localStorage source-of-truth |
-| [#67](https://github.com/paritoshtripathi935/MiniPerplexity/pull/67) | Frontend — /settings/projects list + /settings/projects/:id with tabs (campaigns | brand profile) + CampaignDrawer |
+| [#67](https://github.com/paritoshtripathi935/MiniPerplexity/pull/67) | Frontend — /settings/projects list + detail (campaigns / brand profile tabs) + CampaignDrawer |
 | [#68](https://github.com/paritoshtripathi935/MiniPerplexity/pull/68) | Frontend — 3-step onboarding (project → brand → first campaign) renames the default project + General campaign in place |
 | [#69](https://github.com/paritoshtripathi935/MiniPerplexity/pull/69) | Migration 008 (drop brand_profiles.user_id) + active-campaign context in system prompt |
+| [#70](https://github.com/paritoshtripathi935/MiniPerplexity/pull/70) | docs: STATUS.md marks Category H shipped |
+
+**Post-H polish + fixes (2026-05-13 afternoon):**
+
+| # | Topic |
+|---|---|
+| [#71](https://github.com/paritoshtripathi935/MiniPerplexity/pull/71) | fix(chat) — separate `<think>` reasoning into a collapsible disclosure, harden citation pills against out-of-range `[N]` markers |
+| [#72](https://github.com/paritoshtripathi935/MiniPerplexity/pull/72) | fix(api) — `/brand-profile` 500 after migration 008. Stale `profile.user_id` reference → frontend's `catch {}` swallowed the error → onboarding re-opened on every reload. Echo caller's user_id back |
+| [#73](https://github.com/paritoshtripathi935/MiniPerplexity/pull/73) | fix(chat) — qwq-32b digit drop (Cloudflare emits digit-only tokens as JSON numbers, our `isinstance(str)` guards dropped them) + dangling `</think>` synthesis on the frontend |
+| [#74](https://github.com/paritoshtripathi935/MiniPerplexity/pull/74) | feat(scope) — `?campaign_id=` filtering on `/sessions` + `/plays/history`. Home, sidebar, and Plays "recently used" re-scope when active campaign changes |
+| [#75](https://github.com/paritoshtripathi935/MiniPerplexity/pull/75) | feat(projects) — dashboard variant of projects list: search + status filter + sort + AMPS/INVS metric columns + filtered empty state + switcher popover search |
+| [#76](https://github.com/paritoshtripathi935/MiniPerplexity/pull/76) | feat(layout) — collapsible left sidebar (240px ↔ 64px), primary nav moves out of top bar, `[` keyboard shortcut, hover tooltips, mobile drawer below `lg` |
+| [#77](https://github.com/paritoshtripathi935/MiniPerplexity/pull/77) | feat(sidebar) — "projects" row added as a top-level sidebar nav entry |
+| [#78](https://github.com/paritoshtripathi935/MiniPerplexity/pull/78) | feat(settings) — split account settings from per-project brand profile. `/settings` is now account-only (display name, email, model, theme); brand context lives per project |
+| [#79](https://github.com/paritoshtripathi935/MiniPerplexity/pull/79) | feat(nav) — project → campaign → tools hierarchy as routes. New CampaignHomePage at `/projects/:id/c/:cid` with quick-action tiles. Top-nav switcher is project-only |
 
 Migrations 007 + 008 are live on Neon prod. Backfill landed cleanly:
-9 projects (6× "My Brand", 2× "Parspec", 1× "Hotel Superhero"), 9 "General"
-campaigns, 5 brand_profiles re-keyed, 5 sessions reparented, anonymous
-sessions deleted.
+9 projects (6× "My Brand", 2× "Parspec", 1× "Hotel Superhero"), 9
+"General" campaigns, 5 brand_profiles re-keyed, 5 sessions reparented,
+anonymous sessions deleted.
 
 Frontend design prompts live in
 [STITCH_PROMPTS_H.md](./STITCH_PROMPTS_H.md). First generation sits in
 `~/Downloads/stitch_paidpilot_projects_campaigns/`.
 
+#### Route topology after #79
+
+```
+top-nav pill   (active project only — color dot + name)
+    │ click
+    ▼
+switcher popover  (search + project list, no campaigns)
+    │ pick project
+    ▼
+/projects                              ← projects list (dashboard variant)
+/projects/:projectId                   ← project home (campaigns tab + brand profile tab)
+/projects/:projectId/c/:campaignId     ← campaign home (Investigations / Plays / Calculators tiles + recent sessions)
+                                          │
+                                          ├─ /investigations[/:sessionId]    ← still global, scoped via localStorage
+                                          ├─ /plays                          ← still global, scoped via localStorage
+                                          └─ /calc                           ← still global, scoped via localStorage
+
+/settings           ← Account settings only (display name, email, model, theme)
+/settings/projects  ← 302 → /projects   (bookmark redirect)
+```
+
+Sidebar (post-#76 / #77):
+- 240px expanded ↔ 64px collapsed (toggle = `[` or the pill chevron)
+- Primary nav: home / investigations / plays / calculators / projects / settings
+- Tooltips on collapsed icons; mobile = slide-over drawer below `lg`
+
+ActiveCampaign provider (`components/ActiveCampaign.tsx`):
+- `localStorage.paidpilot-active-campaign-id` is the source of truth for
+  the global `/investigations` / `/plays` / `/calc` routes
+- URL-driven sync: CampaignHomePage's mount-effect calls
+  `swap(projectId, campaignId)`; ProjectDetailPage's mount-effect calls
+  `swap(projectId)` to update just the active project
+- `_swapProject(projectId, campaignId?)` is the internal API for the
+  switcher / pages to mutate active scope
+
 **Still deferred (separate work):**
 
-- Filter session list / Home / Plays / Calc surfaces by active
-  campaign. Needs backend `?campaign_id=` query support too. Tracked as
-  follow-up; not blocking beta usage since the active-campaign scope
-  affects new sessions and system-prompt grounding rather than what
-  shows up in the sidebar.
-- Calculator scenarios stay localStorage. Re-key to campaign when
+- **Hierarchy follow-up:** move `/investigations`, `/plays`, `/calc`
+  under the campaign URL (e.g. `/projects/:id/c/:cid/investigations`)
+  so the URL is fully authoritative for scope and the localStorage
+  active-campaign disappears. Bigger refactor — ChatPage / PlaysPage /
+  CalculatorsPage have to read `campaignId` from URL params instead of
+  `useActiveCampaign`. ~half day.
+- **Calculator scenarios stay localStorage.** Re-key to campaign when
   promoted to DB.
-- Workspace / team model (B2) — projects own `user_id` for now; add
-  `workspace_id` later without touching campaign or session FKs.
+- **Workspace / team model (B2)** — projects own `user_id` for now;
+  add `workspace_id` later without touching campaign or session FKs.
 
 ### H (original) — design + plan reference
 
