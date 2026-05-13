@@ -258,6 +258,71 @@ Net-new product surface, multi-week:
 - **Creative iteration loop** — Bring-Your-Own-Image / Figma plugin → variants brief → run against Meta Ad Library benchmarks.
 - **Multi-brand workspace switcher** — once B2 (team / workspace model) lands, a brand picker in the top nav for in-house teams running multiple SKUs / DTC brands.
 
+### H. Projects + campaigns hierarchy
+
+Today everything (sessions, brand_profile) hangs off `user_id` directly.
+The mental model marketers actually carry is **brand → marketing
+campaign → the work I did on it**. This category restructures the data
+model to match. Migration `007_projects_campaigns.sql` is written and
+ready; app + frontend changes follow.
+
+Frontend design prompts live in
+[STITCH_PROMPTS_H.md](./STITCH_PROMPTS_H.md) (surface prompts + collapsible
+sidebar addendum). First generation sits in
+`~/Downloads/stitch_paidpilot_projects_campaigns/`.
+
+**Resolved design (from the grill-me interview, 2026-05-12):**
+
+- **Hierarchy:** `user → projects → campaigns → sessions → messages/queries/…`
+- **Project = Brand.** `brand_profiles` re-keys from `user_id` PK to
+  `project_id` PK. A user can own multiple projects (agency-style, or
+  one DTC operator running multiple SKUs). System prompt grounds in the
+  active project's brand profile.
+- **Campaign = real-world marketing campaign**, time + goal bounded.
+  Fields: `name`, `objective text (≤500)`, `starts_on date NULL`,
+  `ends_on date NULL`, `archived_at`. Status enum / budget / target
+  metric deferred until usage forces the shape.
+- **`campaign_id NOT NULL` on sessions.** No loose investigations. Every
+  user gets a default project + default "General" campaign auto-created
+  on signup; migration replays this for existing users, pulling
+  `brand_profiles.company_name` as the project name (fallback "My Brand").
+- **Active context = localStorage.** `paidpilot-active-campaign-id` keys
+  the whole app. Top-nav switcher replaces the brand chip. Sidebar /
+  Home / Plays / Calc all query `WHERE campaign_id = ?`. Switching
+  campaigns swaps the entire app context.
+- **Uniqueness:** project names unique per-user, campaign names unique
+  per-project. Case-insensitive partial indexes (`WHERE archived_at IS NULL`)
+  so archived names free up.
+- **Latency:** denormalize `project_id` onto sessions (snapshot at
+  create-time). System-prompt path becomes two PK lookups
+  (session → brand_profile) with no join. Hot session-list path is a
+  single covering index hit (`idx_sessions_campaign_last_accessed`).
+- **Lifecycle:** `archived_at` soft-archive only, mirroring sessions.
+  Hard delete deferred. App-layer invariant: refuse to archive the last
+  live project (or last live campaign within a project) so the
+  localStorage pointer can never dangle.
+- **Anonymous sessions die.** With NOT NULL FKs to project/campaign,
+  pre-login sessions can't exist. Migration 007 deletes them; the
+  product loses the "try-before-signup" path. Acceptable: Clerk-gated
+  prod traffic was already the direction.
+
+| # | Item | Effort |
+| --- | --- | --- |
+| H1 | **Apply migration 007 to prod (Neon).** Idempotent. Backfills default project + campaign per existing user, reparents sessions, re-keys brand_profiles to project_id PK. | ~15 min including dry-run on a Neon branch |
+| H2 | **Backend: ORM + repository updates.** `Project` + `Campaign` models in `db/models.py`; repository methods (`list_projects_for_user`, `list_campaigns_for_project`, `create_session_for_campaign`); `brand_profile` lookup re-keyed to `project_id`; system prompt composes from `project_id` derived off the session. | ~half day |
+| H3 | **Backend: API surface.** `GET/POST/PATCH /projects`, `GET/POST/PATCH /projects/{id}/campaigns`, archive endpoints. `POST /api/v1/sessions` accepts `campaign_id` in body. `/me/active-campaign` (GET/PUT) for cross-device active-context sync (still localStorage-first, server is fallback). | ~half day |
+| H4 | **Frontend: top-nav switcher + active-campaign store.** Replaces brand chip. `useActiveCampaign()` hook reads localStorage, falls back to user's default campaign. Switching campaigns invalidates the session list cache. | ~half day |
+| H5 | **Frontend: projects + campaigns settings page.** CRUD UI for projects (name, brand fields inline), campaigns (name, objective, dates). Lives under `/settings/projects` and `/settings/projects/:id/campaigns`. | ~1 day |
+| H6 | **Onboarding wizard updates.** First-time signup creates the user's first project (= where today's brand-profile wizard runs) and "General" campaign as one combined flow. Existing brand profile UI moves into per-project settings. | ~half day |
+| H7 | **Drop `brand_profiles.user_id` column.** Follow-up migration `008` once H2 is live and app no longer references the column. Kept temporarily in 007 for rollback safety. | ~5 min |
+| H8 | **Composed system prompt with campaign context.** Compose the active campaign's `objective` and date-window into the system prompt below the brand block. ("You're operating in campaign 'Q4 holiday push', objective: 'lift incremental ROAS by 15%', running Nov 14 – Dec 24.") | ~15 min once H2 ships |
+
+**Out of scope for H (tracked elsewhere):**
+
+- Calculator scenarios → DB (stay localStorage; will re-key to campaign when promoted).
+- Workspace / team model (B2). Projects own `user_id` for now; add `workspace_id` later without touching the campaign or session FKs.
+- Slug-based URLs. uuid identifiers everywhere; revisit only if shareable per-project pages become a feature.
+
 ## How to resume tomorrow
 
 ```bash
