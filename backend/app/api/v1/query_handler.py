@@ -2,6 +2,7 @@ import json
 import logging
 import time
 import traceback
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -361,12 +362,26 @@ async def list_my_sessions(
     include_archived: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    campaign_id: Optional[uuid.UUID] = Query(default=None),
+    project_id: Optional[uuid.UUID] = Query(default=None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Sidebar feed of the authenticated user's sessions."""
+    """Sidebar feed of the authenticated user's sessions.
+
+    Pass `campaign_id` to narrow to the active campaign (the common case
+    once the frontend's active-campaign store is wired up). `project_id`
+    is the broader filter when callers want all of a project's work
+    across campaigns. Omit both for the user-wide feed (legacy behaviour).
+    """
     rows = await list_sessions_for_user(
-        db, user.id, include_archived=include_archived, limit=limit, offset=offset
+        db,
+        user.id,
+        include_archived=include_archived,
+        limit=limit,
+        offset=offset,
+        campaign_id=campaign_id,
+        project_id=project_id,
     )
     return {"sessions": rows}
 
@@ -541,11 +556,13 @@ async def post_message_next_steps(
 
 @router.get("/plays/history")
 async def get_plays_history(
+    campaign_id: Optional[uuid.UUID] = Query(default=None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Recently used plays for the authenticated user — feeds the Plays page's
     "Recently used" section. Aggregated from assistant messages with non-null
-    play_id."""
-    items = await list_recent_plays_for_user(db, user.id)
+    play_id. When `campaign_id` is supplied, narrows to plays run within
+    that campaign so the section reflects the active scope."""
+    items = await list_recent_plays_for_user(db, user.id, campaign_id=campaign_id)
     return {"items": items}

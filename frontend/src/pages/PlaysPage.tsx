@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
 import { type Play } from '../services/api';
 import { usePlays, usePlaysHistory } from '../services/queries';
+import { useActiveCampaign } from '../components/ActiveCampaign';
 import { PageHeader } from '../components/AppLayout';
 import { PlayRunModal } from '../components/PlayRunModal';
 
@@ -39,7 +40,12 @@ export function PlaysPage({ onPrepareRun }: Props) {
   const [search, setSearch] = useState('');
   const [activePlay, setActivePlay] = useState<Play | null>(null);
   const { data: plays = [], isLoading: loading } = usePlays();
-  const { data: history = [] } = usePlaysHistory(getToken, !!isSignedIn);
+  const { activeCampaign } = useActiveCampaign();
+  const { data: history = [] } = usePlaysHistory(
+    getToken,
+    { campaignId: activeCampaign?.id },
+    !!isSignedIn,
+  );
 
   // Deep-link support: `/plays?run=<play_id>` opens the run modal directly.
   useEffect(() => {

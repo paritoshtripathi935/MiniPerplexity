@@ -269,6 +269,9 @@ export interface SessionListItem {
   message_count: number;
   /** Short trimmed preview of the most recent message in the session. */
   last_message_excerpt: string | null;
+  /** Active-campaign scoping anchor; nullable for legacy rows. */
+  campaign_id: string | null;
+  project_id: string | null;
 }
 
 export interface SearchHit {
@@ -284,12 +287,23 @@ export interface SearchHit {
 
 export async function listSessions(
   getToken: GetToken,
-  opts: { includeArchived?: boolean; limit?: number; offset?: number } = {}
+  opts: {
+    includeArchived?: boolean;
+    limit?: number;
+    offset?: number;
+    /** Narrow to the active campaign (operator-tool scope). */
+    campaignId?: string | null;
+    /** Broader: all of a project's work across campaigns. Ignored when
+     *  campaignId is also set. */
+    projectId?: string | null;
+  } = {}
 ): Promise<{ sessions: SessionListItem[] }> {
   const qp = new URLSearchParams();
   if (opts.includeArchived) qp.set('include_archived', 'true');
   if (opts.limit !== undefined) qp.set('limit', String(opts.limit));
   if (opts.offset !== undefined) qp.set('offset', String(opts.offset));
+  if (opts.campaignId) qp.set('campaign_id', opts.campaignId);
+  else if (opts.projectId) qp.set('project_id', opts.projectId);
   const url = `${API_HOST}/api/v1/sessions${qp.toString() ? `?${qp}` : ''}`;
   const response = await fetch(url, { headers: { ...(await authHeaders(getToken)) } });
   if (!response.ok) throw new Error(`Failed to list sessions: ${response.status}`);
@@ -660,8 +674,10 @@ export interface PlayHistoryItem {
 
 export async function getPlaysHistory(
   getToken: GetToken,
+  opts: { campaignId?: string | null } = {},
 ): Promise<{ items: PlayHistoryItem[] }> {
-  const response = await fetch(`${API_HOST}/api/v1/plays/history`, {
+  const qp = opts.campaignId ? `?campaign_id=${encodeURIComponent(opts.campaignId)}` : '';
+  const response = await fetch(`${API_HOST}/api/v1/plays/history${qp}`, {
     headers: { ...(await authHeaders(getToken)) },
   });
   if (!response.ok) throw new Error(`Failed to load plays history: ${response.status}`);
