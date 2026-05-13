@@ -18,6 +18,11 @@ alembic>=1.13
 pyjwt[crypto]>=2.8
 httpx>=0.27
 
+# Symmetric encryption for OAuth tokens at rest (Meta integration, A5).
+# pyjwt[crypto] pulls this in transitively but we depend on Fernet directly,
+# so pin it explicitly to keep the contract obvious.
+cryptography>=42
+
 # Perf — orjson powers ORJSONResponse (2-3x faster JSON serialization
 # than the stdlib json module). Used as the default_response_class on
 # the FastAPI app.

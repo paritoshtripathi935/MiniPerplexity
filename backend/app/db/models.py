@@ -529,6 +529,116 @@ class ApiUsageLog(Base):
     )
 
 
+# ---------- provider_connections + ad_account_links -------------------------
+class ProviderConnection(Base):
+    """OAuth connection to an external ad platform (Meta first).
+
+    User-scoped (not project-scoped) because one Meta login can grant access
+    to ad accounts owned by multiple PaidPilot projects. The actual
+    project ↔ account mapping lives in ad_account_links.
+
+    Tokens are fernet-encrypted with the META_TOKEN_SECRET env key — the DB
+    never sees plaintext. Re-connecting overwrites in place via the
+    (user_id, provider) unique index so downstream ad_account_links FKs
+    stay stable.
+    """
+    __tablename__ = "provider_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    external_user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    access_token_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    token_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_refreshed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('meta','google_ads')",
+            name="provider_connections_provider_check",
+        ),
+        # Unique (user_id, provider) — migration 009 owns the index. Re-declare
+        # for SQLAlchemy autogen parity.
+        UniqueConstraint(
+            "user_id", "provider", name="uq_provider_connections_user_provider"
+        ),
+    )
+
+
+class AdAccountLink(Base):
+    """A specific external ad account linked to a project.
+
+    Cascade-deletes when either the project goes away or the user
+    disconnects the underlying provider — keeps the schema in a consistent
+    state without manual cleanup.
+    """
+    __tablename__ = "ad_account_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider_connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("provider_connections.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    external_account_id: Mapped[str] = mapped_column(Text, nullable=False)
+    account_name: Mapped[str] = mapped_column(Text, nullable=False)
+    account_currency: Mapped[str] = mapped_column(Text, nullable=False)
+    account_timezone: Mapped[str] = mapped_column(Text, nullable=False)
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+    sync_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'pending'")
+    )
+    sync_error: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(
+            "sync_status IN ('pending','syncing','ok','error')",
+            name="ad_account_links_sync_status_check",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "external_account_id",
+            name="uq_ad_account_links_project_external",
+        ),
+        Index(
+            "idx_ad_account_links_project_linked",
+            "project_id",
+            "linked_at",
+        ),
+        Index("idx_ad_account_links_connection", "provider_connection_id"),
+    )
+
+
 # ---------- content_cache ---------------------------------------------------
 class ContentCache(Base):
     __tablename__ = "content_cache"

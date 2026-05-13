@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.db.models import BrandProfile, Campaign, Project, User
+from app.db.models import AdAccountLink, BrandProfile, Campaign, Project, User
 from app.db.repository import (
     ConflictError,
     InvariantError,
@@ -29,9 +29,12 @@ from app.db.repository import (
     archive_project,
     create_campaign,
     create_project,
+    delete_ad_account_link,
     get_brand_profile,
     get_campaign_for_user,
     get_project_for_user,
+    get_provider_connection,
+    list_ad_account_links_for_project,
     list_campaigns_for_project,
     list_projects_for_user,
     list_projects_with_counts,
@@ -39,7 +42,14 @@ from app.db.repository import (
     unarchive_campaign,
     unarchive_project,
     update_campaign,
+    upsert_ad_account_link,
     upsert_brand_profile,
+)
+from app.services.meta_api import (
+    MetaNotConfiguredError,
+    decrypt_token,
+    is_configured as meta_is_configured,
+    list_ad_accounts,
 )
 
 router = APIRouter()
@@ -430,3 +440,129 @@ async def write_project_brand_profile(
     )
     await db.commit()
     return _serialize_brand(profile, project.id)
+
+
+# ===========================================================================
+# Per-project ad-account links (Meta integration, STATUS A5)
+# ===========================================================================
+
+class AdAccountLinkIn(BaseModel):
+    external_account_id: str = Field(..., min_length=1, max_length=64)
+
+
+class AdAccountLinkOut(BaseModel):
+    id: str
+    project_id: str
+    provider: str
+    external_account_id: str
+    account_name: str
+    account_currency: str
+    account_timezone: str
+    linked_at: str
+    last_synced_at: Optional[str] = None
+    sync_status: str
+    sync_error: Optional[str] = None
+
+
+def _serialize_ad_account_link(link: AdAccountLink) -> AdAccountLinkOut:
+    return AdAccountLinkOut(
+        id=str(link.id),
+        project_id=str(link.project_id),
+        # Phase 1: only Meta. When Google Ads ships we'll join through
+        # provider_connections.provider here.
+        provider="meta",
+        external_account_id=link.external_account_id,
+        account_name=link.account_name,
+        account_currency=link.account_currency,
+        account_timezone=link.account_timezone,
+        linked_at=link.linked_at.isoformat(),
+        last_synced_at=link.last_synced_at.isoformat() if link.last_synced_at else None,
+        sync_status=link.sync_status,
+        sync_error=link.sync_error,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/ad-accounts", response_model=list[AdAccountLinkOut]
+)
+async def list_project_ad_accounts(
+    project: Project = Depends(_require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await list_ad_account_links_for_project(db, project.id)
+    return [_serialize_ad_account_link(r) for r in rows]
+
+
+@router.post(
+    "/projects/{project_id}/ad-accounts",
+    response_model=AdAccountLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def link_project_ad_account(
+    payload: AdAccountLinkIn,
+    project: Project = Depends(_require_project),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Link a Meta ad account to this project. The frontend already
+    knows which accounts the user has access to (via
+    /integrations/meta/ad-accounts); we re-query Meta here to snapshot
+    the live account name + currency + tz at link-time, so the picker's
+    "stale display name" risk goes away."""
+    if not meta_is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Meta integration not configured on this deploy.",
+        )
+
+    conn = await get_provider_connection(db, user_id=user.id, provider="meta")
+    if not conn:
+        raise HTTPException(status_code=400, detail="meta not connected")
+
+    try:
+        access_token = decrypt_token(conn.access_token_ciphertext)
+        accounts = await list_ad_accounts(access_token)
+    except MetaNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    match = next(
+        (a for a in accounts if a.id == payload.external_account_id), None
+    )
+    if not match:
+        # Either the user lost access since the picker rendered, or the
+        # frontend sent a junk id. Either way, can't proceed.
+        raise HTTPException(
+            status_code=404, detail="ad account not visible to this user"
+        )
+
+    link = await upsert_ad_account_link(
+        db,
+        project_id=project.id,
+        provider_connection_id=conn.id,
+        external_account_id=match.id,
+        account_name=match.name,
+        account_currency=match.currency,
+        account_timezone=match.timezone_name,
+    )
+    await db.commit()
+    return _serialize_ad_account_link(link)
+
+
+@router.delete(
+    "/projects/{project_id}/ad-accounts/{link_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def unlink_project_ad_account(
+    link_id: str,
+    project: Project = Depends(_require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        link_uuid = uuid.UUID(link_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid link id")
+    removed = await delete_ad_account_link(
+        db, project_id=project.id, link_id=link_uuid
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="ad account link not found")
+    await db.commit()

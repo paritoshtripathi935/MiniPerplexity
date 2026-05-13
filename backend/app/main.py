@@ -12,6 +12,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from sqlalchemy import text
 
 from app.api.v1.brand_profile import router as brand_profile_router
+from app.api.v1.integrations import router as integrations_router
 from app.api.v1.plays import router as plays_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.query_handler import router
@@ -119,6 +120,7 @@ app.include_router(router, prefix="/api/v1")
 app.include_router(brand_profile_router, prefix="/api/v1", tags=["BrandProfile"])
 app.include_router(plays_router, prefix="/api/v1", tags=["Plays"])
 app.include_router(projects_router, prefix="/api/v1", tags=["Projects"])
+app.include_router(integrations_router, prefix="/api/v1", tags=["Integrations"])
 
 
 @app.get("/health", tags=["Health"])

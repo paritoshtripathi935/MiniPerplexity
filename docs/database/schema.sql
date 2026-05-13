@@ -294,6 +294,55 @@ CREATE INDEX IF NOT EXISTS idx_content_cache_expires_at
     ON content_cache (expires_at);
 
 -- =============================================================================
+-- provider_connections + ad_account_links  (Meta / Google Ads integrations)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS provider_connections (
+    id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider                 text        NOT NULL,
+    external_user_id         text        NOT NULL,
+    access_token_ciphertext  bytea       NOT NULL,
+    token_expires_at         timestamptz NOT NULL,
+    scopes                   text[]      NOT NULL,
+    connected_at             timestamptz NOT NULL DEFAULT now(),
+    last_refreshed_at        timestamptz,
+    CONSTRAINT provider_connections_provider_check
+        CHECK (provider IN ('meta','google_ads'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_connections_user_provider
+    ON provider_connections (user_id, provider);
+
+CREATE INDEX IF NOT EXISTS idx_provider_connections_expires
+    ON provider_connections (token_expires_at)
+    WHERE token_expires_at < now() + interval '7 days';
+
+CREATE TABLE IF NOT EXISTS ad_account_links (
+    id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id               uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    provider_connection_id   uuid        NOT NULL REFERENCES provider_connections(id) ON DELETE CASCADE,
+    external_account_id      text        NOT NULL,
+    account_name             text        NOT NULL,
+    account_currency         text        NOT NULL,
+    account_timezone         text        NOT NULL,
+    linked_at                timestamptz NOT NULL DEFAULT now(),
+    last_synced_at           timestamptz,
+    sync_status              text        NOT NULL DEFAULT 'pending',
+    sync_error               text,
+    CONSTRAINT ad_account_links_sync_status_check
+        CHECK (sync_status IN ('pending','syncing','ok','error'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ad_account_links_project_external
+    ON ad_account_links (project_id, external_account_id);
+
+CREATE INDEX IF NOT EXISTS idx_ad_account_links_project_linked
+    ON ad_account_links (project_id, linked_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ad_account_links_connection
+    ON ad_account_links (provider_connection_id);
+
+-- =============================================================================
 -- Convenience: cleanup function callable from pg_cron or app worker
 -- =============================================================================
 CREATE OR REPLACE FUNCTION cleanup_expired()

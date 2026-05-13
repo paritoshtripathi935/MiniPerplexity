@@ -683,6 +683,132 @@ export async function putProjectBrandProfile(
   );
 }
 
+// ---------- Integrations: Meta (STATUS A5) --------------------------------
+
+export interface ProviderStatus {
+  provider: 'meta' | 'google_ads';
+  /** True iff the deploy has the env credentials needed to run OAuth. */
+  available: boolean;
+  /** True iff this user has a row in `provider_connections` for this provider. */
+  connected: boolean;
+}
+
+export interface IntegrationsStatus {
+  providers: ProviderStatus[];
+}
+
+export async function getIntegrationsStatus(
+  getToken: GetToken,
+): Promise<IntegrationsStatus> {
+  return jsonRequest<IntegrationsStatus>(
+    `${API_HOST}/api/v1/integrations/status`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function getMetaAuthorizeUrl(
+  getToken: GetToken,
+): Promise<{ authorize_url: string }> {
+  // The CSRF state cookie is set by this response; we need it on the
+  // /callback hop. credentials: 'include' so the browser carries it.
+  const response = await fetch(`${API_HOST}/api/v1/integrations/meta/connect`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to start Meta connect: ${detail || response.statusText}`);
+  }
+  return await response.json();
+}
+
+export async function disconnectMeta(getToken: GetToken): Promise<void> {
+  const response = await fetch(`${API_HOST}/api/v1/integrations/meta`, {
+    method: 'DELETE',
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to disconnect Meta: ${response.status}`);
+  }
+}
+
+export interface MetaAdAccount {
+  external_account_id: string;     // "act_1234567890"
+  name: string;
+  currency: string;
+  timezone_name: string;
+  is_active: boolean;
+}
+
+export async function listMetaAdAccounts(
+  getToken: GetToken,
+): Promise<{ accounts: MetaAdAccount[] }> {
+  return jsonRequest<{ accounts: MetaAdAccount[] }>(
+    `${API_HOST}/api/v1/integrations/meta/ad-accounts`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export interface AdAccountLink {
+  id: string;
+  project_id: string;
+  provider: 'meta' | 'google_ads';
+  external_account_id: string;
+  account_name: string;
+  account_currency: string;
+  account_timezone: string;
+  linked_at: string;
+  last_synced_at: string | null;
+  sync_status: 'pending' | 'syncing' | 'ok' | 'error';
+  sync_error: string | null;
+}
+
+export async function listProjectAdAccounts(
+  projectId: string,
+  getToken: GetToken,
+): Promise<AdAccountLink[]> {
+  return jsonRequest<AdAccountLink[]>(
+    `${API_HOST}/api/v1/projects/${projectId}/ad-accounts`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function linkProjectAdAccount(
+  projectId: string,
+  externalAccountId: string,
+  getToken: GetToken,
+): Promise<AdAccountLink> {
+  return jsonRequest<AdAccountLink>(
+    `${API_HOST}/api/v1/projects/${projectId}/ad-accounts`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ external_account_id: externalAccountId }),
+    },
+    getToken,
+  );
+}
+
+export async function unlinkProjectAdAccount(
+  projectId: string,
+  linkId: string,
+  getToken: GetToken,
+): Promise<void> {
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${projectId}/ad-accounts/${linkId}`,
+    {
+      method: 'DELETE',
+      headers: { ...(await authHeaders(getToken)) },
+    },
+  );
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to unlink ad account: ${response.status}`);
+  }
+}
+
 // ---------- Plays history -------------------------------------------------
 
 export interface PlayHistoryItem {

@@ -15,12 +15,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    AdAccountLink,
     BrandProfile,
     Campaign,
     Citation,
     Message,
     MessageRole,
     Project,
+    ProviderConnection,
     Query,
     SearchResultRow,
     SearchSource,
@@ -1304,3 +1306,147 @@ async def add_citations(
     db.add_all(rows)
     await db.flush()
     return rows
+
+
+# ---------- Integrations: Meta / Google Ads ---------------------------------
+
+async def upsert_provider_connection(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    provider: str,
+    external_user_id: str,
+    access_token_ciphertext: bytes,
+    token_expires_at: datetime,
+    scopes: list[str],
+) -> ProviderConnection:
+    """Insert or update the (user, provider) connection row in place.
+
+    Re-OAuthing overwrites the token + expiry + scopes but keeps the row
+    id stable, so any ad_account_links FKs to this connection survive
+    the reconnect (the user doesn't have to re-link their accounts).
+    """
+    stmt = (
+        pg_insert(ProviderConnection)
+        .values(
+            user_id=user_id,
+            provider=provider,
+            external_user_id=external_user_id,
+            access_token_ciphertext=access_token_ciphertext,
+            token_expires_at=token_expires_at,
+            scopes=scopes,
+        )
+        .on_conflict_do_update(
+            index_elements=[ProviderConnection.user_id, ProviderConnection.provider],
+            set_={
+                "external_user_id": external_user_id,
+                "access_token_ciphertext": access_token_ciphertext,
+                "token_expires_at": token_expires_at,
+                "scopes": scopes,
+                "last_refreshed_at": _now(),
+            },
+        )
+        .returning(ProviderConnection)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one()
+
+
+async def get_provider_connection(
+    db: AsyncSession, *, user_id: uuid.UUID, provider: str
+) -> Optional[ProviderConnection]:
+    row = (
+        await db.execute(
+            select(ProviderConnection).where(
+                ProviderConnection.user_id == user_id,
+                ProviderConnection.provider == provider,
+            )
+        )
+    ).scalar_one_or_none()
+    return row
+
+
+async def delete_provider_connection(
+    db: AsyncSession, *, user_id: uuid.UUID, provider: str
+) -> bool:
+    """Drop the connection. Cascades through ad_account_links."""
+    result = await db.execute(
+        ProviderConnection.__table__.delete().where(
+            ProviderConnection.user_id == user_id,
+            ProviderConnection.provider == provider,
+        )
+    )
+    return (result.rowcount or 0) > 0
+
+
+async def upsert_ad_account_link(
+    db: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    provider_connection_id: uuid.UUID,
+    external_account_id: str,
+    account_name: str,
+    account_currency: str,
+    account_timezone: str,
+) -> AdAccountLink:
+    """Link an ad account to a project, or refresh the metadata in place
+    if it's already linked. Idempotent — re-linking the same account is
+    a no-op on the row id and resets sync_status to 'pending' so the
+    next sync run picks it up."""
+    stmt = (
+        pg_insert(AdAccountLink)
+        .values(
+            project_id=project_id,
+            provider_connection_id=provider_connection_id,
+            external_account_id=external_account_id,
+            account_name=account_name,
+            account_currency=account_currency,
+            account_timezone=account_timezone,
+            sync_status="pending",
+        )
+        .on_conflict_do_update(
+            index_elements=[
+                AdAccountLink.project_id,
+                AdAccountLink.external_account_id,
+            ],
+            set_={
+                "provider_connection_id": provider_connection_id,
+                "account_name": account_name,
+                "account_currency": account_currency,
+                "account_timezone": account_timezone,
+                "sync_status": "pending",
+                "sync_error": None,
+            },
+        )
+        .returning(AdAccountLink)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one()
+
+
+async def list_ad_account_links_for_project(
+    db: AsyncSession, project_id: uuid.UUID
+) -> list[AdAccountLink]:
+    rows = await db.execute(
+        select(AdAccountLink)
+        .where(AdAccountLink.project_id == project_id)
+        .order_by(AdAccountLink.linked_at.desc())
+    )
+    return list(rows.scalars())
+
+
+async def delete_ad_account_link(
+    db: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    link_id: uuid.UUID,
+) -> bool:
+    """Project-scoped delete — we re-check project_id to make sure the
+    caller owns the link they're trying to drop."""
+    result = await db.execute(
+        AdAccountLink.__table__.delete().where(
+            AdAccountLink.id == link_id,
+            AdAccountLink.project_id == project_id,
+        )
+    )
+    return (result.rowcount or 0) > 0
