@@ -687,7 +687,7 @@ class CampaignCreative(Base):
             name="campaign_creatives_size_check",
         ),
         CheckConstraint(
-            "provider IN ('r2','s3','gcs','local')",
+            "provider IN ('uploadthing','r2','s3','gcs','local')",
             name="campaign_creatives_provider_check",
         ),
         UniqueConstraint(

@@ -6,7 +6,7 @@ branch in factory.py.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Protocol, runtime_checkable
 
 
@@ -20,14 +20,25 @@ class StorageNotConfiguredError(RuntimeError):
 
 @dataclass(frozen=True)
 class PresignedUpload:
-    """Returned by `presigned_upload`. The browser PUTs `data` to
-    `upload_url` with the given content-type header; on success it
-    posts `{ storage_key, size_bytes, filename, mime_type }` back to
-    the confirm-upload endpoint."""
+    """Returned by `presigned_upload`.
+
+    Two upload shapes are supported via `method`:
+      - "PUT"   — browser sends the raw bytes as the request body,
+                  with Content-Type matching what we signed for. Used
+                  by S3-compatible backends (R2, S3, GCS, B2).
+      - "POST"  — browser sends multipart/form-data with `fields`
+                  appended before the file. Used by UploadThing and
+                  any provider that gates uploads with policy fields.
+
+    `fields` is empty for PUT-style uploads.
+    """
     upload_url: str
     storage_key: str
-    # Echoed back so the frontend can do an optimistic header set.
-    method: str  # "PUT" for S3-compatible (R2), "POST" for some others
+    method: str
+    # Form fields the browser MUST include in the multipart body
+    # alongside the file when method=POST. Order matters in S3 POST
+    # policy but most providers (UploadThing, S3) accept any order.
+    fields: dict = field(default_factory=dict)
 
 
 @runtime_checkable

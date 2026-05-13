@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS campaign_creatives (
     uploaded_at   timestamptz NOT NULL DEFAULT now(),
     archived_at   timestamptz,
     CONSTRAINT campaign_creatives_provider_check
-        CHECK (provider IN ('r2','s3','gcs','local'))
+        CHECK (provider IN ('uploadthing','r2','s3','gcs','local'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_campaign_creatives_campaign_uploaded

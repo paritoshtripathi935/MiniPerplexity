@@ -21,6 +21,8 @@ from app.constants.constants import (
     R2_BUCKET_NAME,
     R2_SECRET_ACCESS_KEY,
     STORAGE_PROVIDER,
+    UPLOADTHING_SECRET,
+    UPLOADTHING_TOKEN,
 )
 from app.services.storage.base import (
     StorageNotConfiguredError,
@@ -35,9 +37,11 @@ def is_storage_configured() -> bool:
     """Cheap predicate the /integrations/status endpoint + UI can call.
 
     True iff the active provider has every env var it needs. Doesn't
-    instantiate the client, so no boto3 import on the happy path of
-    'not configured yet'."""
-    provider = (STORAGE_PROVIDER or "r2").lower()
+    instantiate the client, so the provider's heavy imports stay off
+    the happy path of 'not configured yet'."""
+    provider = (STORAGE_PROVIDER or "uploadthing").lower()
+    if provider == "uploadthing":
+        return bool(UPLOADTHING_TOKEN or UPLOADTHING_SECRET)
     if provider == "r2":
         return all(
             [R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]
@@ -60,10 +64,25 @@ def get_storage() -> StorageProvider:
         if _singleton is not None:
             return _singleton
 
-        provider = (STORAGE_PROVIDER or "r2").lower()
-        if provider == "r2":
-            # Local import — keeps boto3 off the hot path until storage
-            # is actually used. Important for cold-start latency.
+        provider = (STORAGE_PROVIDER or "uploadthing").lower()
+        if provider == "uploadthing":
+            # Local import — keeps httpx warm but avoids dragging it
+            # into the import graph for deploys not using UploadThing.
+            from app.services.storage.uploadthing import UploadThingStorage
+
+            if UPLOADTHING_TOKEN:
+                _singleton = UploadThingStorage.from_token(UPLOADTHING_TOKEN)
+            elif UPLOADTHING_SECRET:
+                _singleton = UploadThingStorage(api_key=UPLOADTHING_SECRET)
+            else:
+                raise StorageNotConfiguredError(
+                    "UploadThing missing auth — set UPLOADTHING_TOKEN "
+                    "(v7 dashboard token) or UPLOADTHING_SECRET "
+                    "(legacy raw API key)."
+                )
+        elif provider == "r2":
+            # Local import — keeps boto3 off the hot path for deploys
+            # using UploadThing. Important for cold-start latency.
             from app.services.storage.r2 import R2Storage
 
             _singleton = R2Storage(
@@ -75,7 +94,7 @@ def get_storage() -> StorageProvider:
         else:
             raise StorageNotConfiguredError(
                 f"Unknown STORAGE_PROVIDER='{provider}'. "
-                "Supported: 'r2' (today)."
+                "Supported: 'uploadthing', 'r2'."
             )
         return _singleton
 

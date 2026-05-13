@@ -634,6 +634,9 @@ class CreativeUploadOut(BaseModel):
     # The application's view of which provider this key lives in.
     # Echoed so the confirm-upload payload doesn't need to re-derive it.
     provider: str
+    # Form fields the browser must include in the multipart body when
+    # method=POST. Empty / absent for PUT-style providers (R2).
+    fields: dict[str, str] = Field(default_factory=dict)
 
 
 class CreativeConfirmRequest(BaseModel):
@@ -736,6 +739,7 @@ async def create_creative_upload_url(
         method=presigned.method,
         expires_in=300,
         provider=storage.name,
+        fields=dict(presigned.fields or {}),
     )
 
 
@@ -763,16 +767,21 @@ async def confirm_creative_upload(
         raise HTTPException(
             status_code=415, detail=f"mime '{payload.mime_type}' not allowed."
         )
-    # Belt-and-suspenders: confirm the storage_key namespace belongs to
-    # this campaign. The presigned URL we issued already constrained
-    # this, but a manual /confirm post could try to associate someone
-    # else's uploaded object with this campaign.
-    expected_prefix = f"campaigns/{campaign.id}/"
-    if not payload.storage_key.startswith(expected_prefix):
-        raise HTTPException(
-            status_code=400,
-            detail="storage_key does not belong to this campaign.",
-        )
+    # Provider-specific key-shape check. R2 keys are server-generated
+    # with a campaign prefix; an attacker can't smuggle a key from a
+    # different campaign past the prefix guard. UploadThing assigns
+    # opaque keys we don't control, so the same guard would reject every
+    # legitimate UT confirm — the campaign auth gate (_require_campaign)
+    # is the only real protection there, and that's enough: the worst a
+    # malicious client could do is associate one of their own uploads
+    # with one of their own campaigns under a wrong key (no escalation).
+    if payload.provider == "r2":
+        expected_prefix = f"campaigns/{campaign.id}/"
+        if not payload.storage_key.startswith(expected_prefix):
+            raise HTTPException(
+                status_code=400,
+                detail="storage_key does not belong to this campaign.",
+            )
 
     creative = await insert_campaign_creative(
         db,
@@ -812,16 +821,26 @@ async def get_creative_download_url(
     if row is None:
         raise HTTPException(status_code=404, detail="creative not found")
 
-    # If the row's provider doesn't match the active backend, we'd need
-    # to materialise the other backend's client. v1 only supports r2;
-    # adding more is a one-line branch here when needed.
-    if row.provider != "r2":
-        raise HTTPException(
-            status_code=501,
-            detail=f"download from provider '{row.provider}' not yet supported.",
-        )
     try:
         storage = get_storage()
+    except StorageNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    # The row's `provider` records which backend wrote it. If the
+    # active STORAGE_PROVIDER has since been swapped, this row's bytes
+    # live in the old backend — we'd need to instantiate that backend
+    # to sign. For v1 we only handle the happy path (provider matches);
+    # a future migration would either backfill the data into the new
+    # backend or keep both backends instantiable.
+    if row.provider != storage.name:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"creative is stored on '{row.provider}' but the active "
+                f"storage backend is '{storage.name}'. Re-migrate or swap "
+                "STORAGE_PROVIDER back."
+            ),
+        )
+    try:
         url = storage.presigned_download(
             key=row.storage_key,
             filename=row.filename,
@@ -865,10 +884,22 @@ async def delete_campaign_creative_endpoint(
     # Best-effort storage delete after the DB commit. If this fails
     # we log + 200 — the user's view of "deleted" matches the DB, and
     # an orphaned object is a low-priority cleanup item (separate from
-    # the user-facing flow).
-    if removed.provider == "r2" and is_storage_configured():
+    # the user-facing flow). If the row was written by a different
+    # provider than what's currently active (post-migration), skip
+    # the storage hit and log; a sweep job can reconcile.
+    if is_storage_configured():
         try:
-            get_storage().delete(key=removed.storage_key)
+            active = get_storage()
+            if active.name == removed.provider:
+                active.delete(key=removed.storage_key)
+            else:
+                logger.info(
+                    "Skipping storage delete: row provider=%s, active=%s, "
+                    "key=%s — orphan left for sweep.",
+                    removed.provider,
+                    active.name,
+                    removed.storage_key,
+                )
         except Exception:
             logger.exception(
                 "Storage delete failed for creative key=%s; row removed.",

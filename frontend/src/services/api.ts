@@ -848,6 +848,9 @@ export interface CreativeUploadAuth {
   method: string;
   expires_in: number;
   provider: string;
+  /** Form fields to include alongside the file when method=POST.
+   *  Empty (or absent) for PUT-style providers (R2). */
+  fields?: Record<string, string>;
 }
 
 export const CREATIVE_MAX_BYTES = 25 * 1024 * 1024;
@@ -961,16 +964,36 @@ export async function uploadCreative(
     getToken,
   );
 
-  // Direct upload to R2 (or whichever provider). Content-Type must
-  // match what we signed for, or the signature is rejected.
-  const putResp = await fetch(auth.upload_url, {
-    method: auth.method || 'PUT',
-    headers: { 'Content-Type': mime },
-    body: file,
-  });
-  if (!putResp.ok) {
-    const detail = await putResp.text().catch(() => putResp.statusText);
-    throw new Error(`upload failed: ${detail || putResp.statusText}`);
+  // Direct upload to the provider. Two shapes:
+  //   PUT  — raw bytes, Content-Type matches what we signed for
+  //          (R2 + S3-compatible providers).
+  //   POST — multipart/form-data with provider-issued policy fields
+  //          appended BEFORE the file (UploadThing + S3 POST policy).
+  //          The browser sets the multipart boundary; do NOT set
+  //          Content-Type manually or the boundary will be wrong.
+  let providerResp: Response;
+  if ((auth.method || 'PUT').toUpperCase() === 'POST') {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(auth.fields ?? {})) {
+      form.append(k, v);
+    }
+    // Most providers (S3, UploadThing) require `file` as the last
+    // field. Use the original filename so the response carries it.
+    form.append('file', file, file.name);
+    providerResp = await fetch(auth.upload_url, {
+      method: 'POST',
+      body: form,
+    });
+  } else {
+    providerResp = await fetch(auth.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': mime },
+      body: file,
+    });
+  }
+  if (!providerResp.ok) {
+    const detail = await providerResp.text().catch(() => providerResp.statusText);
+    throw new Error(`upload failed: ${detail || providerResp.statusText}`);
   }
 
   return confirmCreativeUpload(
