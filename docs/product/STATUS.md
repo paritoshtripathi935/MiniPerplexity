@@ -1,14 +1,18 @@
 # PaidPilot — status & handoff
 
 > **Read this first when you come back.** Living doc — update it as work lands.
-> Last updated: 2026-05-13 (Category H closed: project → campaign → tools hierarchy live end-to-end, PRs #61 → #79 merged) · branch: `main` (everything below is merged)
+> Last updated: 2026-05-14 (post-Category-H polish + Meta Phase 1 + campaign creatives on UploadThing, PRs #81 → #90 merged) · branch: `main` (everything below is merged)
 
 ## Where we are
 
-V1 is shipped. The chat surface had a major iteration this session (right
-rail, streaming reveal, LLM-driven source ranking, per-user model selector,
-etc.). All work from today is on `main`. Render auto-deploys from main; the
-Neon prod DB has migrations through 006 applied.
+V1 is shipped. The chat surface has been through major iterations
+(streaming reveal, LLM-driven source ranking, per-user model selector,
+PAI-13 design refit, Category H project/campaign hierarchy, PAI-14
+chat-surface cleanup). The infra layer just gained pluggable object
+storage (UploadThing default, R2 supported) for per-campaign creatives,
+and Meta integration Phase 1 is in the tree dormant pending creds.
+All work from today is on `main`. Render auto-deploys from main;
+**Neon prod DB has migrations through 010 applied**.
 
 ### V1 scope
 
@@ -74,12 +78,46 @@ PRs in chronological order. Each is on `main`.
 | [#58](https://github.com/paritoshtripathi935/MiniPerplexity/pull/58) | **Marketing landing + split-layout sign-in.** Carves a dedicated marketing surface off the login screen. New `/` for signed-out users — hero, sources strip, 5-tile bento product showcase (chat with citations / brand profile / calculator sparkline / plays icon grid / source weight bars), how-it-works, deep-dive rows, beta pricing ("free for 6 months — $0"), FAQ, final CTA, footer. New split-layout `/sign-in` with pitch + product mock on the left and the Clerk widget on the right. Clerk widget themed at the provider level (`appearance` config maps PaidPilot dark tokens to Clerk element keys; `UserButton` inherits). "Secured by Clerk" + "Development mode" footer pills hidden via a structural CSS rule (`.cl-footer > :not([class*="cl-footerAction"])`) — visual hide only, Clerk Pro plan required for ToS compliance. Routing: signed-out `/` → LandingPage, `/sign-in/*` → LoginPage, `*` → redirect to `/`. Components live under `frontend/src/components/landing/`. |
 | [#59](https://github.com/paritoshtripathi935/MiniPerplexity/pull/59) | **In-app design sweep — match landing.** Audit follow-up. `Button` gains `variant="gradient"` (violet→blue + violet glow) for marquee CTAs. `PageHeader` gains an optional `eyebrow` prop. Cards across HomePage, PlaysPage, SettingsPage, ScenariosPanel, ChatEmptyState, Onboarding, PlayRunModal, CommandPalette migrate from `rounded-card bg-surface-container-low` to landing's `rounded-2xl bg-surface-raised/40`. Title-Case copy lowercased throughout (proper nouns preserved). Citation pills in ChatMessage outlined (`brand/30` + `brand/5`) instead of solid `bg-brand-subtle`. Searching/writing pulse dots switch to emerald-400 to match landing's "live data" convention. SearchBar send, Onboarding Next/Finish, PlayRunModal Run, SessionsSidebar New, SettingsPage Save all swap to gradient variant. Active-session chip → emerald outlined badge. CommandPalette overlay `bg-black/40` → `bg-fg/40 backdrop-blur-sm`. 16 files, +245 / -224, no behavioural changes — token migrations are opportunistic. |
 
+### Shipped 2026-05-14 (post-Category-H stack)
+
+The day after Category H landed. Themes: URL purification, citation
+drawer, Meta integration Phase 1 (dormant pending creds), PAI-14 chat
+cleanup, per-campaign creatives on UploadThing.
+
+| PR | Topic |
+|---|---|
+| [#81](https://github.com/paritoshtripathi935/MiniPerplexity/pull/81) | **URL purification** — tool routes (`/investigations`, `/plays`, `/calc`) move UNDER the campaign URL (`/projects/:p/c/:c/...`). ChatPage/PlaysPage read campaign_id from `useParams` not `useActiveCampaign`. Fixes a silent bug where new investigations were landing in the user's General campaign regardless of active scope — `get_or_create_session` never got a `campaign_id` from the frontend. Backend `/search` + `/answer/stream` now accept `campaign_id` query param. Legacy global routes redirect to scoped paths. |
+| [#82](https://github.com/paritoshtripathi935/MiniPerplexity/pull/82) | **Citation drawer (A3)** — `[N]` pills become buttons; click opens a right-side slide-over with title + domain + quoted excerpt (snippet) + authoritative chip + "open source" CTA. Esc / arrow keys for prev/next. Pure frontend — the snippet was already in `message.search_results` from the existing `/search` flow. |
+| [#83](https://github.com/paritoshtripathi935/MiniPerplexity/pull/83) | **Meta integration scoping doc** — [META_INTEGRATION_PLAN.md](./META_INTEGRATION_PLAN.md). Decided in chat: Strategy A (full OAuth, all-the-way real) but App Review deferred (no real users yet → no urgency until a real customer needs to connect without being a tester). Multi-currency: store in account currency for v1. |
+| [#84](https://github.com/paritoshtripathi935/MiniPerplexity/pull/84) | **Meta Phase 1 — OAuth + ad-account linking.** Migration 009 (`provider_connections`, `ad_account_links`). Backend: `app/services/meta_api.py` (fernet-encrypted token storage + Graph API client). `/integrations/meta/connect` + `/callback` + `/disconnect` + `/me/adaccounts`. Per-project ad-account-link CRUD on `/projects/:p/ad-accounts`. Frontend `/settings/integrations` page with 3 states per provider (unavailable / disconnected / connected) + Google Ads stub. **Dormant** until Meta App creds (`META_APP_ID`, `META_APP_SECRET`, `META_OAUTH_REDIRECT_URI`, `META_TOKEN_SECRET`) are dropped in env. |
+| [#85](https://github.com/paritoshtripathi935/MiniPerplexity/pull/85) | **PAI-14 — drop evidence bar, add videos drawer, collapsible sessions sidebar.** Delete `ChatRightRail.tsx` (-404 LOC). New `VideosDrawer.tsx` triggered by a "videos · N" chip in the conversation header. SessionsSidebar collapses to nothing (via toggle); chat reclaims ~580px on a 1440 screen. |
+| [#86](https://github.com/paritoshtripathi935/MiniPerplexity/pull/86) | **PAI-14 polish.** Unify sidebar collapse + expand into a single `PanelLeft` toggle at the far-left of the chat header (replaces an in-sidebar chevron + an edge rail). Matches AppSidebar icon convention from #76. |
+| [#87](https://github.com/paritoshtripathi935/MiniPerplexity/pull/87) | **Videos drawer tutorial nudge.** Dismissable hint card on `ChatEmptyState` pointing at the new "videos" chip. localStorage `paidpilot-tip-videos-dismissed` so it's one-time. |
+| [#88](https://github.com/paritoshtripathi935/MiniPerplexity/pull/88) | **Per-campaign creatives library.** Migration 010 (`campaign_creatives`). Pluggable storage abstraction in `backend/app/services/storage/` — `StorageProvider` Protocol + factory; `R2Storage` (boto3) and `UploadThingStorage` providers. `STORAGE_PROVIDER` env picks the backend (default `uploadthing`). Browser uploads directly via presigned URL — backend never sees the bytes. New page `/projects/:p/c/:c/creatives` with drag-drop upload + thumbnail grid + preview drawer (iframe for PDFs, inline img for images) + delete. New tile on CampaignHomePage. |
+| [#89](https://github.com/paritoshtripathi935/MiniPerplexity/pull/89) | **Fix: UploadThing v6→v7.** #88 shipped against `/v6/uploadFiles` based on doc-research guesswork — the live API returned "Unsupported operation". Probed the real API: v7 uses `/v7/prepareUpload` with per-file singular `fileName`/`fileSize` (not a batch array), and the ingestion endpoint accepts **multipart PUT** only (raw PUT → 415, POST → 404). `PresignedUpload` gained `body_field: Optional[str]` so the Protocol now covers R2 (PUT-raw) + UploadThing (PUT-multipart) + S3 POST policy (POST-multipart) under one interface. Verified end-to-end against the live token. |
+| [#90](https://github.com/paritoshtripathi935/MiniPerplexity/pull/90) | **Creatives tile polish.** PDF tiles now render the actual first page via `<embed type="application/pdf">` with chrome stripped + a small "PDF" chip overlaid top-left. Every tile gains a `124 KB · 2h ago` metadata line under the filename. Image + PDF preview URLs fetched lazily via IntersectionObserver — a 50-creative campaign no longer fires 50 download-URL requests on mount. |
+
 ### Migrations applied to prod DB (Neon)
 
 | # | Adds | Why |
 | --- | --- | --- |
 | 005 | `messages.play_id`, `messages.next_steps jsonb`, partial index on play_id | Plays history aggregation; cached next-step suggestions |
 | 006 | `users.preferred_chat_model` | Per-user choice of Cloudflare model for `/answer` |
+| 007 | `projects` + `campaigns` tables; `sessions.project_id` + `.campaign_id` NOT NULL; brand_profile re-keyed to `project_id` PK | Category H — project → campaign → session hierarchy |
+| 008 | Drop `brand_profiles.user_id` | Post-007 cleanup once the app fully runs off `project_id` |
+| 009 | `provider_connections` + `ad_account_links` | Meta OAuth Phase 1 (STATUS A5) |
+| 010 | `campaign_creatives` | Per-campaign PDF/image library (object storage off-DB) |
+
+### Env vars added in this stack
+
+| Var | Status | Required for |
+| --- | --- | --- |
+| `META_APP_ID` / `META_APP_SECRET` / `META_OAUTH_REDIRECT_URI` / `META_TOKEN_SECRET` | unset (dormant) | Meta OAuth in /settings/integrations |
+| `META_GRAPH_API_VERSION` | unset → default `v20.0` | optional pin |
+| `STORAGE_PROVIDER` | unset → default `uploadthing` | factory branch in `app/services/storage/factory.py` |
+| `UPLOADTHING_TOKEN` | **live on Render** | UploadThing v7 auth (preferred; carries app_id) |
+| `UPLOADTHING_SECRET` | unset | legacy raw `sk_live_...` key (fallback) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | unset | only when `STORAGE_PROVIDER=r2` |
 
 ## LLM model strategy
 
@@ -120,59 +158,114 @@ User-selectable models (UI dropdown at the top of chat):
   `MissingGreenlet` on commit.
 - **No `pool_pre_ping=True`** on the async engine. Use `pool_recycle=180`.
 - **Signed-in sessions never auto-expire** (100 yr expires_at). Don't change.
+- **UploadThing's v6 `/uploadFiles` is dead — use v7.** `/v6/uploadFiles`
+  returns `{"error":"Unsupported operation"}`. Real path: POST
+  `https://api.uploadthing.com/v7/prepareUpload` with **per-file
+  singular camelCase** body `{fileName, fileSize, fileType, acl,
+  contentDisposition}` → returns `{url, key}`. Upload via **PUT
+  multipart/form-data** (field name `file`) to the returned URL —
+  raw-body PUT returns 415, POST returns 404. Delete stayed on
+  `/v6/deleteFiles` `{fileKeys: [...]}`. PR #89 has the full diff +
+  the `body_field` extension on `PresignedUpload` that makes the
+  abstraction cover R2 (PUT-raw), UploadThing (PUT-multipart), and
+  S3 POST policy (POST-multipart) under one Protocol.
+- **`httpx.HTTPStatusError` repr drops the response body.** Cost us
+  a deploy cycle diagnosing #88's "Unsupported operation" error
+  because the logged traceback only showed the status code. Always
+  log `e.response.text[:500]` alongside the status when raising from
+  external-API failures (see `meta_api.py` and `uploadthing.py` for
+  the pattern).
+- **`gh pr edit` needs `read:org` scope; the repo-scoped token in
+  `.env.git` doesn't have it.** Use the REST API directly when
+  updating PR title/body — see the python snippet used in the
+  conversation history.
+- **`bash source` chokes on `&` in env values.** `backend/.env` has
+  `&channel_binding=require` in the DB URLs; `set -a; source` fails
+  with a parse error. Extract via `grep | sed` instead, or use
+  `python-dotenv` (which the backend itself does).
+- **`psql` isn't installed on this Mac.** Migrations run via
+  asyncpg from the backend venv — see the inline Python script in
+  the 2026-05-14 conversation history. Pattern:
+  `asyncpg.connect(url_stripped_of_query_params, ssl="require")`
+  + `await conn.execute(open(migration_path).read())` in a
+  transaction.
 
 ## Pick up next
 
 Real candidates, ranked by leverage:
 
-0. **PAI-13 — Operator design system adoption** ✅ **shipped end-to-end.**
-   See [PAI_13_PLAN.md](./PAI_13_PLAN.md). PRs A → H.
+0. **PAI-13** ✅ shipped (operator design system).
+   **Category H** ✅ shipped (project/campaign hierarchy).
+   **#79 follow-up (URL purification)** ✅ shipped 2026-05-14 (#81).
+   **A3 (citation drawer)** ✅ shipped 2026-05-14 (#82).
+   **A5 (Meta integration) — Phase 1** ✅ shipped 2026-05-14 (#84), dormant pending Meta App creds.
 
-00. **Category H — projects + campaigns hierarchy** ✅ **shipped end-to-end.**
-    See § H below for the 17-PR list (core + post-H polish) and the
-    final route topology.
+1. **Meta integration Phase 2 — insights sync.** Phase 1 (#84) shipped
+   the schema + OAuth + ad-account linking; Phase 2 adds the
+   `ad_insights_daily` table + a sync cron (nightly full + hourly
+   incremental) + an insights query API. Builds against fixtures so
+   no Meta App creds needed in code; the cron is dormant until the
+   first real link exists. ~2 days per
+   [META_INTEGRATION_PLAN.md § Phase 2](./META_INTEGRATION_PLAN.md#8-phased-ship-plan-assuming-strategy-b).
 
-1. **C1 — Clerk Pro vs custom sign-in UI.** "Secured by Clerk" pill is
-   hidden via a CSS hack that violates Clerk free-plan ToS. Resolve
-   before sustained prod traffic. Pro is $25/mo zero-engineering; custom
-   is ~half a day with `useSignIn()`. Compliance > features. **Most
-   urgent.**
+2. **Meta Phase 3 — LLM grounding.** The differentiator that earns
+   the rebrand. `compose_meta_context()` in `system_prompt.py`
+   appends a tight 3–4 line numeric brief (last-7d spend, CPP vs
+   target, ROAS, biggest WoW mover) below the brand block when the
+   active campaign has linked Meta data. Per-project default
+   conversion-event + attribution-window override on
+   `brand_profiles`. ~1 day.
 
-2. **A1 — Notion / Slack / PDF export.** Landing FAQ + pricing card
-   both promise it; currently only `.md` export of sessions exists.
-   ~1 day per integration. Multi-step OAuth for Notion + Slack;
-   server-side render via Pyppeteer or wkhtmltopdf for PDF.
+3. **Meta Phase 4 — real UI tiles.** Real HomePage CAC trend
+   sparkline + CampaignHomePage rollup chip strip. Reads from
+   `ad_insights_daily`. ~1 day. Strictly downstream of Phase 2.
 
-3. **A3 — Citation drawer with quoted paragraph.** Landing deep-dive
-   promises this. Backend has the snippet; need to persist the actual
-   cited span and render a drawer on pill click. ~1 day.
+4. **Meta App credentials (your side).** Required before any of
+   #84/Phase 2-4 is observable in prod. Steps in
+   [META_INTEGRATION_PLAN.md § 9](./META_INTEGRATION_PLAN.md#9-open-item--meta-app-credentials).
+   Engineering can keep going in parallel.
 
-4. **Hierarchy URL purification.** Move `/investigations`, `/plays`,
-   `/calc` UNDER the campaign URL (e.g. `/projects/:id/c/:cid/
-   investigations`). URL becomes fully authoritative for scope; the
-   localStorage active-campaign goes away. ChatPage / PlaysPage /
-   CalculatorsPage read `campaignId` from URL params instead of
-   `useActiveCampaign`. ~half day.
+5. **C1 — Clerk Pro vs custom sign-in.** "Secured by Clerk" pill
+   hidden via a CSS hack that violates the free-plan ToS. **Urgency
+   downgraded** as of 2026-05-14: there are no real users yet, so
+   sustained-prod-traffic compliance isn't binding. Still worth
+   resolving before any cold-traffic launch. Pro = $25/mo
+   zero-engineering; custom = ~half day with `useSignIn()`.
 
-5. **Delete the JSON `/answer` endpoint** (~5 min). No frontend caller
-   after PR #31; `/answer/{session_id}/stream` is the only live path.
+6. **A1 — Notion / Slack / PDF export.** Landing FAQ + pricing card
+   both promise it; only `.md` export of sessions exists today.
+   ~1 day per integration. Notion + Slack: OAuth + API write.
+   PDF: server-side render via Pyppeteer or wkhtmltopdf.
 
-6. **GitHub repo rename** — 5 min. Still on
-   `paritoshtripathi935/MiniPerplexity`. `gh api -X PATCH
-   /repos/paritoshtripathi935/MiniPerplexity --field name=PaidPilot`,
-   then update README badges. Old URLs auto-redirect.
+7. **A2 — Source weighting UI.** Backend `source_ranker.py` has
+   static authority + LLM rerank; no user controls to boost / mute
+   publishers. New `user_source_weights` table + Settings UI.
+   ~2 days.
 
-7. **Mobile right rail fallback** — ~45 min. Right rail is `lg:` only;
-   phones / tablets currently see no source list at all (sources are
-   out of the chat thread).
+8. **Apply migration 010 to Neon.** Already applied 2026-05-14;
+   listed here for accountability. Future migrations follow the
+   same `psql` (or asyncpg via Python) pattern against
+   `DATABASE_URL_UNPOOLED`.
 
-8. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all receive a
-   `darkMode: boolean` prop they don't use; only `AppLayout` actually
-   reads it for the theme toggle.
+9. **Save-your-own plays (E1).** Schema sketched in STATUS H section.
+   New `user_plays` table + `/me/plays` CRUD + "Save as play" action
+   on a finished investigation. ~2 days.
 
-V2 lever (multi-day): **Meta Ad Library integration** — the
-differentiator that justifies the rebrand. Schema can lean on existing
-sessions / search_results / citations.
+10. **GitHub repo rename** — 5 min. Still
+    `paritoshtripathi935/MiniPerplexity`. `gh api -X PATCH /repos/...
+    --field name=PaidPilot`, update README badges. Old URLs auto-redirect.
+
+11. **Mobile fallback for the videos drawer + creatives grid** —
+    ~30 min. Both surfaces work `lg:` and up; phones get small
+    layouts but the drawers should be reviewed on real device widths.
+
+12. **Delete the JSON `/answer` endpoint** (~5 min). No frontend
+    caller after PR #31; `/answer/{session_id}/stream` is the only
+    live path.
+
+13. **`darkMode` prop-drilling cleanup** — ~30 min. Pages all
+    receive a `darkMode: boolean` prop they don't use; only
+    `AppLayout` reads it for the theme toggle.
 
 ## Future roadmap
 
@@ -347,12 +440,12 @@ ActiveCampaign provider (`components/ActiveCampaign.tsx`):
 
 **Still deferred (separate work):**
 
-- **Hierarchy follow-up:** move `/investigations`, `/plays`, `/calc`
-  under the campaign URL (e.g. `/projects/:id/c/:cid/investigations`)
-  so the URL is fully authoritative for scope and the localStorage
-  active-campaign disappears. Bigger refactor — ChatPage / PlaysPage /
-  CalculatorsPage have to read `campaignId` from URL params instead of
-  `useActiveCampaign`. ~half day.
+- ~~**Hierarchy follow-up:** move `/investigations`, `/plays`,
+  `/calc` under the campaign URL~~ ✅ shipped 2026-05-14 (#81).
+  ChatPage/PlaysPage now read `campaignId` from `useParams`.
+  localStorage `paidpilot-active-campaign-id` survives as a
+  navigation-chrome hint (sidebar / palette / home build links off
+  it) but is no longer the source of truth for scope.
 - **Calculator scenarios stay localStorage.** Re-key to campaign when
   promoted to DB.
 - **Workspace / team model (B2)** — projects own `user_id` for now;
@@ -530,6 +623,16 @@ docs/
 
 ## Branch state
 
-`main` carries everything. Open PRs (not from this session):
+`main` carries everything through PR #90 (HEAD on 2026-05-14). Open PRs:
 [#1](https://github.com/paritoshtripathi935/MiniPerplexity/pull/1) — Tavily
-search provider (pre-existing, not touched today).
+search provider (pre-existing, untouched).
+
+Render auto-deploys backend; Netlify auto-deploys frontend. Last live
+verifications:
+- UploadThing creatives flow tested end-to-end against the live
+  production token on 2026-05-14 (prepareUpload → multipart PUT →
+  CDN GET → delete). PR #89 + #90.
+- Meta integration UI is reachable at `/settings/integrations` but
+  returns 503 on connect (env creds intentionally not set yet).
+- Migration 010 applied to Neon 2026-05-14 via asyncpg from the
+  backend venv (`psql` unavailable locally).
