@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth, SignedIn, SignedOut } from '@clerk/clerk-react';
 import {
   Archive,
-  ChevronLeft,
   Download,
   Pencil,
   Plus,
@@ -32,10 +31,6 @@ interface Props {
   /** Scope-filter the sidebar's session list. Passed in from ChatPage,
    *  which reads it from the URL (post-#79 URL is scope-authoritative). */
   campaignId?: string | null;
-  /** When provided, renders a collapse-chevron in the header. Clicking
-   *  it asks the parent (ChatPage) to hide the sidebar entirely — a
-   *  thin edge rail is left as the re-expand affordance (PAI-14). */
-  onCollapse?: () => void;
 }
 
 function relativeTime(iso: string): string {
@@ -56,7 +51,6 @@ export function SessionsSidebar({
   onNewInvestigation,
   refreshSignal = 0,
   campaignId = null,
-  onCollapse,
 }: Props) {
   const { getToken, isSignedIn } = useAuth();
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -166,28 +160,15 @@ export function SessionsSidebar({
   return (
     <div className="flex flex-col h-full">
       <div className="p-3 space-y-2 border-b border-border">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="gradient"
-            size="sm"
-            onClick={onNewInvestigation}
-            leadingIcon={<Plus className="w-3.5 h-3.5" />}
-            className="flex-1 justify-center"
-          >
-            new investigation
-          </Button>
-          {onCollapse && (
-            <button
-              type="button"
-              onClick={onCollapse}
-              aria-label="collapse chat history"
-              title="hide chat history"
-              className="grid place-items-center w-8 h-8 rounded-md border border-border/60 text-fg-subtle hover:text-fg hover:bg-surface-raised/60 transition-colors shrink-0"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+        <Button
+          variant="gradient"
+          size="sm"
+          onClick={onNewInvestigation}
+          leadingIcon={<Plus className="w-3.5 h-3.5" />}
+          className="w-full justify-center"
+        >
+          new investigation
+        </Button>
 
         <SignedIn>
           <div className="relative">
