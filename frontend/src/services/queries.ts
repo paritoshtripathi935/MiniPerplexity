@@ -25,12 +25,16 @@ import {
   getMe,
   getPlaysHistory,
   getSessionHistory,
+  listCampaigns,
   listPlays,
+  listProjects,
   listSessions,
   type BrandProfile,
+  type CampaignSummary,
   type GetToken,
   type Play,
   type PlayHistoryItem,
+  type ProjectSummary,
   type SessionListItem,
   type UserProfile,
 } from './api';
@@ -53,6 +57,8 @@ export const QK = {
   plays: '/plays' as const,
   playsHistory: '/plays/history' as const,
   sessionHistory: (sessionId: string) => `/session/${sessionId}/history` as const,
+  projects: '/projects' as const,
+  campaigns: (projectId: string) => `/projects/${projectId}/campaigns` as const,
 };
 
 /* ----------------------------- Hooks ----------------------------------- */
@@ -119,6 +125,26 @@ export function useSessionHistory(
   );
 }
 
+export function useProjects(getToken: GetToken, enabled = true) {
+  return useSWR<ProjectSummary[]>(
+    enabled ? QK.projects : null,
+    () => listProjects(getToken).catch(() => []),
+    SHARED,
+  );
+}
+
+export function useCampaigns(
+  projectId: string | null | undefined,
+  getToken: GetToken,
+  enabled = true,
+) {
+  return useSWR<CampaignSummary[]>(
+    enabled && projectId ? QK.campaigns(projectId) : null,
+    () => listCampaigns(projectId!, getToken).catch(() => []),
+    SHARED,
+  );
+}
+
 /* ----------------------------- Invalidation ---------------------------- */
 
 /** Imperative cache helpers for non-hook contexts (App.tsx boot preload,
@@ -140,6 +166,10 @@ export function useCacheActions() {
      * post-stream when the persisted turn count changes. */
     invalidateSessionHistory: (sessionId: string) =>
       mutate(QK.sessionHistory(sessionId)),
+    /** Bust the projects list after create / rename / archive. */
+    invalidateProjects: () => mutate(QK.projects),
+    /** Bust one project's campaign list. */
+    invalidateCampaigns: (projectId: string) => mutate(QK.campaigns(projectId)),
   };
 }
 
