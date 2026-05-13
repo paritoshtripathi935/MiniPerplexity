@@ -1,9 +1,15 @@
 import React, { ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
-import { Calculator, Home, PlayCircle, Search, Settings, Sun, Moon } from 'lucide-react';
-import clsx from 'clsx';
+import { Moon, Search, Sun } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 import { ActiveCampaignProvider } from './ActiveCampaign';
+import {
+  AppSidebar,
+  AppSidebarDrawer,
+  SidebarHamburger,
+  SidebarProvider,
+} from './AppSidebar';
 import { CampaignSwitcher } from './CampaignSwitcher';
 import {
   CommandPalette,
@@ -17,81 +23,67 @@ interface Props {
   toggleDarkMode: () => void;
 }
 
-const NAV = [
-  { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/investigations', label: 'Investigations', icon: Search, end: false },
-  { to: '/plays', label: 'Plays', icon: PlayCircle, end: false },
-  { to: '/calc', label: 'Calculators', icon: Calculator, end: false },
-  { to: '/settings', label: 'Settings', icon: Settings, end: false },
-];
-
 /**
- * Sticky top nav + outlet for routed pages. Pages render their own page-level
- * chrome below.
+ * App shell: persistent sidebar on the left, slim top-nav with the
+ * campaign switcher + utility actions on the right. Primary nav lives
+ * in the sidebar (matches Stitch operator-tool design); the top bar is
+ * reserved for global context (logo, campaign switcher) and tools
+ * (⌘K, theme, avatar).
  */
 export function AppLayout(props: Props) {
   return (
     <ActiveCampaignProvider>
-      <CommandPaletteProvider>
-        <AppLayoutInner {...props} />
-        <CommandPalette />
-      </CommandPaletteProvider>
+      <SidebarProvider>
+        <CommandPaletteProvider>
+          <AppLayoutInner {...props} />
+          <CommandPalette />
+        </CommandPaletteProvider>
+      </SidebarProvider>
     </ActiveCampaignProvider>
   );
 }
 
 function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
   const location = useLocation();
-  // Investigation surface uses its own full-bleed layout (no max-width).
-  // Legacy `/chat/*` redirects via App.tsx; nothing else needs this guard.
+  const navigate = useNavigate();
   const isInvestigationRoute = location.pathname.startsWith('/investigations');
   // Top-level route segment drives the page-enter key. We deliberately key
-  // on the first segment (not the full pathname) so that nav within an
-  // investigation (/investigations/abc → /investigations/def) doesn't re-
-  // trigger the page-enter animation — only true page jumps do.
+  // on the first segment so that nav within an investigation
+  // (/investigations/abc → /investigations/def) doesn't re-trigger the
+  // page-enter animation — only true page jumps do.
   const pageKey = location.pathname.split('/')[1] || 'home';
   const { setOpen: setPaletteOpen } = useCommandPalette();
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
+  // Sidebar's "+ new investigation" CTA — routes to a fresh investigations
+  // path; ChatPage handles session-id minting on mount when none is given.
+  const onNewInvestigation = () => navigate(`/investigations/${uuidv4()}`);
+
   return (
     <div className="min-h-screen flex flex-col bg-surface-sunken text-fg">
       <header className="sticky top-0 z-40 border-b border-border bg-surface/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
-          <NavLink to="/" className="flex items-center gap-2 mr-2 shrink-0">
+        <div className="px-4 sm:px-6 lg:px-6 h-14 flex items-center gap-3">
+          <SidebarHamburger />
+          <a
+            href="/"
+            onClick={e => {
+              e.preventDefault();
+              navigate('/');
+            }}
+            className="flex items-center gap-2 mr-2 shrink-0"
+          >
             <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg">
               <Logo className="w-4 h-4" />
             </span>
             <span className="font-display font-semibold tracking-tight text-body-base hidden sm:inline">
               PaidPilot
             </span>
-          </NavLink>
+          </a>
 
           <CampaignSwitcher />
 
-          <nav className="flex-1 flex items-center gap-0.5 overflow-x-auto">
-            {NAV.map(item => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    clsx(
-                      'inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-body-sm font-medium transition-colors duration-150',
-                      isActive
-                        ? 'text-fg bg-surface-sunken'
-                        : 'text-fg-subtle hover:text-fg hover:bg-surface-sunken/60'
-                    )
-                  }
-                >
-                  <Icon className="w-3.5 h-3.5" strokeWidth={2} />
-                  <span className="hidden sm:inline">{item.label}</span>
-                </NavLink>
-              );
-            })}
-          </nav>
+          <div className="flex-1" />
 
           <div className="flex items-center gap-1.5">
             <button
@@ -109,7 +101,6 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
                 K
               </kbd>
             </button>
-            {/* Compact icon-only variant for mobile / narrow widths. */}
             <button
               onClick={() => setPaletteOpen(true)}
               className="sm:hidden grid place-items-center w-8 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
@@ -134,18 +125,23 @@ function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
         </div>
       </header>
 
-      {isInvestigationRoute ? (
-        <main key={pageKey} className="flex-1 min-h-0 motion-safe:animate-page-enter">
-          <Outlet />
-        </main>
-      ) : (
-        <main
-          key={pageKey}
-          className="flex-1 max-w-[1280px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 motion-safe:animate-page-enter"
-        >
-          <Outlet />
-        </main>
-      )}
+      <div className="flex-1 flex min-h-0">
+        <AppSidebar onNewInvestigation={onNewInvestigation} />
+        <AppSidebarDrawer onNewInvestigation={onNewInvestigation} />
+
+        {isInvestigationRoute ? (
+          <main key={pageKey} className="flex-1 min-h-0 motion-safe:animate-page-enter">
+            <Outlet />
+          </main>
+        ) : (
+          <main
+            key={pageKey}
+            className="flex-1 max-w-[1280px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 motion-safe:animate-page-enter"
+          >
+            <Outlet />
+          </main>
+        )}
+      </div>
     </div>
   );
 }

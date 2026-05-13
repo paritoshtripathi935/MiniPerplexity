@@ -187,6 +187,11 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // Slide-over drawer entrance for the mobile sidebar.
+        'slide-in-left': {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
       },
       animation: {
         'fade-in-up': 'fade-in-up 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
@@ -194,6 +199,7 @@ export default {
         'status-blink': 'status-blink 1.4s ease-in-out infinite',
         'cursor-blink': 'cursor-blink 1s steps(1, end) infinite',
         'page-enter': 'page-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'slide-in-left': 'slide-in-left 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },
