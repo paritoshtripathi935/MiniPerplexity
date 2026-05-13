@@ -162,10 +162,15 @@ export function ActiveCampaignProvider({ children }: { children: ReactNode }) {
       activeCampaign,
       ready,
       setActiveCampaignId,
-      _swapProject: (projectId: string, campaignId: string) => {
+      _swapProject: (projectId: string, campaignId?: string | null) => {
         setActiveProjectId(projectId);
-        writeStored(campaignId);
-        setStoredId(campaignId);
+        // Optional campaign: when omitted (visiting /projects/:id without
+        // a specific campaign), let the activeCampaign useMemo resolve a
+        // sensible default once the new project's campaigns load.
+        if (campaignId) {
+          writeStored(campaignId);
+          setStoredId(campaignId);
+        }
       },
     }),
     [projects, campaigns, activeProject, activeCampaign, ready, setActiveCampaignId],
@@ -189,7 +194,7 @@ export function useActiveCampaign(): ActiveCampaignContextValue {
 export function useSwapActiveContext() {
   const ctx = useContext(Ctx) as
     | (ActiveCampaignContextValue & {
-        _swapProject: (projectId: string, campaignId: string) => void;
+        _swapProject: (projectId: string, campaignId?: string | null) => void;
       })
     | null;
   if (!ctx) {

@@ -8,7 +8,7 @@
  * display info, chat-model preference, theme.
  *
  * Brand context (company, ICP, voice, targets, channels) is owned per
- * project at /settings/projects/:id under the brand-profile tab.
+ * project at /projects/:id under the brand-profile tab.
  */
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -307,7 +307,7 @@ function AppearanceCard({ darkMode }: { darkMode: boolean }) {
 function BrandContextEntry() {
   return (
     <Link
-      to="/settings/projects"
+      to="/projects"
       className="block rounded-2xl border border-brand/30 bg-brand/5 hover:bg-brand/10 transition-colors p-5"
     >
       <div className="flex items-start gap-3">

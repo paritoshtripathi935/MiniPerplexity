@@ -28,6 +28,7 @@ const importCalculatorsPage = () => import('./pages/CalculatorsPage');
 const importSettingsPage = () => import('./pages/SettingsPage');
 const importProjectsListPage = () => import('./pages/ProjectsListPage');
 const importProjectDetailPage = () => import('./pages/ProjectDetailPage');
+const importCampaignHomePage = () => import('./pages/CampaignHomePage');
 
 const ChatPage = lazy(() => importChatPage().then(m => ({ default: m.ChatPage })));
 const PlaysPage = lazy(() => importPlaysPage().then(m => ({ default: m.PlaysPage })));
@@ -42,6 +43,9 @@ const ProjectsListPage = lazy(() =>
 );
 const ProjectDetailPage = lazy(() =>
   importProjectDetailPage().then(m => ({ default: m.ProjectDetailPage })),
+);
+const CampaignHomePage = lazy(() =>
+  importCampaignHomePage().then(m => ({ default: m.CampaignHomePage })),
 );
 
 /** Warm the lazy route chunks shortly after first paint. Runs once on
@@ -191,7 +195,7 @@ function AuthedShell() {
             }
           />
           <Route
-            path="settings/projects"
+            path="projects"
             element={
               <Suspense fallback={null}>
                 <ProjectsListPage darkMode={darkMode} />
@@ -199,12 +203,29 @@ function AuthedShell() {
             }
           />
           <Route
-            path="settings/projects/:projectId"
+            path="projects/:projectId"
             element={
               <Suspense fallback={null}>
                 <ProjectDetailPage darkMode={darkMode} />
               </Suspense>
             }
+          />
+          <Route
+            path="projects/:projectId/c/:campaignId"
+            element={
+              <Suspense fallback={null}>
+                <CampaignHomePage darkMode={darkMode} />
+              </Suspense>
+            }
+          />
+          {/* Bookmark-preservation redirects from the pre-restructure paths. */}
+          <Route
+            path="settings/projects"
+            element={<Navigate to="/projects" replace />}
+          />
+          <Route
+            path="settings/projects/:projectId"
+            element={<LegacyProjectRedirect />}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -217,6 +238,18 @@ function AuthedShell() {
 function ChatLegacyRedirect() {
   const { sessionId } = useParams();
   return <Navigate to={sessionId ? `/investigations/${sessionId}` : '/investigations'} replace />;
+}
+
+/** Preserves the projectId when bookmarks land on /settings/projects/:id
+ *  (pre-restructure path; now lives under /projects/:id). */
+function LegacyProjectRedirect() {
+  const { projectId } = useParams();
+  return (
+    <Navigate
+      to={projectId ? `/projects/${projectId}` : '/projects'}
+      replace
+    />
+  );
 }
 
 function App() {

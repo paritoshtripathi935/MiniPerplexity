@@ -1,5 +1,5 @@
 /**
- * /settings/projects/:projectId — project detail with tabs.
+ * /projects/:projectId — project detail with tabs.
  *
  * Surface 3 from STITCH_PROMPTS_H.md, simplified to the Stitch designer's
  * tab structure (campaigns | brand profile) instead of the two-column
@@ -13,7 +13,7 @@ import { Archive, ChevronRight, MoreHorizontal, Plus, Save } from 'lucide-react'
 import clsx from 'clsx';
 import { PageHeader } from '../components/AppLayout';
 import { Button } from '../components/ui/Button';
-import { projectColor } from '../components/ActiveCampaign';
+import { projectColor, useSwapActiveContext } from '../components/ActiveCampaign';
 import { CampaignDrawer } from '../components/CampaignDrawer';
 import {
   BrandProfileFormFields,
@@ -52,6 +52,15 @@ export function ProjectDetailPage(_props: Props) {
     [projects, projectId],
   );
 
+  // Keep the top-nav switcher pill + brand-profile lookups in sync with
+  // the URL — visiting /projects/:id makes that the active project.
+  // Campaign defaults to whatever the new project's first live campaign
+  // resolves to (handled by the provider's auto-resolve).
+  const swap = useSwapActiveContext();
+  React.useEffect(() => {
+    if (projectId) swap(projectId);
+  }, [projectId, swap]);
+
   const [tab, setTab] = useState<Tab>('campaigns');
 
   // Loading + not-found handling. The "loading" branch covers the case
@@ -65,7 +74,7 @@ export function ProjectDetailPage(_props: Props) {
       <div className="rounded-2xl border border-border/60 bg-surface-raised/40 p-8 text-center">
         <p className="text-fg-muted">project not found</p>
         <Link
-          to="/settings/projects"
+          to="/projects"
           className="inline-block mt-3 text-brand hover:underline text-body-sm"
         >
           back to projects
@@ -76,7 +85,7 @@ export function ProjectDetailPage(_props: Props) {
 
   return (
     <>
-      <ProjectHeader project={project} onAfterArchive={() => navigate('/settings/projects')} />
+      <ProjectHeader project={project} onAfterArchive={() => navigate('/projects')} />
 
       <div className="mt-6 border-b border-border/60 flex items-center gap-1">
         <TabButton active={tab === 'campaigns'} onClick={() => setTab('campaigns')}>
@@ -214,7 +223,7 @@ function ProjectHeader({
               settings
             </Link>
             <ChevronRight className="w-3 h-3" />
-            <Link to="/settings/projects" className="hover:text-fg">
+            <Link to="/projects" className="hover:text-fg">
               projects
             </Link>
             <ChevronRight className="w-3 h-3" />
@@ -285,8 +294,9 @@ function CampaignsTab({ project }: { project: ProjectSummary }) {
           {live.map(c => (
             <CampaignRow
               key={c.id}
+              projectId={project.id}
               campaign={c}
-              onClick={() => {
+              onEdit={() => {
                 setEditing(c);
                 setDrawerOpen(true);
               }}
@@ -339,19 +349,20 @@ function CampaignsTab({ project }: { project: ProjectSummary }) {
 }
 
 function CampaignRow({
+  projectId,
   campaign,
-  onClick,
+  onEdit,
 }: {
+  projectId: string;
   campaign: CampaignSummary;
-  onClick: () => void;
+  onEdit: () => void;
 }) {
   const status = campaignStatus(campaign);
   return (
     <li>
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 transition-colors p-4"
+      <Link
+        to={`/projects/${projectId}/c/${campaign.id}`}
+        className="block rounded-xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 transition-colors p-4"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -372,9 +383,22 @@ function CampaignRow({
               </p>
             )}
           </div>
-          <MoreHorizontal className="w-4 h-4 text-fg-subtle shrink-0 mt-1" />
+          <button
+            type="button"
+            onClick={e => {
+              // Prevent the parent Link navigation when clicking the edit icon.
+              e.preventDefault();
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="grid place-items-center w-8 h-8 -m-2 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 transition-colors shrink-0"
+            aria-label="edit campaign"
+            title="edit campaign"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
         </div>
-      </button>
+      </Link>
     </li>
   );
 }
