@@ -26,6 +26,8 @@ const importChatPage = () => import('./pages/ChatPage');
 const importPlaysPage = () => import('./pages/PlaysPage');
 const importCalculatorsPage = () => import('./pages/CalculatorsPage');
 const importSettingsPage = () => import('./pages/SettingsPage');
+const importProjectsListPage = () => import('./pages/ProjectsListPage');
+const importProjectDetailPage = () => import('./pages/ProjectDetailPage');
 
 const ChatPage = lazy(() => importChatPage().then(m => ({ default: m.ChatPage })));
 const PlaysPage = lazy(() => importPlaysPage().then(m => ({ default: m.PlaysPage })));
@@ -34,6 +36,12 @@ const CalculatorsPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   importSettingsPage().then(m => ({ default: m.SettingsPage })),
+);
+const ProjectsListPage = lazy(() =>
+  importProjectsListPage().then(m => ({ default: m.ProjectsListPage })),
+);
+const ProjectDetailPage = lazy(() =>
+  importProjectDetailPage().then(m => ({ default: m.ProjectDetailPage })),
 );
 
 /** Warm the lazy route chunks shortly after first paint. Runs once on
@@ -179,6 +187,22 @@ function AuthedShell() {
             element={
               <Suspense fallback={null}>
                 <SettingsPage darkMode={darkMode} onUpdate={p => setProfile(p)} />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings/projects"
+            element={
+              <Suspense fallback={null}>
+                <ProjectsListPage darkMode={darkMode} />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings/projects/:projectId"
+            element={
+              <Suspense fallback={null}>
+                <ProjectDetailPage darkMode={darkMode} />
               </Suspense>
             }
           />

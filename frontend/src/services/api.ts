@@ -607,6 +607,49 @@ export async function unarchiveCampaign(
   );
 }
 
+// Per-project brand profile (richer surface than the legacy
+// `/brand-profile` route, which only addresses the user's default project).
+
+export interface ProjectBrandProfile {
+  project_id: string;
+  company_name: string | null;
+  website: string | null;
+  icp_description: string | null;
+  primary_channels: string[];
+  target_cac: number | null;
+  target_roas: number | null;
+  voice_guidelines: string | null;
+  current_campaigns_summary: string | null;
+  onboarding_completed: boolean;
+}
+
+export type ProjectBrandProfileUpdate = Partial<
+  Omit<ProjectBrandProfile, 'project_id' | 'onboarding_completed'>
+> & { mark_completed?: boolean };
+
+export async function getProjectBrandProfile(
+  projectId: string,
+  getToken: GetToken,
+): Promise<ProjectBrandProfile> {
+  return jsonRequest<ProjectBrandProfile>(
+    `${API_HOST}/api/v1/projects/${projectId}/brand-profile`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function putProjectBrandProfile(
+  projectId: string,
+  payload: ProjectBrandProfileUpdate,
+  getToken: GetToken,
+): Promise<ProjectBrandProfile> {
+  return jsonRequest<ProjectBrandProfile>(
+    `${API_HOST}/api/v1/projects/${projectId}/brand-profile`,
+    { method: 'PUT', body: JSON.stringify(payload) },
+    getToken,
+  );
+}
+
 // ---------- Plays history -------------------------------------------------
 
 export interface PlayHistoryItem {
