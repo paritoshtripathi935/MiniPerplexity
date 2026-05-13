@@ -1,38 +1,65 @@
 /**
- * /settings/projects — list of the user's projects.
+ * /settings/projects — list of the user's projects (Stitch Surface 2 +
+ * the projects_dashboard_list variant).
  *
- * Matches Surface 2 from STITCH_PROMPTS_H.md: stacked operational list, one
- * row per project. Each row shows the color dot, project name, campaign
- * count and last-active hint, plus a horizontal scroll of up-to-5 campaign
- * chips (active campaign tinted). Archived projects collapse into a
- * "show archived (N)" section.
+ * Layout mirrors the Stitch operator-tool design:
+ *   - Search input + status filter + sort dropdown above the list.
+ *   - Column-header strip — PROJECT · METRICS · ACTIVE CAMPAIGNS · ACTIONS.
+ *   - One row per project: color dot + name + brand label + AMPS / INVS
+ *     metric blocks + up-to-5 campaign chips + ⋯ overflow menu.
+ *   - Archived rows collapse behind a "show archived" toggle.
+ *   - Filtered-empty state with "clear all filters" CTA.
  *
- * Inline creation lives in the top-nav switcher; this page is for
- * navigating into a project and managing it. The "+ new project" header
- * CTA opens the same inline form as the switcher to avoid two creation
- * surfaces drifting.
+ * Campaign chips render from the project row's campaign_count >= 0 (no
+ * fan-out fetch — chips show as pills with a "+N more" overflow when the
+ * project carries more than CHIP_PREVIEW_LIMIT live campaigns). The
+ * settings detail page is the place to inspect them all.
  */
 import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
-import { Archive, ChevronRight, MoreHorizontal, Plus, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
+  Plus,
+  RotateCcw,
+  Search,
+} from 'lucide-react';
 import { PageHeader } from '../components/AppLayout';
 import { Button } from '../components/ui/Button';
 import { projectColor, useActiveCampaign } from '../components/ActiveCampaign';
-import { useProjects, useCacheActions, QK } from '../services/queries';
+import { useProjects } from '../services/queries';
 import {
   archiveProject,
-  createProject,
   createCampaign,
+  createProject,
   listCampaigns,
+  listProjects,
   unarchiveProject,
   type CampaignSummary,
   type ProjectSummary,
 } from '../services/api';
 import { useSWRConfig } from 'swr';
+import { QK } from '../services/queries';
 
-const CHIP_PREVIEW_LIMIT = 5;
+const CHIP_PREVIEW_LIMIT = 3;
+
+type StatusFilter = 'live' | 'archived' | 'all';
+type SortKey = 'recent' | 'name' | 'activity';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  recent: 'recently updated',
+  name: 'name (a–z)',
+  activity: 'most active',
+};
+const STATUS_LABELS: Record<StatusFilter, string> = {
+  live: 'live',
+  archived: 'archived',
+  all: 'all',
+};
 
 interface Props {
   darkMode: boolean;
@@ -40,42 +67,71 @@ interface Props {
 
 export function ProjectsListPage(_props: Props) {
   const { getToken, isSignedIn } = useAuth();
-  const { data: live, mutate: refetchLive } = useProjects(getToken, !!isSignedIn);
-  const { data: all, mutate: refetchAll } = useProjects(
-    getToken,
-    !!isSignedIn,
-  );
-  // We need archived too — pass a different cache key. Easiest: a parallel
-  // fetch directly into a local state via toggle, only when needed.
-  const [showArchived, setShowArchived] = useState(false);
-  const [archived, setArchived] = useState<ProjectSummary[] | null>(null);
+  const { data: liveProjects, mutate: refetch } = useProjects(getToken, !!isSignedIn);
+
+  const [archivedProjects, setArchivedProjects] = useState<ProjectSummary[] | null>(null);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
-  // Force-fetch the archived list lazily.
-  React.useEffect(() => {
-    if (!showArchived || archived !== null) return;
-    setArchivedLoading(true);
-    import('../services/api').then(async ({ listProjects }) => {
-      try {
-        const all = await listProjects(getToken, { includeArchived: true });
-        const onlyArchived = all.filter(p => p.archived_at);
-        setArchived(onlyArchived);
-      } finally {
-        setArchivedLoading(false);
-      }
-    });
-  }, [showArchived, archived, getToken]);
-
-  const projects = useMemo(() => live || [], [live]);
-
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('live');
+  const [sort, setSort] = useState<SortKey>('recent');
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Lazy-load archived rows on first request, and refetch when explicit
+  // "all" filter is selected since live projects alone won't include them.
+  React.useEffect(() => {
+    const needArchived = status !== 'live' || showArchived;
+    if (!needArchived || archivedProjects !== null) return;
+    setArchivedLoading(true);
+    listProjects(getToken, { includeArchived: true })
+      .then(all => setArchivedProjects(all.filter(p => p.archived_at)))
+      .catch(() => setArchivedProjects([]))
+      .finally(() => setArchivedLoading(false));
+  }, [status, showArchived, archivedProjects, getToken]);
+
+  const liveList = liveProjects || [];
+  const archivedList = archivedProjects || [];
+  const sourceList = useMemo<ProjectSummary[]>(() => {
+    if (status === 'live') return liveList;
+    if (status === 'archived') return archivedList;
+    return [...liveList, ...archivedList];
+  }, [status, liveList, archivedList]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let rows = sourceList;
+    if (q) rows = rows.filter(p => p.name.toLowerCase().includes(q));
+    const cmp =
+      sort === 'name'
+        ? (a: ProjectSummary, b: ProjectSummary) => a.name.localeCompare(b.name)
+        : sort === 'activity'
+        ? (a: ProjectSummary, b: ProjectSummary) => b.session_count - a.session_count
+        : (a: ProjectSummary, b: ProjectSummary) =>
+            (b.last_session_at || b.updated_at).localeCompare(
+              a.last_session_at || a.updated_at,
+            );
+    return [...rows].sort(cmp);
+  }, [sourceList, query, sort]);
+
+  const isFiltering = query.trim().length > 0 || status !== 'live' || sort !== 'recent';
+
+  function clearAllFilters() {
+    setQuery('');
+    setStatus('live');
+    setSort('recent');
+  }
+
+  function bustArchivedCache() {
+    setArchivedProjects(null);
+  }
 
   return (
     <>
       <PageHeader
         eyebrow="settings"
         title="projects + campaigns."
-        subtitle="each project is a brand. campaigns group the work you do for that brand."
+        subtitle="each project is a brand. campaigns group the work you do for it."
         actions={
           <Button
             variant="gradient"
@@ -91,87 +147,298 @@ export function ProjectsListPage(_props: Props) {
         <InlineCreateProject
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
-            refetchLive();
+            refetch();
+            bustArchivedCache();
             setCreateOpen(false);
           }}
         />
       )}
 
-      {projects.length === 0 ? (
-        <div className="rounded-2xl border border-border/60 bg-surface-raised/40 p-10 text-center">
-          <p className="text-fg-muted text-body-base">
-            no projects yet. create your first brand to get started.
-          </p>
-        </div>
-      ) : (
-        <ul className="space-y-3">
-          {projects.map(p => (
-            <ProjectRow
-              key={p.id}
-              project={p}
-              onArchived={() => {
-                refetchLive();
-                setArchived(null); // bust the archived-list cache
-              }}
-            />
-          ))}
-        </ul>
+      <FilterBar
+        query={query}
+        onQueryChange={setQuery}
+        status={status}
+        onStatusChange={setStatus}
+        sort={sort}
+        onSortChange={setSort}
+      />
+
+      {liveProjects === undefined && (
+        <p className="text-body-sm text-fg-subtle">loading…</p>
       )}
 
-      <div className="mt-8">
-        <button
-          type="button"
-          onClick={() => setShowArchived(s => !s)}
-          className="inline-flex items-center gap-2 text-body-sm text-fg-subtle hover:text-fg transition-colors"
-        >
-          <ChevronRight
-            className={clsx('w-3.5 h-3.5 transition-transform', showArchived && 'rotate-90')}
-          />
-          show archived
-        </button>
-        {showArchived && (
-          <div className="mt-3 space-y-3 opacity-70">
-            {archivedLoading && (
-              <p className="text-body-sm text-fg-subtle">loading…</p>
-            )}
-            {archived && archived.length === 0 && (
-              <p className="text-body-sm text-fg-subtle italic">no archived projects.</p>
-            )}
-            {archived &&
-              archived.map(p => (
+      {liveProjects && filtered.length === 0 && !archivedLoading && (
+        <FilteredEmpty
+          isFiltering={isFiltering}
+          onReset={clearAllFilters}
+        />
+      )}
+
+      {filtered.length > 0 && (
+        <>
+          <ColumnHeaders />
+          <ul className="space-y-3">
+            {filtered.map(p => (
+              <ProjectRow
+                key={p.id}
+                project={p}
+                onMutated={() => {
+                  refetch();
+                  bustArchivedCache();
+                }}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {/* Archived footer reveal — only shown when not already filtering to "archived" / "all". */}
+      {status === 'live' && (
+        <div className="mt-8">
+          <button
+            type="button"
+            onClick={() => setShowArchived(s => !s)}
+            className="inline-flex items-center gap-2 text-body-sm text-fg-subtle hover:text-fg transition-colors"
+          >
+            <ChevronRight
+              className={clsx('w-3.5 h-3.5 transition-transform', showArchived && 'rotate-90')}
+            />
+            show archived
+            {archivedList.length > 0 && ` (${archivedList.length})`}
+          </button>
+          {showArchived && (
+            <div className="mt-3 space-y-3 opacity-70">
+              {archivedLoading && (
+                <p className="text-body-sm text-fg-subtle">loading…</p>
+              )}
+              {archivedProjects && archivedProjects.length === 0 && (
+                <p className="text-body-sm text-fg-subtle italic">
+                  no archived projects.
+                </p>
+              )}
+              {archivedProjects?.map(p => (
                 <ArchivedProjectRow
                   key={p.id}
                   project={p}
                   onUnarchived={() => {
-                    refetchLive();
-                    setArchived(prev => prev?.filter(x => x.id !== p.id) || null);
+                    refetch();
+                    setArchivedProjects(prev => prev?.filter(x => x.id !== p.id) || null);
                   }}
                 />
               ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
 
 /* -------------------------------------------------------------------- */
-/* Live project row                                                      */
+/* Filter bar (search + status + sort)                                   */
+/* -------------------------------------------------------------------- */
+
+function FilterBar({
+  query,
+  onQueryChange,
+  status,
+  onStatusChange,
+  sort,
+  onSortChange,
+}: {
+  query: string;
+  onQueryChange: (s: string) => void;
+  status: StatusFilter;
+  onStatusChange: (s: StatusFilter) => void;
+  sort: SortKey;
+  onSortChange: (s: SortKey) => void;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row items-stretch gap-2 mb-4">
+      <div className="relative flex-1 min-w-0">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-subtle" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => onQueryChange(e.target.value)}
+          placeholder="search projects…"
+          className="w-full h-10 pl-9 pr-3 rounded-xl border border-border/60 bg-surface-raised/40 text-fg text-body-base placeholder:text-fg-subtle focus:outline-none focus:border-brand/40"
+        />
+      </div>
+      <FilterMenu
+        ariaLabel="status filter"
+        value={status}
+        onChange={v => onStatusChange(v as StatusFilter)}
+        options={Object.entries(STATUS_LABELS) as Array<[StatusFilter, string]>}
+        prefix="status · "
+      />
+      <FilterMenu
+        ariaLabel="sort"
+        value={sort}
+        onChange={v => onSortChange(v as SortKey)}
+        options={Object.entries(SORT_LABELS) as Array<[SortKey, string]>}
+        prefix="sort · "
+      />
+    </div>
+  );
+}
+
+function FilterMenu<T extends string>({
+  ariaLabel,
+  value,
+  options,
+  onChange,
+  prefix,
+}: {
+  ariaLabel: string;
+  value: T;
+  options: Array<[T, string]>;
+  onChange: (next: T) => void;
+  prefix: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const currentLabel = options.find(([k]) => k === value)?.[1] ?? value;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={() => setOpen(o => !o)}
+        className={clsx(
+          'inline-flex items-center gap-2 h-10 px-3 rounded-xl border text-body-sm transition-colors',
+          open
+            ? 'border-brand/40 bg-brand/5 text-fg'
+            : 'border-border/60 bg-surface-raised/40 text-fg-muted hover:text-fg hover:bg-surface-raised/60',
+        )}
+      >
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle">
+          {prefix}
+        </span>
+        <span className="text-fg">{currentLabel}</span>
+        <ChevronDown
+          className={clsx('w-3.5 h-3.5 text-fg-subtle transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <ul className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[180px] rounded-xl border border-border/60 bg-surface-raised/90 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] py-1.5">
+          {options.map(([k, label]) => (
+            <li key={k}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(k);
+                  setOpen(false);
+                }}
+                className={clsx(
+                  'w-full text-left px-3 py-2 text-body-sm transition-colors hover:bg-surface-sunken/40',
+                  k === value ? 'text-fg' : 'text-fg-muted',
+                )}
+              >
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Column header strip                                                   */
+/* -------------------------------------------------------------------- */
+
+function ColumnHeaders() {
+  return (
+    <div className="hidden lg:grid grid-cols-[1fr_auto_auto_auto] items-center gap-6 px-5 pb-2 mb-2 border-b border-border/40">
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle">
+        project · brand
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle text-center w-[120px]">
+        metrics
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle w-[280px]">
+        active campaigns
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle">
+        actions
+      </span>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Filtered empty state                                                  */
+/* -------------------------------------------------------------------- */
+
+function FilteredEmpty({
+  isFiltering,
+  onReset,
+}: {
+  isFiltering: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-surface-raised/30 p-10 text-center">
+      <div className="grid place-items-center w-10 h-10 rounded-full bg-surface-sunken/40 mx-auto mb-3">
+        <Search className="w-4 h-4 text-fg-subtle" />
+      </div>
+      <h3 className="font-display font-semibold text-fg mb-1">
+        {isFiltering ? 'no matching projects' : 'no projects yet'}
+      </h3>
+      <p className="text-body-sm text-fg-muted mb-3">
+        {isFiltering
+          ? 'try adjusting your search or filters.'
+          : 'create your first brand to get started.'}
+      </p>
+      {isFiltering && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-brand text-body-sm hover:underline"
+        >
+          clear all filters
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Project row (live)                                                    */
 /* -------------------------------------------------------------------- */
 
 function ProjectRow({
   project,
-  onArchived,
+  onMutated,
 }: {
   project: ProjectSummary;
-  onArchived: () => void;
+  onMutated: () => void;
 }) {
   const { getToken } = useAuth();
   const { activeCampaign } = useActiveCampaign();
   const color = projectColor(project.id);
+  const isArchived = !!project.archived_at;
 
+  // Live-campaign chips. Fetch only when the project has >0 campaigns;
+  // skip the fetch entirely when campaign_count is 0 (no chips to show).
   const [campaigns, setCampaigns] = useState<CampaignSummary[] | null>(null);
   React.useEffect(() => {
+    if (project.campaign_count === 0) {
+      setCampaigns([]);
+      return;
+    }
     let cancelled = false;
     listCampaigns(project.id, getToken)
       .then(rows => {
@@ -183,7 +450,7 @@ function ProjectRow({
     return () => {
       cancelled = true;
     };
-  }, [project.id, getToken]);
+  }, [project.id, project.campaign_count, getToken]);
 
   const liveCampaigns = (campaigns || []).filter(c => !c.archived_at);
   const visible = liveCampaigns.slice(0, CHIP_PREVIEW_LIMIT);
@@ -203,47 +470,64 @@ function ProjectRow({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function handleArchive() {
+  async function handleArchiveToggle() {
     if (busy) return;
     setBusy(true);
     setErr(null);
     try {
-      await archiveProject(project.id, getToken);
-      onArchived();
+      if (isArchived) await unarchiveProject(project.id, getToken);
+      else await archiveProject(project.id, getToken);
+      onMutated();
     } catch (e: any) {
-      setErr(e?.message || 'archive failed');
+      setErr(e?.message || 'action failed');
     } finally {
       setBusy(false);
       setMenuOpen(false);
     }
   }
 
+  const lastTouched = project.last_session_at || project.updated_at;
+
   return (
-    <li className="relative rounded-2xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 transition-colors p-5">
-      <div className="flex items-start gap-4">
-        <Link
-          to={`/settings/projects/${project.id}`}
-          className="flex-1 min-w-0 flex items-start gap-4"
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={clsx('w-2 h-2 rounded-full', color.dot)} />
-              <h2 className="font-display font-semibold text-fg text-h2 truncate">
-                {project.name}
-              </h2>
-            </div>
+    <li
+      className={clsx(
+        'relative rounded-2xl border border-border/60 bg-surface-raised/40 transition-colors p-5',
+        isArchived ? 'opacity-60' : 'hover:bg-surface-raised/60',
+      )}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto_auto] items-center gap-4 lg:gap-6">
+        {/* Project name + brand label + last-touched */}
+        <Link to={`/settings/projects/${project.id}`} className="min-w-0 flex items-start gap-3">
+          <span className={clsx('w-2 h-2 rounded-full shrink-0 mt-2', color.dot)} />
+          <div className="min-w-0">
+            <h2 className="font-display font-semibold text-fg text-h2 truncate">
+              {project.name}
+            </h2>
             <p className="text-body-sm text-fg-muted">
-              {liveCampaigns.length} {liveCampaigns.length === 1 ? 'campaign' : 'campaigns'}
-              <span className="text-fg-subtle"> · last updated {formatRelative(project.updated_at)}</span>
+              <span>updated {formatRelative(lastTouched)}</span>
+              {isArchived && (
+                <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.18em] text-amber-300/80">
+                  archived
+                </span>
+              )}
             </p>
           </div>
         </Link>
 
-        <div className="flex items-center gap-3 min-w-0">
+        {/* Metric blocks (AMPS / INVS) */}
+        <div className="flex items-center gap-4 lg:gap-5 lg:w-[120px] justify-center">
+          <MetricBlock value={project.campaign_count} label="amps" />
+          <MetricBlock value={project.session_count} label="invs" />
+        </div>
+
+        {/* Campaign chips */}
+        <div className="flex items-center gap-1.5 max-w-md lg:w-[280px] overflow-x-auto">
           {campaigns === null ? (
-            <span className="text-body-sm text-fg-subtle">loading…</span>
+            <span className="text-body-sm text-fg-subtle">…</span>
+          ) : visible.length === 0 ? (
+            <span className="text-body-sm text-fg-subtle italic">no live campaigns</span>
           ) : (
-            <div className="flex items-center gap-1.5 max-w-md overflow-x-auto">
+            <>
               {visible.map(c => (
                 <span
                   key={c.id}
@@ -265,9 +549,12 @@ function ProjectRow({
                   +{overflow} more
                 </Link>
               )}
-            </div>
+            </>
           )}
+        </div>
 
+        {/* Actions */}
+        <div className="flex items-center gap-1 justify-end">
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -288,12 +575,21 @@ function ProjectRow({
                 </Link>
                 <button
                   type="button"
-                  onClick={handleArchive}
+                  onClick={handleArchiveToggle}
                   disabled={busy}
                   className="w-full text-left px-3 py-2 text-body-sm text-fg hover:bg-surface-sunken/40 inline-flex items-center gap-2"
                 >
-                  <Archive className="w-3.5 h-3.5" />
-                  archive
+                  {isArchived ? (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      unarchive
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="w-3.5 h-3.5" />
+                      archive
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -304,6 +600,19 @@ function ProjectRow({
         <div className="absolute right-5 -bottom-5 text-rose-400 text-body-sm">{err}</div>
       )}
     </li>
+  );
+}
+
+function MetricBlock({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="text-center">
+      <div className="font-mono text-h2 text-fg tabular-nums leading-none">
+        {String(value).padStart(2, '0')}
+      </div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mt-1">
+        {label}
+      </div>
+    </div>
   );
 }
 
@@ -355,6 +664,10 @@ function ArchivedProjectRow({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------- */
+/* Inline create-project form                                            */
+/* -------------------------------------------------------------------- */
 
 function InlineCreateProject({
   onClose,
