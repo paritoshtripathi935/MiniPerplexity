@@ -30,8 +30,20 @@ import { getDomain } from '../utils/url';
 const THINK_RE = /<think\b[^>]*>([\s\S]*?)(?:<\/think>|$)/gi;
 
 function splitThinking(content: string): { body: string; thinking: string } {
+  // qwq-32b (and possibly other Qwen reasoning models) on Cloudflare emits
+  // `</think>` at the end of the reasoning chain but no opening `<think>`
+  // (Cloudflare's wrapper strips the chat-template prefix). Detect that
+  // case — `</think>` present without a preceding `<think>` — and synthesize
+  // an opener at the start so the regex below can extract cleanly.
+  const firstClose = content.search(/<\/think>/i);
+  const firstOpen = content.search(/<think\b/i);
+  const normalized =
+    firstClose >= 0 && (firstOpen < 0 || firstOpen > firstClose)
+      ? '<think>' + content
+      : content;
+
   const thinkParts: string[] = [];
-  const body = content.replace(THINK_RE, (_, inner: string) => {
+  const body = normalized.replace(THINK_RE, (_, inner: string) => {
     thinkParts.push(inner.trim());
     return '';
   });

@@ -123,30 +123,56 @@ def resolve_chat_model(slug: Optional[str]) -> CloudflareModel:
     return DEFAULT_CHAT_MODEL
 
 
+def _coerce_token(value) -> str:
+    """Coerce a delta value to its string form.
+
+    Cloudflare's qwq-32b endpoint (and possibly other reasoning models) emits
+    digit-only tokens as raw JSON numbers — e.g. `{"response": 5}` instead of
+    `{"response": "5"}` — when the tokenizer emits a numeric-only token. The
+    previous `isinstance(value, str)` guard treated those frames as empty and
+    silently dropped them, so any text containing a digit (`$50`, `2:1`,
+    `2026`, citation indices `[1]`) lost the digits during streaming. The
+    persisted answer ended up with bare punctuation and empty brackets.
+
+    Accept str, int, float, bool — anything trivially renderable as text.
+    `None` and dict/list still return "" so role-only / keep-alive frames
+    don't get stringified as `"None"`.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        # bool is a subclass of int; we don't want True/False rendered as
+        # tokens, even though Cloudflare has never emitted bool tokens in
+        # the wild. The bool exclusion is belt-and-suspenders.
+        return str(value)
+    return ""
+
+
 def _extract_stream_delta(chunk: Dict) -> str:
     """Pull the incremental text out of a single Cloudflare SSE chunk.
 
     Streaming shapes mirror the non-streaming ones:
-      * Legacy (Llama, Mistral): `{"response": "tok"}` at the top level.
-      * OpenAI-compatible (gpt-oss, qwen3, qwq): `{"choices": [{"delta":
-        {"content": "tok"}}]}`. Some models also emit `reasoning_content` on
-        the delta; we discard it the same way we discard the final field.
+      * Legacy (Llama, Mistral, qwq-32b): `{"response": <token>}` at the
+        top level. qwq-32b emits digit-only tokens as raw JSON numbers, so
+        we coerce via _coerce_token rather than guarding on `isinstance str`.
+      * OpenAI-compatible (gpt-oss, qwen3): `{"choices": [{"delta":
+        {"content": "tok"}}]}`. Some models also emit `reasoning_content`
+        on the delta; we discard it — the UI only renders the final answer.
 
     Returns "" for chunks that carry no user-visible text (role-only deltas,
     keepalives, finish markers).
     """
     if not isinstance(chunk, dict):
         return ""
-    legacy = chunk.get("response")
-    if isinstance(legacy, str):
-        return legacy
+    if "response" in chunk:
+        return _coerce_token(chunk.get("response"))
     choices = chunk.get("choices")
     if isinstance(choices, list) and choices:
         delta = choices[0].get("delta") if isinstance(choices[0], dict) else None
         if isinstance(delta, dict):
-            content = delta.get("content")
-            if isinstance(content, str):
-                return content
+            return _coerce_token(delta.get("content"))
     return ""
 
 
@@ -155,11 +181,13 @@ def _extract_response_text(payload: Dict) -> str:
 
     Two response shapes are in the wild:
 
-      * Legacy (Llama 3.x, Mistral): `{"result": {"response": "..."}}`.
-      * OpenAI-compatible (gpt-oss, qwen3, qwq): the same chat-completion
-        envelope with `result.choices[0].message.content`. These models also
-        carry a `reasoning_content` field with the chain-of-thought, which
-        we deliberately discard — the UI only renders the final answer.
+      * Legacy (Llama 3.x, Mistral, qwq-32b): `{"result": {"response": ...}}`.
+        Digit-only outputs occasionally arrive as JSON numbers (see qwq
+        notes in `_coerce_token`); we coerce via the same helper.
+      * OpenAI-compatible (gpt-oss, qwen3): the chat-completion envelope
+        with `result.choices[0].message.content`. These models also carry
+        a `reasoning_content` field with the chain-of-thought, which we
+        deliberately discard — the UI only renders the final answer.
 
     Returns "" on a missing/malformed payload rather than raising; callers
     handle empties as a soft failure.
@@ -169,16 +197,13 @@ def _extract_response_text(payload: Dict) -> str:
     result = payload.get("result")
     if not isinstance(result, dict):
         return ""
-    legacy = result.get("response")
-    if isinstance(legacy, str):
-        return legacy
+    if "response" in result:
+        return _coerce_token(result.get("response"))
     choices = result.get("choices")
     if isinstance(choices, list) and choices:
         message = choices[0].get("message") if isinstance(choices[0], dict) else None
         if isinstance(message, dict):
-            content = message.get("content")
-            if isinstance(content, str):
-                return content
+            return _coerce_token(message.get("content"))
     return ""
 
 
