@@ -139,11 +139,10 @@ function AssistantTurn({
     }
   };
 
-  // Citation index → search-result map for the inline `[N]` pills. The
-  // right rail owns the aggregated source list; clicking a pill opens
-  // the CitationDrawer with the quoted excerpt the LLM was conditioned
-  // on. We preserve search_results order so [N] matches what the LLM
-  // saw in its "Sources for this turn" block.
+  // Citation index → search-result map for the inline `[N]` pills.
+  // Clicking a pill opens the CitationDrawer with the quoted excerpt
+  // the LLM was conditioned on. We preserve search_results order so
+  // [N] matches what the LLM saw in its "Sources for this turn" block.
   const sourceResults = useMemo<MessageSearchResult[]>(() => {
     if (message.search_results && message.search_results.length > 0) {
       return message.search_results;
