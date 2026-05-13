@@ -52,10 +52,19 @@ const SHARED: SWRConfiguration = {
 export const QK = {
   brandProfile: '/brand-profile' as const,
   me: '/me' as const,
-  sessions: (opts: { includeArchived?: boolean; limit?: number } = {}) =>
-    `/sessions?archived=${opts.includeArchived ? '1' : '0'}&limit=${opts.limit ?? 10}` as const,
+  sessions: (
+    opts: {
+      includeArchived?: boolean;
+      limit?: number;
+      campaignId?: string | null;
+      projectId?: string | null;
+    } = {},
+  ) =>
+    `/sessions?archived=${opts.includeArchived ? '1' : '0'}&limit=${opts.limit ?? 10}` +
+    (opts.campaignId ? `&c=${opts.campaignId}` : opts.projectId ? `&p=${opts.projectId}` : '') as const,
   plays: '/plays' as const,
-  playsHistory: '/plays/history' as const,
+  playsHistory: (campaignId?: string | null) =>
+    `/plays/history?c=${campaignId || ''}` as const,
   sessionHistory: (sessionId: string) => `/session/${sessionId}/history` as const,
   projects: '/projects' as const,
   campaigns: (projectId: string) => `/projects/${projectId}/campaigns` as const,
@@ -81,7 +90,12 @@ export function useMe(getToken: GetToken, enabled = true) {
 
 export function useSessions(
   getToken: GetToken,
-  opts: { includeArchived?: boolean; limit?: number } = {},
+  opts: {
+    includeArchived?: boolean;
+    limit?: number;
+    campaignId?: string | null;
+    projectId?: string | null;
+  } = {},
   enabled = true,
 ) {
   return useSWR<SessionListItem[]>(
@@ -99,10 +113,14 @@ export function usePlays(enabled = true) {
   );
 }
 
-export function usePlaysHistory(getToken: GetToken, enabled = true) {
+export function usePlaysHistory(
+  getToken: GetToken,
+  opts: { campaignId?: string | null } = {},
+  enabled = true,
+) {
   return useSWR<PlayHistoryItem[]>(
-    enabled ? QK.playsHistory : null,
-    () => getPlaysHistory(getToken).then(r => r.items).catch(() => []),
+    enabled ? QK.playsHistory(opts.campaignId) : null,
+    () => getPlaysHistory(getToken, opts).then(r => r.items).catch(() => []),
     SHARED,
   );
 }
@@ -157,10 +175,16 @@ export function useCacheActions() {
     setBrandProfile: (next: BrandProfile) =>
       mutate(QK.brandProfile, next, { revalidate: false }),
     /** Bust the sessions list — next read refetches. Use after creating
-     * or deleting an investigation. */
+     * or deleting an investigation. Matches every campaign/project scope. */
     invalidateSessions: () =>
       mutate(
         key => typeof key === 'string' && key.startsWith('/sessions?'),
+      ),
+    /** Bust the plays-history feed across all campaign scopes — call after
+     * the active campaign changes so the Plays page re-fetches scoped data. */
+    invalidatePlaysHistory: () =>
+      mutate(
+        key => typeof key === 'string' && key.startsWith('/plays/history?'),
       ),
     /** Bust a single session's history — use after Regenerate or
      * post-stream when the persisted turn count changes. */
@@ -200,15 +224,8 @@ export function preloadQueries(getToken: GetToken, isSignedIn: boolean) {
       { revalidate: false },
     );
     mutate(QK.me, getMe(getToken).catch(() => null), { revalidate: false });
-    mutate(
-      QK.sessions({ limit: 10 }),
-      listSessions(getToken, { limit: 10 }).then(r => r.sessions).catch(() => []),
-      { revalidate: false },
-    );
-    mutate(
-      QK.playsHistory,
-      getPlaysHistory(getToken).then(r => r.items).catch(() => []),
-      { revalidate: false },
-    );
+    // Sessions + plays-history are scoped by active campaign which isn't
+    // resolved at preload time. Skip them here; the first scoped mount on
+    // Home / Plays will fetch once active campaign is known.
   });
 }

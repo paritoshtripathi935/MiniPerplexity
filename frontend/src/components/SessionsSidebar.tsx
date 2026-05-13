@@ -11,6 +11,7 @@ import {
   type SessionListItem,
   type SearchHit,
 } from '../services/api';
+import { useActiveCampaign } from './ActiveCampaign';
 import { Button } from './ui/Button';
 
 interface Props {
@@ -41,6 +42,7 @@ export function SessionsSidebar({
   refreshSignal = 0,
 }: Props) {
   const { getToken, isSignedIn } = useAuth();
+  const { activeCampaign } = useActiveCampaign();
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -54,19 +56,23 @@ export function SessionsSidebar({
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
 
+  const activeCampaignId = activeCampaign?.id ?? null;
   const refresh = useCallback(async () => {
     if (!isSignedIn) return;
     setLoading(true);
     setErrMsg(null);
     try {
-      const { sessions } = await listSessions(getToken, { includeArchived });
+      const { sessions } = await listSessions(getToken, {
+        includeArchived,
+        campaignId: activeCampaignId,
+      });
       setSessions(sessions);
     } catch (e: any) {
       setErrMsg(e?.message ?? 'Failed to load sessions');
     } finally {
       setLoading(false);
     }
-  }, [getToken, includeArchived, isSignedIn]);
+  }, [getToken, includeArchived, isSignedIn, activeCampaignId]);
 
   useEffect(() => {
     refresh();

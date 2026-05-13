@@ -396,11 +396,17 @@ async def get_recent_queries(
 
 # ---------- Messages --------------------------------------------------------
 async def list_recent_plays_for_user(
-    db: AsyncSession, user_id: uuid.UUID, limit: int = 20
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    limit: int = 20,
+    *,
+    campaign_id: Optional[uuid.UUID] = None,
 ) -> list[dict]:
     """Aggregate the assistant messages with non-null play_id for this user
     into a "recently used plays" feed: one row per play_id with the most
-    recent run timestamp and a run count.
+    recent run timestamp and a run count. When `campaign_id` is supplied,
+    narrows to plays run within that campaign — matches the active-campaign
+    scoping of the rest of the operator surfaces.
     """
     stmt = (
         select(
@@ -418,6 +424,8 @@ async def list_recent_plays_for_user(
         .order_by(func.max(Message.created_at).desc())
         .limit(limit)
     )
+    if campaign_id is not None:
+        stmt = stmt.where(DBSession.campaign_id == campaign_id)
     rows = (await db.execute(stmt)).all()
     return [
         {
@@ -986,9 +994,17 @@ async def list_sessions_for_user(
     include_archived: bool = False,
     limit: int = 50,
     offset: int = 0,
+    campaign_id: Optional[uuid.UUID] = None,
+    project_id: Optional[uuid.UUID] = None,
 ) -> list[dict]:
     """Sidebar feed: user's sessions with title, message count, last activity,
-    and a short excerpt of the most recent message (for richer recent-chats UI)."""
+    and a short excerpt of the most recent message (for richer recent-chats UI).
+
+    `campaign_id` (set by the frontend's active-campaign store) narrows to
+    the campaign's investigations only — single covering-index hit on
+    idx_sessions_campaign_last_accessed. `project_id` is the broader fallback
+    when callers want all of a project's work across campaigns.
+    """
     msg_count = (
         select(Message.session_id, func.count().label("n"))
         .group_by(Message.session_id)
@@ -1010,6 +1026,8 @@ async def list_sessions_for_user(
             DBSession.created_at,
             DBSession.last_accessed_at,
             DBSession.is_archived,
+            DBSession.campaign_id,
+            DBSession.project_id,
             func.coalesce(msg_count.c.n, 0).label("message_count"),
             latest_content.label("last_message_content"),
         )
@@ -1019,6 +1037,10 @@ async def list_sessions_for_user(
         .limit(limit)
         .offset(offset)
     )
+    if campaign_id is not None:
+        stmt = stmt.where(DBSession.campaign_id == campaign_id)
+    elif project_id is not None:
+        stmt = stmt.where(DBSession.project_id == project_id)
     if not include_archived:
         stmt = stmt.where(DBSession.is_archived.is_(False))
 
@@ -1032,6 +1054,8 @@ async def list_sessions_for_user(
             "is_archived": r.is_archived,
             "message_count": int(r.message_count),
             "last_message_excerpt": _excerpt(r.last_message_content),
+            "campaign_id": str(r.campaign_id) if r.campaign_id else None,
+            "project_id": str(r.project_id) if r.project_id else None,
         }
         for r in rows
     ]

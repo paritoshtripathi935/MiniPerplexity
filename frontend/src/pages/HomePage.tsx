@@ -27,6 +27,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { useCommandPalette } from '../components/CommandPalette';
+import { useActiveCampaign } from '../components/ActiveCampaign';
 import { useBrandProfile, useSessions } from '../services/queries';
 
 interface Props {
@@ -78,8 +79,15 @@ export function HomePage({}: Props) {
 
   // Cached queries — return synchronously from cache on revisit, then
   // revalidate in background. First-visit hits the network as before.
+  // Session list scopes to the active campaign so the Home feed only
+  // shows the investigations belonging to the current scope.
   const { data: profile } = useBrandProfile(getToken, !!isSignedIn);
-  const { data: sessions = [] } = useSessions(getToken, { limit: 10 }, !!isSignedIn);
+  const { activeCampaign } = useActiveCampaign();
+  const { data: sessions = [] } = useSessions(
+    getToken,
+    { limit: 10, campaignId: activeCampaign?.id },
+    !!isSignedIn,
+  );
 
   // Pick up scenarios written from /calc in another tab.
   useEffect(() => {
