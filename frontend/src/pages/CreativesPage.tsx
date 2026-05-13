@@ -295,15 +295,17 @@ function CreativeTile({
 }) {
   const isImage = creative.mime_type.startsWith('image/');
   const isPdf = creative.mime_type === 'application/pdf';
+  // Images get a thumbnail via <img>; PDFs get a real first-page render
+  // via browser-native <embed>. Both need a download URL — fetched
+  // lazily once the tile scrolls into view so a 50-creative campaign
+  // doesn't spam the backend on mount.
+  const wantsPreview = isImage || isPdf;
+  const { ref, inView } = useInView<HTMLLIElement>(wantsPreview);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const { getToken } = useAuth();
 
-  // Image previews need a presigned URL too — lazy-fetch on mount so
-  // a page with 50 creatives doesn't generate 50 URLs upfront. SVGs
-  // skip the presign (treated as inline icon) to keep large libraries
-  // snappy; click-through preview still shows them.
   useEffect(() => {
-    if (!isImage) return;
+    if (!wantsPreview || !inView || thumbUrl) return;
     let cancelled = false;
     getCreativeDownloadUrl(projectId, campaignId, creative.id, getToken)
       .then(({ download_url }) => {
@@ -315,13 +317,17 @@ function CreativeTile({
     return () => {
       cancelled = true;
     };
-  }, [creative.id, isImage, projectId, campaignId, getToken]);
+  }, [creative.id, wantsPreview, inView, thumbUrl, projectId, campaignId, getToken]);
 
   return (
-    <li className="group rounded-xl border border-border/60 bg-surface-raised/40 overflow-hidden">
+    <li
+      ref={ref}
+      className="group rounded-xl border border-border/60 bg-surface-raised/40 overflow-hidden"
+    >
       <button
         type="button"
         onClick={onPreview}
+        aria-label={`preview ${creative.filename}`}
         className="block w-full aspect-square bg-surface-sunken/40 hover:bg-surface-sunken/60 transition-colors relative"
       >
         {isImage && thumbUrl ? (
@@ -331,6 +337,27 @@ function CreativeTile({
             loading="lazy"
             className="w-full h-full object-cover"
           />
+        ) : isPdf && thumbUrl ? (
+          // Browser's native PDF renderer (Chrome/Edge/Safari/Firefox
+          // all bundle PDF.js or similar). #toolbar=0 strips chrome,
+          // #view=FitH fits page-1 to width — together this gives us a
+          // proper first-page thumbnail. pointer-events-none routes
+          // clicks back to the tile button so the preview drawer
+          // opens instead of the PDF's own context menu.
+          <>
+            <embed
+              src={`${thumbUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              type="application/pdf"
+              className="absolute inset-0 w-full h-full pointer-events-none bg-white"
+              aria-hidden
+            />
+            {/* PDF chip overlay so the file-type is obvious at a glance
+                even when the rendered page is dense or near-blank. */}
+            <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 h-5 rounded-md bg-fg/70 backdrop-blur-sm font-mono text-[10px] uppercase tracking-wider text-bg pointer-events-none">
+              <FileText className="w-3 h-3" />
+              pdf
+            </span>
+          </>
         ) : (
           <span className="absolute inset-0 grid place-items-center text-fg-subtle">
             {isPdf ? (
@@ -342,17 +369,22 @@ function CreativeTile({
         )}
       </button>
       <div className="px-2.5 py-2 flex items-center gap-1.5">
-        <span
-          className="flex-1 min-w-0 text-body-sm text-fg truncate"
-          title={creative.filename}
-        >
-          {creative.filename}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-body-sm text-fg truncate"
+            title={creative.filename}
+          >
+            {creative.filename}
+          </div>
+          <div className="text-[11px] text-fg-subtle truncate tabular-nums">
+            {formatBytes(creative.size_bytes)} · {relativeTime(creative.uploaded_at)}
+          </div>
+        </div>
         <button
           type="button"
           onClick={onDownload}
           aria-label="download"
-          className="grid place-items-center w-6 h-6 rounded text-fg-subtle hover:text-fg hover:bg-surface-sunken/60 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="grid place-items-center w-6 h-6 rounded text-fg-subtle hover:text-fg hover:bg-surface-sunken/60 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
         >
           <Download className="w-3.5 h-3.5" />
         </button>
@@ -360,13 +392,66 @@ function CreativeTile({
           type="button"
           onClick={onDelete}
           aria-label="delete"
-          className="grid place-items-center w-6 h-6 rounded text-fg-subtle hover:text-rose-300 hover:bg-surface-sunken/60 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="grid place-items-center w-6 h-6 rounded text-fg-subtle hover:text-rose-300 hover:bg-surface-sunken/60 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
     </li>
   );
+}
+
+/* ----------------------------- Helpers ---------------------------------- */
+
+/** IntersectionObserver-backed visibility hook. Once a tile becomes
+ *  visible, `inView` flips to true and stays — we don't unload the
+ *  preview when it scrolls back out (avoids embed flicker on scroll).
+ *  `enabled=false` short-circuits so non-previewable tiles don't even
+ *  set up the observer. */
+function useInView<T extends Element>(enabled: boolean) {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    const el = ref.current;
+    if (!el) return;
+    if (inView) return;
+    const obs = new IntersectionObserver(
+      entries => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setInView(true);
+            obs.disconnect();
+            return;
+          }
+        }
+      },
+      // Start fetching ~one viewport before the tile enters the viewport
+      // so the preview is ready by the time the user scrolls to it.
+      { rootMargin: '200px' },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [enabled, inView]);
+  return { ref, inView };
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 /* ----------------------------- Preview drawer --------------------------- */
