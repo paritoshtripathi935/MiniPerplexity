@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_user, get_optional_user
+from app.auth import get_current_user
 from app.constants.constants import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_KEY
 from app.db import get_db
 from app.db.models import MessageRole, User
@@ -20,7 +20,7 @@ from app.db.repository import (
     delete_session,
     export_session_markdown,
     find_or_create_query,
-    get_brand_profile,
+    get_brand_profile_for_user,
     get_chat_history,
     get_message,
     get_or_create_session,
@@ -62,13 +62,15 @@ async def search(
     search_request: SearchRequest,
     custom_url: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
-    """Run a search (or fetch a custom URL) and persist the query + results."""
+    """Run a search (or fetch a custom URL) and persist the query + results.
+
+    Auth required. Anonymous sessions were removed by migration 007 — every
+    session must anchor to a (project, campaign) pair owned by a user.
+    """
     try:
-        await get_or_create_session(
-            db, session_id, user_id=(user.id if user else None)
-        )
+        await get_or_create_session(db, session_id, user_id=user.id)
         query_row = await add_query(
             db,
             session_id=session_id,
@@ -124,18 +126,16 @@ async def get_answer(
     query_request: QueryRequest,
     play_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
     """Generate an answer grounded in the supplied search results, with citations.
 
     `play_id`, when supplied, layers a Play's instructions + output schema
-    onto the system prompt. The user's brand profile (if any) is always
-    composed in for signed-in users.
+    onto the system prompt. The user's active-project brand profile is always
+    composed in.
     """
     try:
-        await get_or_create_session(
-            db, session_id, user_id=(user.id if user else None)
-        )
+        await get_or_create_session(db, session_id, user_id=user.id)
 
         search_results = [r.model_dump() for r in query_request.search_results]
         # Belt-and-suspenders: re-attach authority tags so the chat UI's
@@ -145,8 +145,9 @@ async def get_answer(
         chat_history = await get_chat_history(db, session_id)
         previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
 
-        # Compose marketing-tuned system prompt.
-        profile = await get_brand_profile(db, user.id) if user else None
+        # Compose marketing-tuned system prompt. Brand profile resolves via
+        # the user's default project (one PK lookup off the upserted user).
+        profile = await get_brand_profile_for_user(db, user.id)
         play = get_play(play_id) if play_id else None
         system_override = compose_system_prompt(profile=profile, play=play)
 
@@ -154,9 +155,7 @@ async def get_answer(
             api_key=CLOUDFLARE_API_KEY,
             account_id=CLOUDFLARE_ACCOUNT_ID,
         )
-        # Honour the signed-in user's chosen chat model when present.
-        # Anonymous turns use the backend default.
-        chosen_model = resolve_chat_model(user.preferred_chat_model if user else None)
+        chosen_model = resolve_chat_model(user.preferred_chat_model)
         # Time only the LLM call: it's the dominant + most variable cost and
         # the number is directly attributable to the chosen model. DB writes
         # below are excluded so the surfaced metric stays a clean signal.
@@ -229,7 +228,7 @@ async def stream_answer(
     query_request: QueryRequest,
     play_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
     """Streaming counterpart to /answer.
 
@@ -248,16 +247,14 @@ async def stream_answer(
     # Resolve everything that requires the DB session *before* we hand control
     # to the streaming generator: FastAPI closes `db` once the route function
     # returns, and yielding from inside the generator returns immediately.
-    await get_or_create_session(
-        db, session_id, user_id=(user.id if user else None)
-    )
+    await get_or_create_session(db, session_id, user_id=user.id)
     search_results = [r.model_dump() for r in query_request.search_results]
     tag_authority_in_place(search_results)
 
     chat_history = await get_chat_history(db, session_id)
     previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
 
-    profile = await get_brand_profile(db, user.id) if user else None
+    profile = await get_brand_profile_for_user(db, user.id)
     play = get_play(play_id) if play_id else None
     system_override = compose_system_prompt(profile=profile, play=play)
 
@@ -265,7 +262,7 @@ async def stream_answer(
         api_key=CLOUDFLARE_API_KEY,
         account_id=CLOUDFLARE_ACCOUNT_ID,
     )
-    chosen_model = resolve_chat_model(user.preferred_chat_model if user else None)
+    chosen_model = resolve_chat_model(user.preferred_chat_model)
 
     async def event_stream():
         t0 = time.perf_counter()

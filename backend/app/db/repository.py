@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     BrandProfile,
+    Campaign,
     Citation,
     Message,
     MessageRole,
+    Project,
     Query,
     SearchResultRow,
     SearchSource,
@@ -72,40 +74,103 @@ async def get_or_create_session(
     db: AsyncSession,
     session_id: str,
     *,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: uuid.UUID,
+    campaign_id: Optional[uuid.UUID] = None,
 ) -> DBSession:
-    """Upsert a session row.
+    """Upsert a session row, anchored to a (project, campaign).
 
-    If `user_id` is supplied, attach it on insert and on subsequent touches
-    (claiming a previously-anonymous session for the user that just signed in).
+    `user_id` is required — anonymous sessions were removed by migration 007
+    when `sessions.project_id` / `sessions.campaign_id` became NOT NULL.
+
+    If `campaign_id` is omitted, falls back to the user's default campaign
+    (oldest live campaign of the oldest live project). The session's
+    `project_id` is snapshotted from the chosen campaign so the system-prompt
+    composition is a single PK lookup off the session row.
+
+    On a touch (existing session), the campaign / project anchors are *not*
+    re-snapshotted — they're fixed at create-time. Pass an existing session's
+    id with a different campaign_id and the campaign_id is ignored.
     """
     sid = _to_uuid(session_id)
     now = _now()
-    # Anonymous → 10-min TTL (gets bumped on every touch). Owned → effectively
-    # never. We still touch `expires_at` for owned rows so an existing
-    # anonymous session that the user just claimed (sign-in mid-conversation)
-    # gets promoted to non-expiring.
-    expires = now + (NEVER_EXPIRES if user_id is not None else SESSION_TTL)
+    # Owned sessions never expire automatically; the long expires_at keeps any
+    # `WHERE expires_at < now()` cleanup from touching them.
+    expires = now + NEVER_EXPIRES
 
-    values: dict = {
-        "id": sid,
-        "last_accessed_at": now,
-        "expires_at": expires,
-    }
-    update_set: dict = {"last_accessed_at": now, "expires_at": expires}
-    if user_id is not None:
-        values["user_id"] = user_id
-        # COALESCE so we never overwrite an existing owner with a different user.
-        update_set["user_id"] = func.coalesce(DBSession.user_id, user_id)
+    # Fast path: session already exists → just touch it.
+    existing = await db.get(DBSession, sid)
+    if existing is not None:
+        await db.execute(
+            DBSession.__table__.update()
+            .where(DBSession.id == sid)
+            .values(
+                last_accessed_at=now,
+                expires_at=expires,
+                # Claim a session that was somehow orphaned. Never re-owner.
+                user_id=func.coalesce(DBSession.user_id, user_id),
+            )
+        )
+        await db.refresh(existing)
+        return existing
+
+    # New session: resolve the campaign (explicit or default) and snapshot
+    # its project_id.
+    if campaign_id is None:
+        campaign_id = await _get_default_campaign_id(db, user_id)
+    project_id = (
+        await db.execute(select(Campaign.project_id).where(Campaign.id == campaign_id))
+    ).scalar_one_or_none()
+    if project_id is None:
+        raise ValueError(f"campaign {campaign_id} not found")
 
     stmt = (
         pg_insert(DBSession)
-        .values(**values)
-        .on_conflict_do_update(index_elements=[DBSession.id], set_=update_set)
+        .values(
+            id=sid,
+            user_id=user_id,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            last_accessed_at=now,
+            expires_at=expires,
+        )
+        # Concurrent inserts for the same id collapse to a touch.
+        .on_conflict_do_update(
+            index_elements=[DBSession.id],
+            set_={
+                "last_accessed_at": now,
+                "expires_at": expires,
+                "user_id": func.coalesce(DBSession.user_id, user_id),
+            },
+        )
         .returning(DBSession)
     )
     result = await db.execute(stmt)
     return result.scalar_one()
+
+
+async def _get_default_campaign_id(
+    db: AsyncSession, user_id: uuid.UUID
+) -> uuid.UUID:
+    """Return the user's default campaign id (oldest live campaign of the
+    oldest live project). Auto-provisions one if missing — keeps the API
+    layer from having to special-case first-request edge conditions."""
+    row = (
+        await db.execute(
+            select(Campaign.id)
+            .join(Project, Project.id == Campaign.project_id)
+            .where(
+                Project.user_id == user_id,
+                Project.archived_at.is_(None),
+                Campaign.archived_at.is_(None),
+            )
+            .order_by(Project.created_at.asc(), Campaign.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        return row
+    _, campaign_id = await ensure_default_project_and_campaign(db, user_id)
+    return campaign_id
 
 
 async def touch_session(db: AsyncSession, session_id: str) -> None:
@@ -125,18 +190,19 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
 
 
 async def cleanup_expired_sessions(db: AsyncSession) -> int:
-    """Drop expired *anonymous* sessions (cascades to children).
+    """Sweep expired non-archived sessions.
 
-    Authenticated sessions (`user_id IS NOT NULL`) are never reaped by this
-    job — chat history is intentionally durable for signed-in users. They
-    can still be removed via the archive/delete UI or by direct DELETE.
+    Effectively a no-op after migration 007: anonymous sessions no longer
+    exist (every session must have NOT NULL campaign_id, and we only ever
+    insert NEVER_EXPIRES for owned rows). Kept as a guarded background hook
+    so the lifecycle worker has something idempotent to call, and so any
+    rogue short-TTL inserts in the future still get reaped.
     """
     now = _now()
     result = await db.execute(
         delete(DBSession).where(
             DBSession.expires_at < now,
             DBSession.is_archived.is_(False),
-            DBSession.user_id.is_(None),
         )
     )
     return result.rowcount or 0
@@ -476,16 +542,152 @@ async def upsert_search_results(
     return list(rows)
 
 
-# ---------- Brand profile (PaidPilot V1) -----------------------------------
+# ---------- Projects --------------------------------------------------------
+DEFAULT_PROJECT_NAME = "My Brand"
+DEFAULT_CAMPAIGN_NAME = "General"
+
+
+async def ensure_default_project_and_campaign(
+    db: AsyncSession, user_id: uuid.UUID
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """Idempotent. Ensures the user owns at least one live project + one live
+    campaign within it. Returns (project_id, campaign_id) of the defaults.
+
+    Called once on first JIT-provisioning of a user (auth dependency) so by
+    the time any product surface runs, the (project, campaign) pair the
+    NOT NULL session FKs need is guaranteed to exist.
+    """
+    # Existing live project?
+    project_id = (
+        await db.execute(
+            select(Project.id)
+            .where(Project.user_id == user_id, Project.archived_at.is_(None))
+            .order_by(Project.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if project_id is None:
+        project = Project(user_id=user_id, name=DEFAULT_PROJECT_NAME)
+        db.add(project)
+        await db.flush()
+        project_id = project.id
+
+    # Existing live campaign in that project?
+    campaign_id = (
+        await db.execute(
+            select(Campaign.id)
+            .where(Campaign.project_id == project_id, Campaign.archived_at.is_(None))
+            .order_by(Campaign.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if campaign_id is None:
+        campaign = Campaign(project_id=project_id, name=DEFAULT_CAMPAIGN_NAME)
+        db.add(campaign)
+        await db.flush()
+        campaign_id = campaign.id
+
+    return project_id, campaign_id
+
+
+async def get_default_project_id(
+    db: AsyncSession, user_id: uuid.UUID
+) -> uuid.UUID:
+    """User's default (oldest live) project, auto-provisioning if missing."""
+    project_id = (
+        await db.execute(
+            select(Project.id)
+            .where(Project.user_id == user_id, Project.archived_at.is_(None))
+            .order_by(Project.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if project_id is not None:
+        return project_id
+    project_id, _ = await ensure_default_project_and_campaign(db, user_id)
+    return project_id
+
+
+async def list_projects_for_user(
+    db: AsyncSession, user_id: uuid.UUID, *, include_archived: bool = False
+) -> list[Project]:
+    stmt = select(Project).where(Project.user_id == user_id)
+    if not include_archived:
+        stmt = stmt.where(Project.archived_at.is_(None))
+    stmt = stmt.order_by(Project.created_at.asc())
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_project_for_user(
+    db: AsyncSession, project_id: uuid.UUID, user_id: uuid.UUID
+) -> Optional[Project]:
+    """Owner-scoped fetch; returns None if the project isn't owned by user_id."""
+    return (
+        await db.execute(
+            select(Project).where(Project.id == project_id, Project.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+
+
+# ---------- Campaigns ------------------------------------------------------
+async def list_campaigns_for_project(
+    db: AsyncSession, project_id: uuid.UUID, *, include_archived: bool = False
+) -> list[Campaign]:
+    stmt = select(Campaign).where(Campaign.project_id == project_id)
+    if not include_archived:
+        stmt = stmt.where(Campaign.archived_at.is_(None))
+    stmt = stmt.order_by(Campaign.created_at.asc())
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_campaign_for_user(
+    db: AsyncSession, campaign_id: uuid.UUID, user_id: uuid.UUID
+) -> Optional[Campaign]:
+    """Owner-scoped fetch; verifies the campaign's project belongs to the user."""
+    return (
+        await db.execute(
+            select(Campaign)
+            .join(Project, Project.id == Campaign.project_id)
+            .where(Campaign.id == campaign_id, Project.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+
+
+# ---------- Brand profile (project-keyed after migration 007) --------------
 async def get_brand_profile(
+    db: AsyncSession, project_id: uuid.UUID
+) -> Optional[BrandProfile]:
+    """Brand profile for one project (the unit of grounding for system prompt)."""
+    return await db.get(BrandProfile, project_id)
+
+
+async def get_brand_profile_for_user(
     db: AsyncSession, user_id: uuid.UUID
 ) -> Optional[BrandProfile]:
-    return await db.get(BrandProfile, user_id)
+    """Convenience: brand profile of the user's default project.
+
+    Drops to None only if the user somehow has no project at all — callers
+    that hit this from a normal authed path can rely on ensure-default
+    having run during auth-upsert.
+    """
+    project_id = (
+        await db.execute(
+            select(Project.id)
+            .where(Project.user_id == user_id, Project.archived_at.is_(None))
+            .order_by(Project.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if project_id is None:
+        return None
+    return await db.get(BrandProfile, project_id)
 
 
 async def upsert_brand_profile(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    project_id: uuid.UUID,
     *,
     company_name: Optional[str] = None,
     website: Optional[str] = None,
@@ -497,14 +699,14 @@ async def upsert_brand_profile(
     current_campaigns_summary: Optional[str] = None,
     mark_completed: bool = False,
 ) -> BrandProfile:
-    """Insert-or-update a user's brand profile.
+    """Insert-or-update the project's brand profile.
 
     Only fields explicitly passed (non-None) are written, so the wizard can
     submit partial updates without clobbering previously-saved fields.
     `primary_channels` is treated specially: an empty list is a deliberate
     clear; None means "leave alone".
     """
-    values: dict = {"user_id": user_id}
+    values: dict = {"project_id": project_id}
     update_set: dict = {}
 
     field_map = {
@@ -536,14 +738,14 @@ async def upsert_brand_profile(
         pg_insert(BrandProfile)
         .values(**values)
         .on_conflict_do_update(
-            index_elements=[BrandProfile.user_id],
+            index_elements=[BrandProfile.project_id],
             set_=update_set,
         )
-        .returning(BrandProfile.user_id)
+        .returning(BrandProfile.project_id)
     )
     await db.execute(stmt)
     await db.flush()
-    profile = await db.get(BrandProfile, user_id)
+    profile = await db.get(BrandProfile, project_id)
     assert profile is not None  # just upserted
     return profile
 

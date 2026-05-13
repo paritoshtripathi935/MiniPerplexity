@@ -84,15 +84,119 @@ class User(Base):
     preferred_chat_model: Mapped[Optional[str]] = mapped_column(Text)
 
 
-# ---------- brand_profiles -------------------------------------------------
-class BrandProfile(Base):
-    """One row per user. Composed into the system prompt for every chat."""
-    __tablename__ = "brand_profiles"
+# ---------- projects (= brand) ---------------------------------------------
+class Project(Base):
+    """A brand the user is working on. Owns one brand_profile, many campaigns."""
+    __tablename__ = "projects"
 
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    campaigns: Mapped[list["Campaign"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(name) BETWEEN 1 AND 120", name="projects_name_check"),
+        # The DDL's case-insensitive partial unique index is on lower(name); we
+        # don't redeclare it here (SQLAlchemy can't model functional indexes
+        # without text()). Migration 007 owns it.
+        Index(
+            "idx_projects_user_created",
+            "user_id",
+            "created_at",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+    )
+
+
+# ---------- campaigns -------------------------------------------------------
+class Campaign(Base):
+    """A real-world marketing campaign — time + goal bounded. Owns sessions."""
+    __tablename__ = "campaigns"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    objective: Mapped[Optional[str]] = mapped_column(Text)
+    starts_on: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False))
+    ends_on: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    project: Mapped[Project] = relationship(back_populates="campaigns")
+
+    __table_args__ = (
+        CheckConstraint("length(name) BETWEEN 1 AND 120", name="campaigns_name_check"),
+        CheckConstraint(
+            "objective IS NULL OR length(objective) <= 500",
+            name="campaigns_objective_check",
+        ),
+        CheckConstraint(
+            "starts_on IS NULL OR ends_on IS NULL OR starts_on <= ends_on",
+            name="campaigns_date_window_check",
+        ),
+        Index(
+            "idx_campaigns_project_created",
+            "project_id",
+            "created_at",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+        Index(
+            "idx_campaigns_active_window",
+            "project_id",
+            "starts_on",
+            "ends_on",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+    )
+
+
+# ---------- brand_profiles -------------------------------------------------
+class BrandProfile(Base):
+    """One row per project. Composed into the system prompt for every chat
+    grounded in that project (via the session's snapshotted project_id)."""
+    __tablename__ = "brand_profiles"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    # Retained until follow-up migration 008 drops it. Pre-007 the PK; today
+    # only kept for rollback safety + as a back-reference to the project's owner.
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
     )
     company_name: Mapped[Optional[str]] = mapped_column(Text)
     website: Mapped[Optional[str]] = mapped_column(Text)
@@ -115,12 +219,27 @@ class BrandProfile(Base):
 
 # ---------- sessions --------------------------------------------------------
 class Session(Base):
+    """Every session is anchored to exactly one (project, campaign).
+
+    `project_id` is snapshotted from the campaign at create-time so the
+    system-prompt composition is a single PK lookup off the session.
+    """
     __tablename__ = "sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
     )
     title: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -154,6 +273,18 @@ class Session(Base):
             "user_id",
             "last_accessed_at",
             postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_sessions_campaign_last_accessed",
+            "campaign_id",
+            "last_accessed_at",
+            postgresql_where=text("is_archived = false"),
+        ),
+        Index(
+            "idx_sessions_project_last_accessed",
+            "project_id",
+            "last_accessed_at",
+            postgresql_where=text("is_archived = false"),
         ),
         Index(
             "idx_sessions_expires_at",

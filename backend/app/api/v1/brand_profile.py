@@ -10,7 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user
 from app.db import get_db
 from app.db.models import BrandProfile, User
-from app.db.repository import get_brand_profile, upsert_brand_profile
+from app.db.repository import (
+    get_brand_profile,
+    get_default_project_id,
+    upsert_brand_profile,
+)
 
 router = APIRouter()
 
@@ -71,8 +75,14 @@ async def read_brand_profile(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return this user's brand profile. Empty stub if onboarding hasn't run."""
-    profile = await get_brand_profile(db, user.id)
+    """Return the brand profile for this user's default project.
+
+    The richer per-project surface lives at `/projects/{id}/brand-profile`
+    (added in a follow-up PR). This endpoint is preserved so the existing
+    onboarding wizard + Settings page keep working through the H rollout.
+    """
+    project_id = await get_default_project_id(db, user.id)
+    profile = await get_brand_profile(db, project_id)
     return _serialize(profile, user.id)
 
 
@@ -82,14 +92,16 @@ async def write_brand_profile(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upsert the brand profile. Set `mark_completed=true` from the final wizard step."""
+    """Upsert the brand profile on the user's default project. Set
+    `mark_completed=true` from the final wizard step."""
     channels: Optional[list[str]] = None
     if payload.primary_channels is not None:
         channels = [c.strip().lower() for c in payload.primary_channels if c and c.strip()]
 
+    project_id = await get_default_project_id(db, user.id)
     profile = await upsert_brand_profile(
         db,
-        user.id,
+        project_id,
         company_name=payload.company_name,
         website=payload.website,
         icp_description=payload.icp_description,
