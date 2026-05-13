@@ -1,7 +1,20 @@
 # Meta Marketing API integration — scoping doc
 
-> Status: **draft for sign-off**. Written 2026-05-13 against `main` post-#82.
-> Asking the user to pick a strategy (§ 2) before any code lands.
+> Status: **direction resolved 2026-05-13**. Written against `main` post-#82.
+>
+> **Resolution (from chat):**
+> - There are no real beta users yet — the "9 users" in the DB are dev/test rows.
+>   This drops App Review urgency: it only matters when a real prospective
+>   customer needs to connect without being added as a tester.
+> - **Strategy A** (full OAuth, full pipeline, grounded LLM) is the build target —
+>   not because we need GA traffic, but because it's the differentiator that
+>   earns the rebrand and is demo-able via screen share.
+> - **App Review is deferred** until a real customer queue exists. Engineering
+>   owns the whole timeline; no external blocker.
+> - Multi-currency: store + display in account currency for v1.
+> - Phase ordering as written below.
+>
+> Implementation kicks off after the doc lands.
 
 PaidPilot's landing page promises "connect Meta" and the HomePage already shows two dim placeholder rows (`connect Meta`, `connect Google Ads`) that link to `/settings`. STATUS A5 calls this a deadline-driven landing-page commitment: beta runs to **2026-11-11**, and the "free for 6 months" framing turns into churn risk if a visitor signs up expecting Meta connection and we don't have it.
 
@@ -296,12 +309,22 @@ Open questions on schema:
 
 ---
 
-## 9. What I need from you before any code
+## 9. Open item — Meta App credentials
 
-1. **Strategy pick** — A, B, or C. (Recommending B with parallel App Review.)
-2. **Meta App ownership** — do I create one, or are you handing me credentials for an existing one?
-3. **App Review prep ownership** — privacy policy / terms / demo video. These exist for the landing page already; I'll repurpose, but flagging that they need to match the App Review submission.
-4. **FX simplification** — OK to store in account currency for v1?
-5. **Phase ordering** — happy with the 5-phase split, or prefer a thinner v1 ("connect flow + system prompt, skip the UI tiles")?
+The only remaining external dependency is the Meta App itself. Phase 1's
+backend OAuth helper reads `META_APP_ID` and `META_APP_SECRET` from env;
+without them, the connect endpoint returns 503 "Meta integration not
+configured" so the build still ships clean. Steps to unblock the OAuth
+handshake when ready:
 
-Once those five are resolved, I'll branch off `main` for Phase 1 and we ship the first PR within 2 days.
+1. Create a Meta App at developers.facebook.com (type: Business)
+2. Add the "Facebook Login for Business" + "Marketing API" products
+3. Configure OAuth redirect URI:
+   `https://paidpilot.app/api/v1/integrations/meta/callback` (prod) +
+   `http://127.0.0.1:8001/api/v1/integrations/meta/callback` (local)
+4. Drop `META_APP_ID` + `META_APP_SECRET` into `.env` (local) and the
+   Render dashboard (prod)
+5. Sign in via /settings/integrations — confirm it persists tokens +
+   lists ad accounts
+
+This can happen any time after Phase 1 lands.
