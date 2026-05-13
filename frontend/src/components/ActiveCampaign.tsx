@@ -1,13 +1,30 @@
 /**
- * Active campaign context — the global "current scope" for the signed-in app.
+ * Active campaign context — navigation-chrome scope hint for the signed-in
+ * app.
  *
- * Design (per Category H, decision 6 in the grill-me interview):
- *   - Source of truth: localStorage `paidpilot-active-campaign-id`.
- *   - Falls back to the user's default project's oldest live campaign if
- *     the stored id is missing, malformed, or points at an archived /
- *     since-deleted campaign.
- *   - The whole app scopes to this campaign. Switching campaigns swaps
- *     the entire app context — sidebar, home, plays, calculators.
+ * Post-#79-followup (URL purification): the URL is now the **authoritative**
+ * source of scope for the tool surfaces (/projects/:p/c/:c/investigations |
+ * plays | calc). ChatPage / PlaysPage / CalculatorsPage read campaignId
+ * directly from useParams and pass it through to API calls.
+ *
+ * This provider's role narrows to: **what scope should we link to from
+ * surfaces that live outside a campaign URL** — the sidebar tool rows, the
+ * command palette, the HomePage quick actions. The localStorage key
+ * (`paidpilot-active-campaign-id`) persists the user's last-touched scope
+ * across cold loads so a hard refresh on / doesn't reset their default to
+ * the alphabetical-first project's first campaign.
+ *
+ * Resolution order on cold load:
+ *   1. localStorage `paidpilot-active-campaign-id` if it points at a live
+ *      campaign in the user's first project (we don't fan out to other
+ *      projects today; cross-project switching goes through CampaignSwitcher).
+ *   2. Oldest live campaign of the user's first live project.
+ *   3. null (zero projects / zero campaigns — onboarding incomplete).
+ *
+ * CampaignHomePage's mount-effect calls _swapProject(projectId, campaignId)
+ * so visiting a scoped URL updates the localStorage hint to match (next
+ * time the user lands on /, the sidebar's tool rows already point at the
+ * campaign they were last working in).
  *
  * The provider does *not* fetch projects / campaigns itself — it consumes
  * the SWR caches (`useProjects`, `useCampaigns`) so any other consumer of

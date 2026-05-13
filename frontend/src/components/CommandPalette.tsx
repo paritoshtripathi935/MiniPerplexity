@@ -35,6 +35,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { usePlays, useSessions } from '../services/queries';
+import { useActiveCampaign } from './ActiveCampaign';
 
 /* ----------------------------- Context / hook ---------------------------- */
 
@@ -94,6 +95,18 @@ export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
   const navigate = useNavigate();
   const { getToken, isSignedIn } = useAuth();
+  const { activeProject, activeCampaign } = useActiveCampaign();
+
+  // Active-campaign anchor for tool-route hrefs. Palette items target the
+  // user's current scope so opening Plays / Calc / New investigation
+  // from the palette doesn't bounce off a redirect. Falls back to
+  // /projects when no campaign exists yet.
+  const toolBase =
+    activeProject && activeCampaign
+      ? `/projects/${activeProject.id}/c/${activeCampaign.id}`
+      : null;
+  const toolHref = (suffix: string) =>
+    toolBase ? `${toolBase}${suffix}` : '/projects';
 
   // Shared SWR caches — populated on app boot by preloadQueries so the
   // first ⌘K open already has data. Subsequent opens hit the cache.
@@ -121,8 +134,8 @@ export function CommandPalette() {
 
   const newInvestigation = useCallback(() => {
     close();
-    navigate(`/investigations/${uuidv4()}`);
-  }, [close, navigate]);
+    navigate(toolHref(`/investigations/${uuidv4()}`));
+  }, [close, navigate, toolHref]);
 
   // Global hotkeys: ⌘K toggles palette; ⌘N/P/E navigate directly;
   // G+D / G+S chord jumps to dashboard/settings.
@@ -148,12 +161,12 @@ export function CommandPalette() {
         // override it inside the app for "open Plays". Hold Shift to
         // keep the native Print if a user needs it.
         e.preventDefault();
-        run('/plays');
+        run(toolHref('/plays'));
         return;
       }
       if (isMeta(e) && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
-        run('/calc');
+        run(toolHref('/calc'));
         return;
       }
       if (e.key === 'Escape' && open) {
@@ -185,10 +198,10 @@ export function CommandPalette() {
           run('/settings');
         } else if (k === 'i') {
           e.preventDefault();
-          run('/investigations');
+          run(toolHref('/investigations'));
         } else if (k === 'p') {
           e.preventDefault();
-          run('/plays');
+          run(toolHref('/plays'));
         }
       }
     };
@@ -198,7 +211,7 @@ export function CommandPalette() {
       window.removeEventListener('keydown', onKey);
       if (chordTimer.current) window.clearTimeout(chordTimer.current);
     };
-  }, [open, setOpen, close, run, newInvestigation]);
+  }, [open, setOpen, close, run, newInvestigation, toolHref]);
 
   if (!open) return null;
 
@@ -241,17 +254,26 @@ export function CommandPalette() {
               shortcut={['⌘', 'N']}
               onSelect={newInvestigation}
             />
-            {sessions.map(s => (
-              <PaletteItem
-                key={s.id}
-                icon={<Search className="w-4 h-4" />}
-                label={s.title?.trim() || 'Untitled investigation'}
-                onSelect={() => run(`/investigations/${s.id}`)}
-                // cmdk filters on `value`; include the excerpt so search
-                // matches turn content, not just titles.
-                value={`${s.title ?? ''} ${s.last_message_excerpt ?? ''} ${s.id}`}
-              />
-            ))}
+            {sessions.map(s => {
+              // Sessions have a server-side campaign_id. Build the scoped
+              // path off it so opening a session from a cross-scope
+              // palette jumps to the right campaign's tool surface.
+              const href =
+                s.project_id && s.campaign_id
+                  ? `/projects/${s.project_id}/c/${s.campaign_id}/investigations/${s.id}`
+                  : toolHref(`/investigations/${s.id}`);
+              return (
+                <PaletteItem
+                  key={s.id}
+                  icon={<Search className="w-4 h-4" />}
+                  label={s.title?.trim() || 'Untitled investigation'}
+                  onSelect={() => run(href)}
+                  // cmdk filters on `value`; include the excerpt so search
+                  // matches turn content, not just titles.
+                  value={`${s.title ?? ''} ${s.last_message_excerpt ?? ''} ${s.id}`}
+                />
+              );
+            })}
           </PaletteGroup>
 
           {plays.length > 0 && (
@@ -266,7 +288,7 @@ export function CommandPalette() {
                       {p.category}
                     </span>
                   }
-                  onSelect={() => run('/plays')}
+                  onSelect={() => run(toolHref('/plays'))}
                   value={`${p.title} ${p.category} ${p.description}`}
                 />
               ))}
@@ -278,7 +300,7 @@ export function CommandPalette() {
               icon={<Calculator className="w-4 h-4" />}
               label="Open calculators"
               shortcut={['⌘', 'E']}
-              onSelect={() => run('/calc')}
+              onSelect={() => run(toolHref('/calc'))}
             />
           </PaletteGroup>
 
@@ -293,13 +315,13 @@ export function CommandPalette() {
               icon={<Search className="w-4 h-4" />}
               label="Investigations"
               shortcut={['G', 'I']}
-              onSelect={() => run('/investigations')}
+              onSelect={() => run(toolHref('/investigations'))}
             />
             <PaletteItem
               icon={<PlayCircle className="w-4 h-4" />}
               label="Plays"
               shortcut={['G', 'P']}
-              onSelect={() => run('/plays')}
+              onSelect={() => run(toolHref('/plays'))}
             />
             <PaletteItem
               icon={<Sparkles className="w-4 h-4" />}

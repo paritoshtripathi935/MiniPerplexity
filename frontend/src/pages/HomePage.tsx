@@ -82,12 +82,22 @@ export function HomePage({}: Props) {
   // Session list scopes to the active campaign so the Home feed only
   // shows the investigations belonging to the current scope.
   const { data: profile } = useBrandProfile(getToken, !!isSignedIn);
-  const { activeCampaign } = useActiveCampaign();
+  const { activeProject, activeCampaign } = useActiveCampaign();
   const { data: sessions = [] } = useSessions(
     getToken,
     { limit: 10, campaignId: activeCampaign?.id },
     !!isSignedIn,
   );
+
+  // Tool-link prefix for the active scope. Tool quick-actions and feed
+  // rows target the scoped URL; falls back to /projects when no campaign
+  // exists yet (so the user picks scope before landing in a tool).
+  const toolBase =
+    activeProject && activeCampaign
+      ? `/projects/${activeProject.id}/c/${activeCampaign.id}`
+      : null;
+  const toolHref = (suffix: string) =>
+    toolBase ? `${toolBase}${suffix}` : '/projects';
 
   // Pick up scenarios written from /calc in another tab.
   useEffect(() => {
@@ -149,14 +159,14 @@ export function HomePage({}: Props) {
                   </span>
                 ) : (
                   <Link
-                    to={`/investigations/${newChatId}`}
+                    to={toolHref(`/investigations/${newChatId}`)}
                     className="text-body-sm text-brand hover:underline"
                   >
                     start one →
                   </Link>
                 )
               }
-              to={openInvestigations.length > 0 ? '/investigations' : undefined}
+              to={openInvestigations.length > 0 ? toolHref('/investigations') : undefined}
             />
 
             <FeedRow
@@ -166,7 +176,7 @@ export function HomePage({}: Props) {
                 scenarios.total === 0 ? (
                   <span className="text-body-sm text-fg-muted">
                     <span className="text-fg-subtle/60">→</span>{' '}
-                    <Link to="/calc" className="text-brand hover:underline">
+                    <Link to={toolHref('/calc')} className="text-brand hover:underline">
                       no scenarios saved yet
                     </Link>
                   </span>
@@ -177,7 +187,7 @@ export function HomePage({}: Props) {
                   </span>
                 )
               }
-              to="/calc"
+              to={toolHref('/calc')}
             />
 
             <FeedRow
@@ -240,7 +250,11 @@ export function HomePage({}: Props) {
                 {recentThree.map(s => (
                   <li key={s.id}>
                     <Link
-                      to={`/investigations/${s.id}`}
+                      to={
+                        s.project_id && s.campaign_id
+                          ? `/projects/${s.project_id}/c/${s.campaign_id}/investigations/${s.id}`
+                          : toolHref(`/investigations/${s.id}`)
+                      }
                       className="block rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur hover:border-brand/40 transition-colors p-3 group focus-visible:outline-none focus-visible:shadow-focus"
                     >
                       <div className="flex items-start justify-between gap-3 mb-1">
@@ -268,17 +282,17 @@ export function HomePage({}: Props) {
             <ul className="space-y-px">
               <QuickAction
                 label="new investigation"
-                to={`/investigations/${newChatId}`}
+                to={toolHref(`/investigations/${newChatId}`)}
                 shortcut={['⌘', 'N']}
               />
               <QuickAction
                 label="open calculators"
-                to="/calc"
+                to={toolHref('/calc')}
                 shortcut={['⌘', 'E']}
               />
               <QuickAction
                 label="run a play"
-                to="/plays"
+                to={toolHref('/plays')}
                 shortcut={['⌘', 'P']}
                 icon={<PlayCircle className="w-3.5 h-3.5" />}
               />

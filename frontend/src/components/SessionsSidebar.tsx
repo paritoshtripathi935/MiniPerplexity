@@ -11,7 +11,6 @@ import {
   type SessionListItem,
   type SearchHit,
 } from '../services/api';
-import { useActiveCampaign } from './ActiveCampaign';
 import { Button } from './ui/Button';
 
 interface Props {
@@ -21,6 +20,9 @@ interface Props {
   onSelectSession: (sessionId: string) => void;
   onNewInvestigation: () => void;
   refreshSignal?: number;
+  /** Scope-filter the sidebar's session list. Passed in from ChatPage,
+   *  which reads it from the URL (post-#79 URL is scope-authoritative). */
+  campaignId?: string | null;
 }
 
 function relativeTime(iso: string): string {
@@ -40,9 +42,9 @@ export function SessionsSidebar({
   onSelectSession,
   onNewInvestigation,
   refreshSignal = 0,
+  campaignId = null,
 }: Props) {
   const { getToken, isSignedIn } = useAuth();
-  const { activeCampaign } = useActiveCampaign();
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -56,7 +58,7 @@ export function SessionsSidebar({
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
 
-  const activeCampaignId = activeCampaign?.id ?? null;
+  const activeCampaignId = campaignId;
   const refresh = useCallback(async () => {
     if (!isSignedIn) return;
     setLoading(true);

@@ -63,6 +63,7 @@ async def search(
     session_id: str,
     search_request: SearchRequest,
     custom_url: Optional[str] = None,
+    campaign_id: Optional[uuid.UUID] = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -70,9 +71,16 @@ async def search(
 
     Auth required. Anonymous sessions were removed by migration 007 — every
     session must anchor to a (project, campaign) pair owned by a user.
+
+    `campaign_id` anchors a brand-new session to the active campaign in the
+    URL (post-#79 follow-up: tool routes live under
+    /projects/:p/c/:c/...). Ignored when the session already exists —
+    project + campaign are snapshotted at create-time.
     """
     try:
-        await get_or_create_session(db, session_id, user_id=user.id)
+        await get_or_create_session(
+            db, session_id, user_id=user.id, campaign_id=campaign_id
+        )
         query_row = await add_query(
             db,
             session_id=session_id,
@@ -127,6 +135,7 @@ async def get_answer(
     session_id: str,
     query_request: QueryRequest,
     play_id: Optional[str] = None,
+    campaign_id: Optional[uuid.UUID] = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -134,10 +143,13 @@ async def get_answer(
 
     `play_id`, when supplied, layers a Play's instructions + output schema
     onto the system prompt. The user's active-project brand profile is always
-    composed in.
+    composed in. `campaign_id` anchors a brand-new session to the URL's
+    campaign scope (see /search for the rationale).
     """
     try:
-        await get_or_create_session(db, session_id, user_id=user.id)
+        await get_or_create_session(
+            db, session_id, user_id=user.id, campaign_id=campaign_id
+        )
 
         search_results = [r.model_dump() for r in query_request.search_results]
         # Belt-and-suspenders: re-attach authority tags so the chat UI's
@@ -234,6 +246,7 @@ async def stream_answer(
     session_id: str,
     query_request: QueryRequest,
     play_id: Optional[str] = None,
+    campaign_id: Optional[uuid.UUID] = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -254,7 +267,9 @@ async def stream_answer(
     # Resolve everything that requires the DB session *before* we hand control
     # to the streaming generator: FastAPI closes `db` once the route function
     # returns, and yielding from inside the generator returns immediately.
-    await get_or_create_session(db, session_id, user_id=user.id)
+    await get_or_create_session(
+        db, session_id, user_id=user.id, campaign_id=campaign_id
+    )
     search_results = [r.model_dump() for r in query_request.search_results]
     tag_authority_in_place(search_results)
 
