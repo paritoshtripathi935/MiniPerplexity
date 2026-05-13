@@ -11,9 +11,10 @@ Every chat turn gets:
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Iterable, Optional
 
-from app.db.models import BrandProfile
+from app.db.models import BrandProfile, Campaign
 
 
 PERSONA = """\
@@ -116,6 +117,65 @@ def render_brand_block(profile: Optional[BrandProfile]) -> str:
     return "\n".join(lines)
 
 
+def _date_window_phrase(starts_on, ends_on, today: Optional[date] = None) -> str:
+    """Human-friendly date window phrase the LLM can quote. Returns '' when
+    no dates are set."""
+    if not starts_on and not ends_on:
+        return ""
+    today = today or date.today()
+    starts_on_d = starts_on if isinstance(starts_on, date) else None
+    ends_on_d = ends_on if isinstance(ends_on, date) else None
+    fmt = lambda d: d.strftime("%b %d, %Y")
+    if starts_on_d and ends_on_d:
+        if today < starts_on_d:
+            return f"runs {fmt(starts_on_d)} – {fmt(ends_on_d)} (starts in {(starts_on_d - today).days} days)"
+        if today > ends_on_d:
+            return f"ran {fmt(starts_on_d)} – {fmt(ends_on_d)} (ended {(today - ends_on_d).days} days ago)"
+        days_in = (today - starts_on_d).days
+        days_left = (ends_on_d - today).days
+        return f"running {fmt(starts_on_d)} – {fmt(ends_on_d)} ({days_in} days in, {days_left} days left)"
+    if starts_on_d:
+        return f"started {fmt(starts_on_d)} (ongoing)"
+    if ends_on_d:
+        return f"ends {fmt(ends_on_d)}"
+    return ""
+
+
+def render_campaign_block(campaign: Optional[Campaign]) -> str:
+    """The active-campaign section of the system prompt. '' if no campaign
+    or a generic 'General' campaign with no objective and no dates (in
+    which case there's nothing useful to add and we save tokens)."""
+    if campaign is None:
+        return ""
+
+    has_objective = bool((campaign.objective or "").strip())
+    has_window = bool(campaign.starts_on or campaign.ends_on)
+    is_generic_general = (
+        campaign.name.strip().lower() == "general"
+        and not has_objective
+        and not has_window
+    )
+    if is_generic_general:
+        return ""
+
+    lines: list[str] = ["", "## Active campaign", ""]
+    lines.append(f"- **Name:** {campaign.name}")
+    if has_objective:
+        lines.append(f"- **Objective:** {campaign.objective.strip()}")
+    if has_window:
+        phrase = _date_window_phrase(campaign.starts_on, campaign.ends_on)
+        if phrase:
+            lines.append(f"- **Schedule:** {phrase}")
+
+    lines.append("")
+    lines.append(
+        "Tune recommendations to this campaign — its objective, schedule, "
+        "and stage of life. When a question is generic, ground the example "
+        "in this campaign's context."
+    )
+    return "\n".join(lines)
+
+
 def render_play_block(play: Optional[dict]) -> str:
     """Inject a Play's instructions and output schema. '' if no play."""
     if not play:
@@ -141,7 +201,13 @@ def render_play_block(play: Optional[dict]) -> str:
 
 def compose_system_prompt(
     profile: Optional[BrandProfile] = None,
+    campaign: Optional[Campaign] = None,
     play: Optional[dict] = None,
 ) -> str:
-    parts = [PERSONA, render_brand_block(profile), render_play_block(play)]
+    parts = [
+        PERSONA,
+        render_brand_block(profile),
+        render_campaign_block(campaign),
+        render_play_block(play),
+    ]
     return "\n".join(p for p in parts if p)

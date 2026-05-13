@@ -24,6 +24,7 @@ from app.db.repository import (
     get_chat_history,
     get_message,
     get_or_create_session,
+    get_session_campaign,
     get_query_text,
     get_recent_queries,
     get_session_history,
@@ -147,9 +148,14 @@ async def get_answer(
 
         # Compose marketing-tuned system prompt. Brand profile resolves via
         # the user's default project (one PK lookup off the upserted user).
+        # Campaign comes from the session's snapshotted campaign_id — gives
+        # the LLM the active campaign's objective + date window.
         profile = await get_brand_profile_for_user(db, user.id)
+        campaign = await get_session_campaign(db, session_id)
         play = get_play(play_id) if play_id else None
-        system_override = compose_system_prompt(profile=profile, play=play)
+        system_override = compose_system_prompt(
+            profile=profile, campaign=campaign, play=play
+        )
 
         cf_chat = CloudflareChat(
             api_key=CLOUDFLARE_API_KEY,
@@ -255,8 +261,11 @@ async def stream_answer(
     previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
 
     profile = await get_brand_profile_for_user(db, user.id)
+    campaign = await get_session_campaign(db, session_id)
     play = get_play(play_id) if play_id else None
-    system_override = compose_system_prompt(profile=profile, play=play)
+    system_override = compose_system_prompt(
+        profile=profile, campaign=campaign, play=play
+    )
 
     cf_chat = CloudflareChat(
         api_key=CLOUDFLARE_API_KEY,

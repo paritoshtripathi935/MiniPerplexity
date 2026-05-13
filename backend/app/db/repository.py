@@ -189,6 +189,22 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
     return (result.rowcount or 0) > 0
 
 
+async def get_session_campaign(
+    db: AsyncSession, session_id: str
+) -> Optional[Campaign]:
+    """Fetch the Campaign anchored to this session. Single PK join — the
+    session row carries campaign_id snapshotted at create-time, and Campaign
+    is keyed by id. Used to compose campaign context into the system prompt."""
+    sid = _to_uuid(session_id)
+    return (
+        await db.execute(
+            select(Campaign)
+            .join(DBSession, DBSession.campaign_id == Campaign.id)
+            .where(DBSession.id == sid)
+        )
+    ).scalar_one_or_none()
+
+
 async def cleanup_expired_sessions(db: AsyncSession) -> int:
     """Sweep expired non-archived sessions.
 
