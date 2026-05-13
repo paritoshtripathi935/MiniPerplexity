@@ -644,6 +644,65 @@ async def list_projects_for_user(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_projects_with_counts(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    include_archived: bool = False,
+) -> list[dict]:
+    """Project list enriched with live-campaign count + live-session count.
+
+    Used by the Settings projects page so the operational-metrics columns
+    (AMPS / INVS in the Stitch design) render with real data without an
+    N+1 fan-out from the client. Both subqueries scope to live (non-
+    archived) rows; sessions only count owned, non-archived sessions.
+    """
+    campaign_count = (
+        select(Campaign.project_id, func.count().label("n"))
+        .where(Campaign.archived_at.is_(None))
+        .group_by(Campaign.project_id)
+        .subquery()
+    )
+    session_count = (
+        select(DBSession.project_id, func.count().label("n"))
+        .where(DBSession.is_archived.is_(False))
+        .group_by(DBSession.project_id)
+        .subquery()
+    )
+    last_session_at = (
+        select(DBSession.project_id, func.max(DBSession.last_accessed_at).label("ts"))
+        .group_by(DBSession.project_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            Project,
+            func.coalesce(campaign_count.c.n, 0).label("campaign_count"),
+            func.coalesce(session_count.c.n, 0).label("session_count"),
+            last_session_at.c.ts.label("last_session_at"),
+        )
+        .outerjoin(campaign_count, campaign_count.c.project_id == Project.id)
+        .outerjoin(session_count, session_count.c.project_id == Project.id)
+        .outerjoin(last_session_at, last_session_at.c.project_id == Project.id)
+        .where(Project.user_id == user_id)
+    )
+    if not include_archived:
+        stmt = stmt.where(Project.archived_at.is_(None))
+    stmt = stmt.order_by(Project.created_at.asc())
+
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "project": row.Project,
+            "campaign_count": int(row.campaign_count),
+            "session_count": int(row.session_count),
+            "last_session_at": row.last_session_at.isoformat() if row.last_session_at else None,
+        }
+        for row in rows
+    ]
+
+
 async def get_project_for_user(
     db: AsyncSession, project_id: uuid.UUID, user_id: uuid.UUID
 ) -> Optional[Project]:

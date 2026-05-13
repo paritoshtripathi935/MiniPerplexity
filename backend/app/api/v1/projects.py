@@ -34,6 +34,7 @@ from app.db.repository import (
     get_project_for_user,
     list_campaigns_for_project,
     list_projects_for_user,
+    list_projects_with_counts,
     rename_project,
     unarchive_campaign,
     unarchive_project,
@@ -57,15 +58,30 @@ class ProjectOut(BaseModel):
     created_at: str
     updated_at: str
     archived_at: Optional[str] = None
+    # Operational metrics. Populated by GET /projects (one SQL round-trip
+    # via list_projects_with_counts); zero on POST/PATCH/GET-by-id which
+    # don't carry the aggregation. The frontend treats absent counts as 0.
+    campaign_count: int = 0
+    session_count: int = 0
+    last_session_at: Optional[str] = None
 
 
-def _serialize_project(p: Project) -> ProjectOut:
+def _serialize_project(
+    p: Project,
+    *,
+    campaign_count: int = 0,
+    session_count: int = 0,
+    last_session_at: Optional[str] = None,
+) -> ProjectOut:
     return ProjectOut(
         id=str(p.id),
         name=p.name,
         created_at=p.created_at.isoformat(),
         updated_at=p.updated_at.isoformat(),
         archived_at=p.archived_at.isoformat() if p.archived_at else None,
+        campaign_count=campaign_count,
+        session_count=session_count,
+        last_session_at=last_session_at,
     )
 
 
@@ -197,9 +213,22 @@ async def list_projects(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Owned projects, ordered oldest-first (matches default-project resolution)."""
-    rows = await list_projects_for_user(db, user.id, include_archived=include_archived)
-    return [_serialize_project(p) for p in rows]
+    """Owned projects, ordered oldest-first (matches default-project
+    resolution). Each row includes live-campaign + live-session counts
+    so the Settings projects page can render its operational-metrics
+    columns without an N+1 fan-out."""
+    rows = await list_projects_with_counts(
+        db, user.id, include_archived=include_archived
+    )
+    return [
+        _serialize_project(
+            r["project"],
+            campaign_count=r["campaign_count"],
+            session_count=r["session_count"],
+            last_session_at=r["last_session_at"],
+        )
+        for r in rows
+    ]
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)

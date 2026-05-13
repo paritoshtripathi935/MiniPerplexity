@@ -453,6 +453,14 @@ export interface ProjectSummary {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  /** Live (non-archived) campaign count. Populated on GET /projects;
+   *  zero on POST/PATCH responses that don't carry the aggregation. */
+  campaign_count: number;
+  /** Live (non-archived) session count owned by this project. */
+  session_count: number;
+  /** Most recent session activity in this project, or null if no
+   *  sessions exist yet. */
+  last_session_at: string | null;
 }
 
 export interface CampaignSummary {

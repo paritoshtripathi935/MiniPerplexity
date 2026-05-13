@@ -15,10 +15,10 @@
  * the Settings projects page (H5) lands, the footer buttons will deep-link
  * there instead of inlining the form.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import clsx from 'clsx';
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react';
 import {
   projectColor,
   useActiveCampaign,
@@ -127,11 +127,58 @@ function SwitcherBody({ onClose }: { onClose: () => void }) {
   const [expandedId, setExpandedId] = useState<string>(
     activeProject?.id || projects[0]?.id || '',
   );
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+
+  // Filter projects on name. When the query matches a campaign name inside
+  // a project, surface the parent project too (so the user can drill in).
+  // We don't have all campaigns for non-active projects pre-loaded, so the
+  // campaign-name match only applies to the active project's campaign list.
+  const filteredProjects = useMemo(() => {
+    if (!normalizedQuery) return projects;
+    return projects.filter(p => {
+      if (p.name.toLowerCase().includes(normalizedQuery)) return true;
+      if (p.id === activeProject?.id) {
+        return campaigns.some(c =>
+          !c.archived_at && c.name.toLowerCase().includes(normalizedQuery),
+        );
+      }
+      return false;
+    });
+  }, [projects, campaigns, normalizedQuery, activeProject?.id]);
+
+  // Auto-expand the active project's row when a query is typed so the user
+  // sees matching campaigns inline. Switching expansion mid-search is still
+  // allowed; we only seed on first keystroke.
+  useEffect(() => {
+    if (normalizedQuery && activeProject?.id) setExpandedId(activeProject.id);
+  }, [normalizedQuery, activeProject?.id]);
 
   return (
     <div className="py-1.5">
-      <ul className="max-h-[420px] overflow-y-auto py-1">
-        {projects.map(p => (
+      {/* Search bar — Stitch Surface 1 spec. Filters projects (and
+       *  campaigns within the active project) by substring match. */}
+      <div className="px-2 pt-1 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-subtle" />
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="search projects + campaigns…"
+            className="w-full h-9 pl-8 pr-2.5 rounded-lg bg-surface-sunken/40 border border-border/60 text-fg text-body-sm placeholder:text-fg-subtle focus:outline-none focus:border-brand/40"
+          />
+        </div>
+      </div>
+
+      <ul className="max-h-[360px] overflow-y-auto py-1">
+        {filteredProjects.length === 0 && (
+          <li className="px-3 py-3 text-body-sm text-fg-subtle italic">
+            no matches for "{query}"
+          </li>
+        )}
+        {filteredProjects.map(p => (
           <ProjectRow
             key={p.id}
             project={p}
@@ -139,6 +186,7 @@ function SwitcherBody({ onClose }: { onClose: () => void }) {
             isActiveProject={activeProject?.id === p.id}
             activeCampaignId={activeCampaign?.id || null}
             campaignsForActive={p.id === activeProject?.id ? campaigns : null}
+            campaignFilter={normalizedQuery}
             onToggle={() => setExpandedId(prev => (prev === p.id ? '' : p.id))}
             onPick={onClose}
           />
@@ -155,6 +203,7 @@ function ProjectRow({
   isActiveProject,
   activeCampaignId,
   campaignsForActive,
+  campaignFilter,
   onToggle,
   onPick,
 }: {
@@ -165,6 +214,9 @@ function ProjectRow({
   /** Campaigns from cache when this IS the active project — avoids
    *  a duplicate fetch. Null for other projects (we fetch lazily). */
   campaignsForActive: CampaignSummary[] | null;
+  /** Lowercased search query; narrows the campaign list to substring
+   *  matches when present. Empty string = no filter. */
+  campaignFilter: string;
   onToggle: () => void;
   onPick: () => void;
 }) {
@@ -196,6 +248,7 @@ function ProjectRow({
           project={project}
           activeCampaignId={activeCampaignId}
           preloaded={campaignsForActive}
+          filter={campaignFilter}
           onPick={onPick}
         />
       )}
@@ -207,11 +260,13 @@ function CampaignList({
   project,
   activeCampaignId,
   preloaded,
+  filter,
   onPick,
 }: {
   project: ProjectSummary;
   activeCampaignId: string | null;
   preloaded: CampaignSummary[] | null;
+  filter: string;
   onPick: () => void;
 }) {
   const { getToken } = useAuth();
@@ -244,7 +299,11 @@ function CampaignList({
     };
   }, [project.id, preloaded, getToken]);
 
-  const live = campaigns.filter(c => !c.archived_at);
+  const live = campaigns.filter(c => {
+    if (c.archived_at) return false;
+    if (!filter) return true;
+    return c.name.toLowerCase().includes(filter);
+  });
 
   if (loading) {
     return (
