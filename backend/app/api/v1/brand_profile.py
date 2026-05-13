@@ -54,10 +54,13 @@ class BrandProfileOut(BaseModel):
 
 
 def _serialize(profile: Optional[BrandProfile], user_id) -> BrandProfileOut:
+    # Post-migration 008 the BrandProfile row no longer has user_id — it's
+    # keyed by project_id. We echo the caller's user_id back so the response
+    # shape stays compatible with the legacy frontend type (BrandProfile.user_id).
     if profile is None:
         return BrandProfileOut(user_id=str(user_id))
     return BrandProfileOut(
-        user_id=str(profile.user_id),
+        user_id=str(user_id),
         company_name=profile.company_name,
         website=profile.website,
         icp_description=profile.icp_description,
