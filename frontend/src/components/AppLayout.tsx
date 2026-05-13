@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { Moon, Search, Sun } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { ActiveCampaignProvider } from './ActiveCampaign';
+import { ActiveCampaignProvider, useActiveCampaign } from './ActiveCampaign';
 import {
   AppSidebar,
   AppSidebarDrawer,
@@ -46,19 +46,34 @@ export function AppLayout(props: Props) {
 function AppLayoutInner({ darkMode, toggleDarkMode }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
-  const isInvestigationRoute = location.pathname.startsWith('/investigations');
-  // Top-level route segment drives the page-enter key. We deliberately key
-  // on the first segment so that nav within an investigation
-  // (/investigations/abc → /investigations/def) doesn't re-trigger the
-  // page-enter animation — only true page jumps do.
+  const { activeProject, activeCampaign } = useActiveCampaign();
+  // The chat surface uses a fullscreen layout (no max-width / padding).
+  // Both the campaign-scoped path and the legacy global path (which now
+  // redirects but may briefly render before resolution) qualify.
+  const isInvestigationRoute =
+    location.pathname.startsWith('/investigations') ||
+    /^\/projects\/[^/]+\/c\/[^/]+\/investigations(\/|$)/.test(location.pathname);
+  // Page-enter key — first segment is enough granularity. Nav within a
+  // campaign's tool surface keeps the same key so the animation doesn't
+  // re-fire on sub-route changes.
   const pageKey = location.pathname.split('/')[1] || 'home';
   const { setOpen: setPaletteOpen } = useCommandPalette();
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
-  // Sidebar's "+ new investigation" CTA — routes to a fresh investigations
-  // path; ChatPage handles session-id minting on mount when none is given.
-  const onNewInvestigation = () => navigate(`/investigations/${uuidv4()}`);
+  // Sidebar's "+ new investigation" CTA. Targets the active campaign's
+  // scoped path so the new session anchors to the right scope on first
+  // turn. Falls back to /projects when the user has no live campaign
+  // (e.g. brand-new account before onboarding).
+  const onNewInvestigation = () => {
+    if (activeProject && activeCampaign) {
+      navigate(
+        `/projects/${activeProject.id}/c/${activeCampaign.id}/investigations/${uuidv4()}`,
+      );
+    } else {
+      navigate('/projects');
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-sunken text-fg">

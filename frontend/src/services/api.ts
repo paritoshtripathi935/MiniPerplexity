@@ -23,6 +23,10 @@ async function authHeaders(getToken: GetToken): Promise<Record<string, string>> 
 
 /**
  * Perform a search with the given query and session ID.
+ *
+ * `campaignId` anchors a brand-new session to the active campaign in the
+ * URL (post-#79 follow-up: tool routes live under
+ * /projects/:p/c/:c/...). Ignored server-side once the session exists.
  */
 export async function performSearch(
   query: string,
@@ -30,9 +34,12 @@ export async function performSearch(
   previousQueries: string[] = [],
   customUrl?: string,
   onProgress?: (url: string) => void,
-  getToken?: GetToken
+  getToken?: GetToken,
+  campaignId?: string | null,
 ) {
-  const queryParams = new URLSearchParams({ custom_url: customUrl || '' }).toString();
+  const qp = new URLSearchParams({ custom_url: customUrl || '' });
+  if (campaignId) qp.set('campaign_id', campaignId);
+  const queryParams = qp.toString();
   const response = await fetch(`${API_HOST}/api/v1/search/${sessionId}?${queryParams}`, {
     method: 'POST',
     headers: {
@@ -83,6 +90,9 @@ interface StreamAnswerArgs {
   searchResults: any[];
   previousQueries?: string[];
   playId?: string;
+  /** Active-campaign anchor for new-session creation. Ignored server-side
+   *  once the session exists (project/campaign are snapshotted at create). */
+  campaignId?: string | null;
   onToken: (text: string) => void;
   onDone: (event: StreamDoneEvent) => void;
   onError?: (detail: string) => void;
@@ -100,9 +110,10 @@ interface StreamAnswerArgs {
  * buffer across reads in case a network packet splits a frame.
  */
 export async function streamAnswer(args: StreamAnswerArgs): Promise<void> {
-  const qp = args.playId
-    ? `?${new URLSearchParams({ play_id: args.playId }).toString()}`
-    : '';
+  const qpParams = new URLSearchParams();
+  if (args.playId) qpParams.set('play_id', args.playId);
+  if (args.campaignId) qpParams.set('campaign_id', args.campaignId);
+  const qp = qpParams.toString() ? `?${qpParams.toString()}` : '';
   const response = await fetch(
     `${API_HOST}/api/v1/answer/${args.sessionId}/stream${qp}`,
     {

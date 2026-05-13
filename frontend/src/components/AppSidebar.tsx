@@ -25,7 +25,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   BookOpen,
   Calculator,
@@ -41,6 +41,7 @@ import {
   Settings,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { useActiveCampaign } from './ActiveCampaign';
 
 const STORAGE_KEY = 'paidpilot-sidebar-collapsed';
 
@@ -130,23 +131,51 @@ export function useSidebar(): SidebarContextValue {
   return ctx;
 }
 
-const NAV: Array<{
+interface NavItem {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   end?: boolean;
-}> = [
-  { to: '/', label: 'home', icon: Home, end: true },
-  { to: '/investigations', label: 'investigations', icon: Search },
-  { to: '/plays', label: 'plays', icon: PlayCircle },
-  { to: '/calc', label: 'calculators', icon: Calculator },
-  // Projects + campaigns gets its own top-level entry — it's the
-  // navigation pivot now (top-nav switcher lands you on a project, you
-  // dive into a campaign from there). `end: false` so /projects/:id and
-  // /projects/:id/c/:cid keep this row highlighted.
-  { to: '/projects', label: 'projects', icon: FolderKanban },
-  { to: '/settings', label: 'settings', icon: Settings, end: true },
-];
+  /** Highlight the row when the URL starts with one of these prefixes,
+   *  in addition to the canonical `to` match. Needed because tool rows
+   *  point at the *active* campaign's URL — a different campaign's
+   *  /investigations is still "investigations" for highlighting. */
+  matchPrefixes?: string[];
+}
+
+/** Build the nav given the user's active scope. Tool rows point under the
+ *  active campaign's URL when one exists; otherwise they degrade to a
+ *  "go pick scope first" link to /projects. */
+function buildNav(toolBase: string | null): NavItem[] {
+  const tool = (suffix: string) => (toolBase ? `${toolBase}${suffix}` : '/projects');
+  return [
+    { to: '/', label: 'home', icon: Home, end: true },
+    {
+      to: tool('/investigations'),
+      label: 'investigations',
+      icon: Search,
+      matchPrefixes: ['/investigations'],
+    },
+    {
+      to: tool('/plays'),
+      label: 'plays',
+      icon: PlayCircle,
+      matchPrefixes: ['/plays'],
+    },
+    {
+      to: tool('/calc'),
+      label: 'calculators',
+      icon: Calculator,
+      matchPrefixes: ['/calc'],
+    },
+    // Projects + campaigns gets its own top-level entry — it's the
+    // navigation pivot now. `end: false` so /projects/:id and
+    // /projects/:id/c/:cid keep this row highlighted (but NOT the
+    // /projects/:p/c/:c/{tool} paths, which highlight the tool row).
+    { to: '/projects', label: 'projects', icon: FolderKanban },
+    { to: '/settings', label: 'settings', icon: Settings, end: true },
+  ];
+}
 
 interface Props {
   onNewInvestigation?: () => void;
@@ -238,19 +267,7 @@ function SidebarBody({
       </div>
 
       {/* Primary nav */}
-      <nav className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
-        {NAV.map(({ to, label, icon: Icon, end }) => (
-          <SidebarNavLink
-            key={to}
-            to={to}
-            end={end}
-            label={label}
-            icon={Icon}
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </nav>
+      <PrimaryNav collapsed={collapsed} onNavigate={onNavigate} />
 
       {/* Bottom — help + docs */}
       <div className="px-2 py-2 border-t border-border/40 space-y-0.5">
@@ -272,47 +289,106 @@ function SidebarBody({
   );
 }
 
+/** Renders the primary nav rows. The tool rows (investigations / plays /
+ *  calculators) point at the *active* campaign's scoped URL — they're
+ *  rebuilt on every campaign switch. Active-state highlighting is
+ *  computed off the URL pathname rather than NavLink's exact-match
+ *  semantics, because `/projects/A/c/B/investigations` and
+ *  `/projects/X/c/Y/investigations` both highlight the same row. */
+function PrimaryNav({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  const { pathname } = useLocation();
+  const { activeProject, activeCampaign } = useActiveCampaign();
+  const toolBase =
+    activeProject && activeCampaign
+      ? `/projects/${activeProject.id}/c/${activeCampaign.id}`
+      : null;
+  const nav = useMemo(() => buildNav(toolBase), [toolBase]);
+
+  // Detect which tool surface (if any) we're currently inside. Hits both
+  // the campaign-scoped path and the legacy /investigations|/plays|/calc
+  // paths (which redirect, but may briefly render before resolution).
+  const toolMatch =
+    /^\/projects\/[^/]+\/c\/[^/]+\/(investigations|plays|calc)(\/|$)/.exec(pathname) ||
+    /^\/(investigations|plays|calc)(\/|$)/.exec(pathname);
+  const activeTool = toolMatch?.[1] ?? null;
+
+  const isActive = (item: NavItem): boolean => {
+    if (item.matchPrefixes?.length) {
+      // tool row — only active when we're inside a matching tool surface
+      return item.matchPrefixes.some(p =>
+        activeTool === p.replace(/^\//, '') ||
+        // map 'calculators' label → '/calc' route prefix
+        (p === '/calc' && activeTool === 'calc'),
+      );
+    }
+    if (item.to === '/projects') {
+      // projects row — active on /projects[/:id[/c/:cid]] but NOT once
+      // we descend into a tool sub-path (which lights up the tool row).
+      if (activeTool) return false;
+      if (pathname === '/projects') return true;
+      return /^\/projects\/[^/]+(\/c\/[^/]+)?\/?$/.test(pathname);
+    }
+    if (item.end) return pathname === item.to;
+    return pathname === item.to || pathname.startsWith(item.to + '/');
+  };
+
+  return (
+    <nav className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+      {nav.map(item => (
+        <SidebarNavLink
+          key={item.label}
+          to={item.to}
+          label={item.label}
+          icon={item.icon}
+          active={isActive(item)}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+      ))}
+    </nav>
+  );
+}
+
 function SidebarNavLink({
   to,
   label,
   icon: Icon,
-  end,
+  active,
   collapsed,
   onNavigate,
 }: {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
-  end?: boolean;
+  active: boolean;
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
   return (
     <RowWithTooltip label={label} collapsed={collapsed}>
-      <NavLink
+      <Link
         to={to}
-        end={end}
         onClick={onNavigate}
-        className={({ isActive }) =>
-          clsx(
-            'group flex items-center h-9 rounded-md text-body-sm font-medium transition-colors duration-150 relative',
-            collapsed ? 'justify-center w-9 mx-auto' : 'gap-2.5 px-2.5',
-            isActive
-              ? 'text-fg bg-brand/5'
-              : 'text-fg-subtle hover:text-fg hover:bg-surface-sunken/40',
-          )
-        }
-      >
-        {({ isActive }) => (
-          <>
-            {isActive && (
-              <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r-full bg-brand" />
-            )}
-            <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
-            {!collapsed && <span className="truncate">{label}</span>}
-          </>
+        className={clsx(
+          'group flex items-center h-9 rounded-md text-body-sm font-medium transition-colors duration-150 relative',
+          collapsed ? 'justify-center w-9 mx-auto' : 'gap-2.5 px-2.5',
+          active
+            ? 'text-fg bg-brand/5'
+            : 'text-fg-subtle hover:text-fg hover:bg-surface-sunken/40',
         )}
-      </NavLink>
+      >
+        {active && (
+          <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r-full bg-brand" />
+        )}
+        <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+        {!collapsed && <span className="truncate">{label}</span>}
+      </Link>
     </RowWithTooltip>
   );
 }

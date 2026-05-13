@@ -127,9 +127,10 @@ export function CampaignHomePage(_props: Props) {
 
   const color = projectColor(project.id);
 
+  const toolBase = `/projects/${projectId}/c/${campaignId}`;
   function enter(path: string) {
-    // Active-campaign localStorage is already in sync via the mount
-    // effect, so the destination route reads the right scope.
+    // Tool routes live under the campaign URL — the URL itself carries the
+    // scope, no localStorage handoff needed.
     navigate(path);
   }
 
@@ -172,13 +173,13 @@ export function CampaignHomePage(_props: Props) {
           title="investigations"
           subtitle="ask questions, run plays, capture answers"
           metric={`${sessions.filter(s => !s.is_archived).length} live`}
-          onClick={() => enter(`/investigations/${uuidv4()}`)}
+          onClick={() => enter(`${toolBase}/investigations/${uuidv4()}`)}
           ctaLabel="new investigation"
           ctaIcon={<Plus className="w-3.5 h-3.5" />}
           secondaryLabel={sessions.length > 0 ? 'open last' : null}
           onSecondary={
             sessions.length > 0
-              ? () => enter(`/investigations/${sessions[0].id}`)
+              ? () => enter(`${toolBase}/investigations/${sessions[0].id}`)
               : undefined
           }
         />
@@ -186,7 +187,7 @@ export function CampaignHomePage(_props: Props) {
           icon={<PlayCircle className="w-5 h-5" />}
           title="plays"
           subtitle="catalog of ready-to-run growth plays"
-          onClick={() => enter('/plays')}
+          onClick={() => enter(`${toolBase}/plays`)}
           ctaLabel="open plays"
           ctaIcon={<ChevronRight className="w-3.5 h-3.5" />}
         />
@@ -194,7 +195,7 @@ export function CampaignHomePage(_props: Props) {
           icon={<Calculator className="w-5 h-5" />}
           title="calculators"
           subtitle="CAC payback, ROAS, A/B, channel mix"
-          onClick={() => enter('/calc')}
+          onClick={() => enter(`${toolBase}/calc`)}
           ctaLabel="open calculators"
           ctaIcon={<ChevronRight className="w-3.5 h-3.5" />}
         />
@@ -208,7 +209,7 @@ export function CampaignHomePage(_props: Props) {
           </h2>
           {sessions.length > 0 && (
             <Link
-              to="/investigations"
+              to={`${toolBase}/investigations`}
               className="inline-flex items-center gap-1 text-body-sm text-fg-subtle hover:text-fg"
             >
               open all
@@ -230,7 +231,7 @@ export function CampaignHomePage(_props: Props) {
         ) : (
           <ul className="space-y-2">
             {sessions.slice(0, 8).map(s => (
-              <SessionRow key={s.id} session={s} />
+              <SessionRow key={s.id} session={s} toolBase={toolBase} />
             ))}
           </ul>
         )}
@@ -329,11 +330,17 @@ function ToolTile({
   );
 }
 
-function SessionRow({ session }: { session: SessionListItem }) {
+function SessionRow({
+  session,
+  toolBase,
+}: {
+  session: SessionListItem;
+  toolBase: string;
+}) {
   return (
     <li>
       <Link
-        to={`/investigations/${session.id}`}
+        to={`${toolBase}/investigations/${session.id}`}
         className="block rounded-xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 transition-colors p-4"
       >
         <div className="flex items-start justify-between gap-3">

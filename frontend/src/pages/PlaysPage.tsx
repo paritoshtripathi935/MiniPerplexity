@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import {
   Activity, Beaker, Eye, FileText, History, PieChart, Play as PlayIcon,
@@ -9,7 +9,6 @@ import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
 import { type Play } from '../services/api';
 import { usePlays, usePlaysHistory } from '../services/queries';
-import { useActiveCampaign } from '../components/ActiveCampaign';
 import { PageHeader } from '../components/AppLayout';
 import { PlayRunModal } from '../components/PlayRunModal';
 
@@ -35,15 +34,18 @@ interface Props {
 export function PlaysPage({ onPrepareRun }: Props) {
   const navigate = useNavigate();
   const { getToken, isSignedIn } = useAuth();
+  const { projectId = '', campaignId = '' } = useParams<{
+    projectId: string;
+    campaignId: string;
+  }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [activePlay, setActivePlay] = useState<Play | null>(null);
   const { data: plays = [], isLoading: loading } = usePlays();
-  const { activeCampaign } = useActiveCampaign();
   const { data: history = [] } = usePlaysHistory(
     getToken,
-    { campaignId: activeCampaign?.id },
+    { campaignId: campaignId || null },
     !!isSignedIn,
   );
 
@@ -75,7 +77,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
   const handleSubmit = (play: Play, query: string) => {
     const sid = uuidv4();
     onPrepareRun(play, query, sid);
-    navigate(`/investigations/${sid}`);
+    navigate(`/projects/${projectId}/c/${campaignId}/investigations/${sid}`);
   };
 
   const recentPlays = useMemo<RecentPlay[]>(() => {

@@ -40,17 +40,28 @@ interface Props {
 export function ChatPage({ darkMode, pending, clearPending }: Props) {
   const { getToken, isSignedIn } = useAuth();
   const navigate = useNavigate();
-  const { sessionId: routeSessionId } = useParams();
+  const {
+    projectId = '',
+    campaignId = '',
+    sessionId: routeSessionId,
+  } = useParams();
+
+  // Scoped path prefix. Always non-empty when rendered under the post-#79
+  // routes (`/projects/:p/c/:c/investigations/...`); the pre-#79 global
+  // paths now redirect through <ToolRedirect />.
+  const toolBase = projectId && campaignId
+    ? `/projects/${projectId}/c/${campaignId}`
+    : '';
 
   // If no sessionId in URL, mint one and redirect (so refresh keeps the chat).
   useEffect(() => {
-    if (!routeSessionId) {
+    if (!routeSessionId && toolBase) {
       // Skip the history-load effect on the upcoming sessionId change: this
       // ID was just minted on the client, there's nothing in the DB yet.
       justCreatedRef.current = true;
-      navigate(`/investigations/${uuidv4()}`, { replace: true });
+      navigate(`${toolBase}/investigations/${uuidv4()}`, { replace: true });
     }
-  }, [routeSessionId, navigate]);
+  }, [routeSessionId, navigate, toolBase]);
 
   const sessionId = routeSessionId ?? '';
 
@@ -141,7 +152,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         const searchResults = await performSearch(
           pending.query, pending.sessionId, [], undefined,
           url => appendSearchUrl(responseMsg.id, url),
-          getToken
+          getToken,
+          campaignId || null,
         );
         await runAnswerStream({
           responseMsgId: responseMsg.id,
@@ -229,6 +241,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         searchResults: params.searchResults,
         previousQueries: params.previousQueries,
         playId: params.playId,
+        campaignId: campaignId || null,
         getToken,
         onToken: (text: string) => {
           setMessages(prev =>
@@ -280,7 +293,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       });
       if (streamErrorDetail) throw new Error(streamErrorDetail);
     },
-    [sessionId, getToken, fetchNextSteps, invalidateSessions]
+    [sessionId, getToken, fetchNextSteps, invalidateSessions, campaignId]
   );
 
   /**
@@ -350,7 +363,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
       const searchResults = await performSearch(
         query, sessionId, [], undefined,
         url => appendSearchUrl(responseMsg.id, url),
-        getToken
+        getToken,
+        campaignId || null,
       );
       await runAnswerStream({
         responseMsgId: responseMsg.id,
@@ -396,7 +410,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
         previousQueries,
         customUrl,
         url => appendSearchUrl(responseMsg.id, url),
-        getToken
+        getToken,
+        campaignId || null,
       );
       await runAnswerStream({
         responseMsgId: responseMsg.id,
@@ -413,12 +428,13 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
     }
   };
 
-  const handleSelectSession = (id: string) => navigate(`/investigations/${id}`);
+  const handleSelectSession = (id: string) =>
+    navigate(`${toolBase}/investigations/${id}`);
   const handleNewInvestigation = () => {
     justCreatedRef.current = true;
     setMessages([]);
     setActivePlay(null);
-    navigate(`/investigations/${uuidv4()}`);
+    navigate(`${toolBase}/investigations/${uuidv4()}`);
   };
 
   /**
@@ -470,6 +486,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
             onSelectSession={handleSelectSession}
             onNewInvestigation={handleNewInvestigation}
             refreshSignal={sidebarRefresh}
+            campaignId={campaignId || null}
           />
         </aside>
       </div>
