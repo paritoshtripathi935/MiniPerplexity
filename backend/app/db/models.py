@@ -192,12 +192,6 @@ class BrandProfile(Base):
         ForeignKey("projects.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    # Retained until follow-up migration 008 drops it. Pre-007 the PK; today
-    # only kept for rollback safety + as a back-reference to the project's owner.
-    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-    )
     company_name: Mapped[Optional[str]] = mapped_column(Text)
     website: Mapped[Optional[str]] = mapped_column(Text)
     icp_description: Mapped[Optional[str]] = mapped_column(Text)
