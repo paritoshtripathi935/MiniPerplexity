@@ -23,6 +23,11 @@ httpx>=0.27
 # so pin it explicitly to keep the contract obvious.
 cryptography>=42
 
+# Object storage — used by the storage abstraction in
+# app/services/storage/. R2 is S3-compatible so boto3 covers it; same
+# client will serve S3 / DigitalOcean Spaces / etc. when we add them.
+boto3>=1.34
+
 # Perf — orjson powers ORJSONResponse (2-3x faster JSON serialization
 # than the stdlib json module). Used as the default_response_class on
 # the FastAPI app.

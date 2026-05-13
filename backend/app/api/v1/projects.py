@@ -11,9 +11,12 @@ the authenticated user.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
@@ -21,7 +24,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.db.models import AdAccountLink, BrandProfile, Campaign, Project, User
+from app.db.models import (
+    AdAccountLink,
+    BrandProfile,
+    Campaign,
+    CampaignCreative,
+    Project,
+    User,
+)
 from app.db.repository import (
     ConflictError,
     InvariantError,
@@ -30,11 +40,14 @@ from app.db.repository import (
     create_campaign,
     create_project,
     delete_ad_account_link,
+    delete_campaign_creative,
     get_brand_profile,
     get_campaign_for_user,
     get_project_for_user,
     get_provider_connection,
+    insert_campaign_creative,
     list_ad_account_links_for_project,
+    list_campaign_creatives,
     list_campaigns_for_project,
     list_projects_for_user,
     list_projects_with_counts,
@@ -50,6 +63,11 @@ from app.services.meta_api import (
     decrypt_token,
     is_configured as meta_is_configured,
     list_ad_accounts,
+)
+from app.services.storage import (
+    StorageNotConfiguredError,
+    get_storage,
+    is_storage_configured,
 )
 
 router = APIRouter()
@@ -566,3 +584,324 @@ async def unlink_project_ad_account(
     if not removed:
         raise HTTPException(status_code=404, detail="ad account link not found")
     await db.commit()
+
+
+# ===========================================================================
+# Per-campaign creative assets (PDF / image upload to object storage)
+# ===========================================================================
+
+# Max upload size — 25 MB covers ad-sized PDFs (full brief decks) and any
+# reasonable PNG/JPG. Larger files probably belong in a different tool.
+_CREATIVE_MAX_BYTES = 25 * 1024 * 1024
+
+# Whitelist of mime types the upload endpoint will sign URLs for. Server-
+# side gate so a malicious client can't get a presigned URL for an
+# executable / arbitrary binary.
+_CREATIVE_ALLOWED_MIME = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/svg+xml",
+}
+
+# Mapping from mime type → file extension; used in the storage key so the
+# bucket browser shows recognisable files when humans peek inside.
+_EXTENSION_FOR_MIME = {
+    "application/pdf": "pdf",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/svg+xml": "svg",
+}
+
+
+class CreativeUploadRequest(BaseModel):
+    """Payload for POST /creatives/upload-url. The browser tells us the
+    filename + mime + size up-front so we can validate before signing."""
+    filename: str = Field(..., min_length=1, max_length=255)
+    mime_type: str = Field(..., min_length=1, max_length=128)
+    size_bytes: int = Field(..., ge=0, le=_CREATIVE_MAX_BYTES)
+
+
+class CreativeUploadOut(BaseModel):
+    upload_url: str
+    storage_key: str
+    method: str
+    expires_in: int
+    # The application's view of which provider this key lives in.
+    # Echoed so the confirm-upload payload doesn't need to re-derive it.
+    provider: str
+    # Form fields the browser must include in the multipart body when
+    # method=POST. Empty / absent for PUT-style providers (R2).
+    fields: dict[str, str] = Field(default_factory=dict)
+
+
+class CreativeConfirmRequest(BaseModel):
+    storage_key: str
+    filename: str = Field(..., min_length=1, max_length=255)
+    mime_type: str = Field(..., min_length=1, max_length=128)
+    size_bytes: int = Field(..., ge=0, le=_CREATIVE_MAX_BYTES)
+    provider: str = Field(..., min_length=1, max_length=16)
+
+
+class CreativeOut(BaseModel):
+    id: str
+    campaign_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    provider: str
+    uploaded_at: str
+    uploaded_by: Optional[str] = None
+
+
+class CreativeDownloadOut(BaseModel):
+    download_url: str
+    expires_in: int
+    filename: str
+
+
+def _serialize_creative(c: CampaignCreative) -> CreativeOut:
+    return CreativeOut(
+        id=str(c.id),
+        campaign_id=str(c.campaign_id),
+        filename=c.filename,
+        mime_type=c.mime_type,
+        size_bytes=c.size_bytes,
+        provider=c.provider,
+        uploaded_at=c.uploaded_at.isoformat(),
+        uploaded_by=str(c.uploaded_by) if c.uploaded_by else None,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives",
+    response_model=list[CreativeOut],
+)
+async def list_campaign_creative_assets(
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await list_campaign_creatives(db, campaign.id)
+    return [_serialize_creative(r) for r in rows]
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/upload-url",
+    response_model=CreativeUploadOut,
+)
+async def create_creative_upload_url(
+    payload: CreativeUploadRequest,
+    campaign: Campaign = Depends(_require_campaign),
+):
+    """Generate a presigned URL the browser can PUT a creative to.
+
+    Server gates: max size + allowed mime types. The provider also
+    binds the content-type into the signature, so the browser can't
+    upload under a different mime than we signed for.
+    """
+    if not is_storage_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="object storage not configured on this deploy.",
+        )
+    if payload.mime_type not in _CREATIVE_ALLOWED_MIME:
+        raise HTTPException(
+            status_code=415,
+            detail=f"mime '{payload.mime_type}' not allowed; "
+            "supported: pdf, png, jpeg, webp, gif, svg.",
+        )
+
+    ext = _EXTENSION_FOR_MIME.get(payload.mime_type, "bin")
+    # Unguessable key. We don't include the filename — that would leak
+    # PII / brand names into the storage layer. Original filename is
+    # persisted in the DB row + restored via Content-Disposition on
+    # download.
+    key = f"campaigns/{campaign.id}/{uuid.uuid4()}.{ext}"
+
+    try:
+        storage = get_storage()
+        presigned = storage.presigned_upload(
+            key=key,
+            content_type=payload.mime_type,
+            max_size_bytes=_CREATIVE_MAX_BYTES,
+            expires_in=300,
+        )
+    except StorageNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return CreativeUploadOut(
+        upload_url=presigned.upload_url,
+        storage_key=presigned.storage_key,
+        method=presigned.method,
+        expires_in=300,
+        provider=storage.name,
+        fields=dict(presigned.fields or {}),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives",
+    response_model=CreativeOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def confirm_creative_upload(
+    payload: CreativeConfirmRequest,
+    campaign: Campaign = Depends(_require_campaign),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The browser calls this after the PUT to R2 succeeds. We persist
+    the metadata row. Re-confirms (retries) are idempotent thanks to
+    ON CONFLICT on (campaign_id, storage_key).
+
+    We trust the client's reported `size_bytes` here — the server
+    didn't see the bytes. A future v2 could HEAD the object via the
+    storage client to verify, but the threat model is low: a misreport
+    only affects the UI's size display, not access control.
+    """
+    if payload.mime_type not in _CREATIVE_ALLOWED_MIME:
+        raise HTTPException(
+            status_code=415, detail=f"mime '{payload.mime_type}' not allowed."
+        )
+    # Provider-specific key-shape check. R2 keys are server-generated
+    # with a campaign prefix; an attacker can't smuggle a key from a
+    # different campaign past the prefix guard. UploadThing assigns
+    # opaque keys we don't control, so the same guard would reject every
+    # legitimate UT confirm — the campaign auth gate (_require_campaign)
+    # is the only real protection there, and that's enough: the worst a
+    # malicious client could do is associate one of their own uploads
+    # with one of their own campaigns under a wrong key (no escalation).
+    if payload.provider == "r2":
+        expected_prefix = f"campaigns/{campaign.id}/"
+        if not payload.storage_key.startswith(expected_prefix):
+            raise HTTPException(
+                status_code=400,
+                detail="storage_key does not belong to this campaign.",
+            )
+
+    creative = await insert_campaign_creative(
+        db,
+        campaign_id=campaign.id,
+        uploaded_by=user.id,
+        storage_key=payload.storage_key,
+        filename=payload.filename,
+        mime_type=payload.mime_type,
+        size_bytes=payload.size_bytes,
+        provider=payload.provider,
+    )
+    await db.commit()
+    return _serialize_creative(creative)
+
+
+@router.get(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/{creative_id}/download-url",
+    response_model=CreativeDownloadOut,
+)
+async def get_creative_download_url(
+    creative_id: str,
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    """Presigned GET URL. 1-hour expiry — long enough for a slow page
+    + a download click without being so long that a leaked URL stays
+    useful indefinitely."""
+    try:
+        cid = uuid.UUID(creative_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid creative id")
+    from app.db.repository import get_campaign_creative
+
+    row = await get_campaign_creative(
+        db, campaign_id=campaign.id, creative_id=cid
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="creative not found")
+
+    try:
+        storage = get_storage()
+    except StorageNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    # The row's `provider` records which backend wrote it. If the
+    # active STORAGE_PROVIDER has since been swapped, this row's bytes
+    # live in the old backend — we'd need to instantiate that backend
+    # to sign. For v1 we only handle the happy path (provider matches);
+    # a future migration would either backfill the data into the new
+    # backend or keep both backends instantiable.
+    if row.provider != storage.name:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"creative is stored on '{row.provider}' but the active "
+                f"storage backend is '{storage.name}'. Re-migrate or swap "
+                "STORAGE_PROVIDER back."
+            ),
+        )
+    try:
+        url = storage.presigned_download(
+            key=row.storage_key,
+            filename=row.filename,
+            expires_in=3600,
+        )
+    except StorageNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return CreativeDownloadOut(
+        download_url=url, expires_in=3600, filename=row.filename
+    )
+
+
+@router.delete(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/{creative_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_campaign_creative_endpoint(
+    creative_id: str,
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hard-delete: DB row + storage object. We delete the row first
+    because losing the row but keeping the object means orphaned
+    storage; losing the object but keeping the row means a broken
+    download. The former is recoverable (a cleanup job can list bucket
+    keys without a matching row), the latter isn't from the user's
+    perspective."""
+    try:
+        cid = uuid.UUID(creative_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid creative id")
+
+    removed = await delete_campaign_creative(
+        db, campaign_id=campaign.id, creative_id=cid
+    )
+    if removed is None:
+        raise HTTPException(status_code=404, detail="creative not found")
+    await db.commit()
+
+    # Best-effort storage delete after the DB commit. If this fails
+    # we log + 200 — the user's view of "deleted" matches the DB, and
+    # an orphaned object is a low-priority cleanup item (separate from
+    # the user-facing flow). If the row was written by a different
+    # provider than what's currently active (post-migration), skip
+    # the storage hit and log; a sweep job can reconcile.
+    if is_storage_configured():
+        try:
+            active = get_storage()
+            if active.name == removed.provider:
+                active.delete(key=removed.storage_key)
+            else:
+                logger.info(
+                    "Skipping storage delete: row provider=%s, active=%s, "
+                    "key=%s — orphan left for sweep.",
+                    removed.provider,
+                    active.name,
+                    removed.storage_key,
+                )
+        except Exception:
+            logger.exception(
+                "Storage delete failed for creative key=%s; row removed.",
+                removed.storage_key,
+            )

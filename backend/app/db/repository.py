@@ -18,6 +18,7 @@ from app.db.models import (
     AdAccountLink,
     BrandProfile,
     Campaign,
+    CampaignCreative,
     Citation,
     Message,
     MessageRole,
@@ -1450,3 +1451,101 @@ async def delete_ad_account_link(
         )
     )
     return (result.rowcount or 0) > 0
+
+
+# ---------- Campaign creatives ----------------------------------------------
+
+async def insert_campaign_creative(
+    db: AsyncSession,
+    *,
+    campaign_id: uuid.UUID,
+    uploaded_by: Optional[uuid.UUID],
+    storage_key: str,
+    filename: str,
+    mime_type: str,
+    size_bytes: int,
+    provider: str,
+) -> CampaignCreative:
+    """Persist a creative's metadata after the browser-side upload
+    completes. ON CONFLICT on (campaign_id, storage_key) keeps confirm-
+    upload idempotent if the client retries."""
+    stmt = (
+        pg_insert(CampaignCreative)
+        .values(
+            campaign_id=campaign_id,
+            uploaded_by=uploaded_by,
+            storage_key=storage_key,
+            filename=filename,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            provider=provider,
+        )
+        .on_conflict_do_update(
+            index_elements=[
+                CampaignCreative.campaign_id,
+                CampaignCreative.storage_key,
+            ],
+            set_={
+                # Re-confirm path: refresh display metadata if the
+                # client re-uploaded under the same key.
+                "filename": filename,
+                "mime_type": mime_type,
+                "size_bytes": size_bytes,
+                "uploaded_by": uploaded_by,
+                "archived_at": None,
+            },
+        )
+        .returning(CampaignCreative)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one()
+
+
+async def list_campaign_creatives(
+    db: AsyncSession, campaign_id: uuid.UUID
+) -> list[CampaignCreative]:
+    """Live (non-archived) creatives for a campaign, newest first."""
+    rows = await db.execute(
+        select(CampaignCreative)
+        .where(
+            CampaignCreative.campaign_id == campaign_id,
+            CampaignCreative.archived_at.is_(None),
+        )
+        .order_by(CampaignCreative.uploaded_at.desc())
+    )
+    return list(rows.scalars())
+
+
+async def get_campaign_creative(
+    db: AsyncSession, *, campaign_id: uuid.UUID, creative_id: uuid.UUID
+) -> Optional[CampaignCreative]:
+    """Campaign-scoped fetch — re-checks campaign_id so a creative id
+    from a different campaign 404s rather than leaking."""
+    return (
+        await db.execute(
+            select(CampaignCreative).where(
+                CampaignCreative.id == creative_id,
+                CampaignCreative.campaign_id == campaign_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def delete_campaign_creative(
+    db: AsyncSession, *, campaign_id: uuid.UUID, creative_id: uuid.UUID
+) -> Optional[CampaignCreative]:
+    """Hard-delete the row. Returns the deleted row so the caller can
+    issue the matching storage delete (key + provider). Campaign-scoped
+    to prevent cross-campaign deletes via id-guessing."""
+    row = await get_campaign_creative(
+        db, campaign_id=campaign_id, creative_id=creative_id
+    )
+    if row is None:
+        return None
+    await db.execute(
+        CampaignCreative.__table__.delete().where(
+            CampaignCreative.id == creative_id,
+            CampaignCreative.campaign_id == campaign_id,
+        )
+    )
+    return row

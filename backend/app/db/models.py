@@ -639,6 +639,71 @@ class AdAccountLink(Base):
     )
 
 
+# ---------- campaign_creatives ----------------------------------------------
+class CampaignCreative(Base):
+    """A creative asset (PDF or image) attached to a campaign.
+
+    Bytes live in object storage (R2 today; abstraction in
+    app/services/storage lets us migrate). This row carries the metadata
+    + storage pointer + audit fields. Cascade-deletes on campaign
+    removal but survives uploader removal (uploaded_by → SET NULL).
+    """
+    __tablename__ = "campaign_creatives"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    provider: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'r2'")
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "length(filename) BETWEEN 1 AND 255",
+            name="campaign_creatives_filename_check",
+        ),
+        CheckConstraint(
+            "size_bytes >= 0",
+            name="campaign_creatives_size_check",
+        ),
+        CheckConstraint(
+            "provider IN ('uploadthing','r2','s3','gcs','local')",
+            name="campaign_creatives_provider_check",
+        ),
+        UniqueConstraint(
+            "campaign_id",
+            "storage_key",
+            name="uq_campaign_creatives_campaign_key",
+        ),
+        Index(
+            "idx_campaign_creatives_campaign_uploaded",
+            "campaign_id",
+            "uploaded_at",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+    )
+
+
 # ---------- content_cache ---------------------------------------------------
 class ContentCache(Base):
     __tablename__ = "content_cache"
