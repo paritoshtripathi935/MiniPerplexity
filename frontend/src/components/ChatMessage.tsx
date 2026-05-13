@@ -2,9 +2,44 @@ import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useUser } from '@clerk/clerk-react';
-import { Check, Clock, Copy, RotateCw } from 'lucide-react';
+import { Brain, Check, ChevronDown, Clock, Copy, RotateCw } from 'lucide-react';
 import type { Message } from '../types';
 import { getDomain } from '../utils/url';
+
+/**
+ * Some chat models (qwq-32b, gpt-oss with reasoning enabled, the deepseek-r1
+ * family) emit their chain-of-thought wrapped in `<think>…</think>` directly
+ * inside the answer content rather than the separate `reasoning_content`
+ * field. We extract those blocks before handing the content to react-markdown
+ * for two reasons:
+ *
+ *   1. They're not part of the user-facing answer — they belong in a
+ *      collapsible "show thinking" disclosure, not in the prose body.
+ *   2. react-markdown + remark-gfm's HTML handling will happily pass
+ *      `<think>` through as raw markup. That has chased down weird
+ *      rendering quirks (digits inside `<think>` blocks getting parsed
+ *      as attribute values, sibling text inheriting truncated parsing
+ *      state). Stripping the tags before render-time avoids the whole
+ *      class of problem.
+ *
+ * Supports nested or unmatched closers — anything between the first
+ * `<think>` and the matching (or end-of-string) `</think>` is treated as
+ * reasoning. An open `<think>` with no closer (mid-stream) hides the rest
+ * of the in-flight content until the closer arrives.
+ */
+const THINK_RE = /<think\b[^>]*>([\s\S]*?)(?:<\/think>|$)/gi;
+
+function splitThinking(content: string): { body: string; thinking: string } {
+  const thinkParts: string[] = [];
+  const body = content.replace(THINK_RE, (_, inner: string) => {
+    thinkParts.push(inner.trim());
+    return '';
+  });
+  // Collapse the run of blank lines a removed block leaves behind so the
+  // visible answer doesn't start with a yawning gap.
+  const cleaned = body.replace(/\n{3,}/g, '\n\n').replace(/^\s+/, '');
+  return { body: cleaned, thinking: thinkParts.join('\n\n').trim() };
+}
 
 interface ChatMessageProps {
   message: Message;
@@ -71,7 +106,14 @@ function AssistantTurn({
   const isSearching = !!message.isSearching;
   const searchingUrls = message.searchingUrls ?? [];
 
-  const visibleContent = message.content;
+  // Pull `<think>…</think>` blocks out of the content so they render in a
+  // separate disclosure instead of polluting the answer body. See
+  // splitThinking() — also defends react-markdown against malformed inline
+  // HTML for models that emit raw <think> tags.
+  const { body: visibleContent, thinking } = useMemo(
+    () => splitThinking(message.content),
+    [message.content],
+  );
   const isStreaming = !!message.isStreaming;
 
   const handleCopy = async () => {
@@ -116,6 +158,8 @@ function AssistantTurn({
       {isSearching && searchingUrls.length > 0 && (
         <SearchingPanel urls={searchingUrls} />
       )}
+
+      {thinking && <ThinkingDisclosure thinking={thinking} isStreaming={isStreaming} />}
 
       <article
         className="
@@ -239,6 +283,59 @@ function StreamingCursor() {
   );
 }
 
+/**
+ * Collapsible "show thinking" disclosure rendered above the answer body
+ * for assistant turns whose content contained `<think>…</think>` blocks.
+ * Auto-expands while the model is still streaming the reasoning so the
+ * user gets a live sense of progress, then collapses by default once the
+ * answer body lands.
+ */
+function ThinkingDisclosure({
+  thinking,
+  isStreaming,
+}: {
+  thinking: string;
+  isStreaming: boolean;
+}) {
+  // Auto-open during streaming, collapse on completion. The user can
+  // re-toggle freely after the stream finishes.
+  const [open, setOpen] = useState(isStreaming);
+  React.useEffect(() => {
+    if (!isStreaming) setOpen(false);
+  }, [isStreaming]);
+
+  return (
+    <details
+      open={open}
+      onToggle={e => setOpen((e.target as HTMLDetailsElement).open)}
+      className="mb-4 rounded-2xl border border-border/60 bg-surface-sunken/40 backdrop-blur"
+    >
+      <summary className="cursor-pointer select-none flex items-center gap-2 px-3 py-2 text-fg-muted hover:text-fg transition-colors list-none [&::-webkit-details-marker]:hidden">
+        <Brain className="w-3.5 h-3.5 text-brand/70 shrink-0" />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+          thinking
+        </span>
+        {isStreaming && (
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        )}
+        <span className="ml-auto text-body-sm text-fg-subtle">
+          {open ? 'hide' : 'show'}
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-fg-subtle transition-transform ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </summary>
+      <div className="px-3 pb-3 pt-1">
+        <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-fg-muted">
+          {thinking}
+        </pre>
+      </div>
+    </details>
+  );
+}
+
 function SearchingPanel({ urls }: { urls: string[] }) {
   return (
     <div className="mb-4 p-3 rounded-2xl bg-surface-raised/40 border border-border/60 backdrop-blur">
@@ -310,17 +407,45 @@ function walkCitations(
     let m: RegExpExecArray | null;
     CITE_RE.lastIndex = 0;
     while ((m = CITE_RE.exec(node)) !== null) {
-      const nums = m[1]
-        .split(',')
-        .map(s => parseInt(s.trim(), 10))
-        .filter(n => Number.isFinite(n) && n >= 1 && n <= urls.length);
-      if (nums.length === 0) continue;
+      const parsed = m[1].split(',').map(s => parseInt(s.trim(), 10));
+      // Keep everything before this match, regardless of whether the match
+      // resolves to a URL — early `continue` on a partial filter was eating
+      // the prose between [N] markers when N pointed out of range.
       if (m.index > last) out.push(node.slice(last, m.index));
-      nums.forEach((n, i) => {
-        out.push(
-          <CitationPill key={`${keyBase}-${m!.index}-${i}`} n={n} url={urls[n - 1]} />
-        );
-      });
+      const valid = parsed.filter(
+        n => Number.isFinite(n) && n >= 1 && n <= urls.length,
+      );
+      if (valid.length > 0) {
+        valid.forEach((n, i) => {
+          out.push(
+            <CitationPill
+              key={`${keyBase}-${m!.index}-${i}`}
+              n={n}
+              url={urls[n - 1]}
+            />,
+          );
+        });
+      } else {
+        // Out-of-range or unparseable — render the original marker as
+        // an inert styled pill so the user can see the model tried to
+        // cite something but the index didn't resolve.
+        parsed
+          .filter(n => Number.isFinite(n))
+          .forEach((n, i) => {
+            out.push(
+              <CitationPill
+                key={`${keyBase}-${m!.index}-x${i}`}
+                n={n}
+                url={undefined}
+              />,
+            );
+          });
+        // If even parseInt failed (e.g. `[abc]`), surface the literal
+        // text rather than swallowing it.
+        if (parsed.every(n => !Number.isFinite(n))) {
+          out.push(m[0]);
+        }
+      }
       last = m.index + m[0].length;
     }
     if (out.length === 0) return node;
@@ -347,7 +472,10 @@ function walkCitations(
 }
 
 function makeMarkdownComponents(urls: string[]) {
-  if (urls.length === 0) return undefined;
+  // Run the walker even when urls is empty so `[N]` markers in the prose
+  // become inert pills rather than getting orphaned as raw text — keeps the
+  // citation affordance consistent whether or not search results came
+  // through with the message.
   const wrap = (Tag: keyof JSX.IntrinsicElements) =>
     function WrappedTag({ children, node, ...rest }: any) {
       return React.createElement(
