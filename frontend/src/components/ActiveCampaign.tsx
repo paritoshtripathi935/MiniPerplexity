@@ -244,3 +244,38 @@ export function projectColor(projectId: string): {
   }
   return palette[h % palette.length];
 }
+
+/* Project-color → Tailwind class extensions used by surfaces that paint
+ * the project hue across a card (header strip, tile tint, CTA gradient).
+ * Full class names so the compiler keeps them in the bundle. */
+const GRADIENT_BY_DOT: Record<string, string> = {
+  'bg-violet-400': 'from-violet-500 to-indigo-600',
+  'bg-sky-400': 'from-sky-500 to-blue-600',
+  'bg-emerald-400': 'from-emerald-500 to-teal-600',
+  'bg-amber-400': 'from-amber-500 to-orange-600',
+  'bg-rose-400': 'from-rose-500 to-pink-600',
+};
+const STRIP_BY_DOT: Record<string, string> = {
+  'bg-violet-400': 'bg-violet-400/80',
+  'bg-sky-400': 'bg-sky-400/80',
+  'bg-emerald-400': 'bg-emerald-400/80',
+  'bg-amber-400': 'bg-amber-400/80',
+  'bg-rose-400': 'bg-rose-400/80',
+};
+const TINT_BY_DOT: Record<string, string> = {
+  'bg-violet-400': 'bg-violet-500/10',
+  'bg-sky-400': 'bg-sky-500/10',
+  'bg-emerald-400': 'bg-emerald-500/10',
+  'bg-amber-400': 'bg-amber-500/10',
+  'bg-rose-400': 'bg-rose-500/10',
+};
+
+export function projectGradient(dot: string): string {
+  return GRADIENT_BY_DOT[dot] || 'from-brand to-brand-2';
+}
+export function projectStrip(dot: string): string {
+  return STRIP_BY_DOT[dot] || 'bg-brand';
+}
+export function projectTint(dot: string): string {
+  return TINT_BY_DOT[dot] || 'bg-brand/10';
+}
