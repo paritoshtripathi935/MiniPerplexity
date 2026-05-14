@@ -22,7 +22,6 @@ import clsx from 'clsx';
 import { Button } from '../components/ui/Button';
 import {
   projectColor,
-  projectGradient,
   projectStrip,
   projectTint,
   useSwapActiveContext,
@@ -103,11 +102,7 @@ export function ProjectDetailPage(_props: Props) {
         project={project}
         onAfterArchive={() => navigate('/projects')}
       />
-      <SegmentedTabs
-        project={project}
-        tab={tab}
-        onChange={setTab}
-      />
+      <SegmentedTabs tab={tab} onChange={setTab} />
       <div className="mt-6">
         {tab === 'campaigns' && <CampaignsTab project={project} />}
         {tab === 'brand-profile' && <BrandProfileTab project={project} />}
@@ -137,7 +132,6 @@ function ProjectIdentityHeader({
   const [err, setErr] = useState<string | null>(null);
 
   const color = projectColor(project.id);
-  const gradient = projectGradient(color.dot);
   const strip = projectStrip(color.dot);
   const tint = projectTint(color.dot);
 
@@ -259,16 +253,6 @@ function ProjectIdentityHeader({
             />
           </div>
         </div>
-
-        {/* Faint hero gradient wash on the right edge for visual weight */}
-        <div
-          aria-hidden
-          className={clsx(
-            'pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full opacity-20 blur-3xl',
-            'bg-gradient-to-br',
-            gradient,
-          )}
-        />
       </div>
 
       {err && (
@@ -361,17 +345,12 @@ function OverflowMenu({
 /* -------------------------------------------------------------------- */
 
 function SegmentedTabs({
-  project,
   tab,
   onChange,
 }: {
-  project: ProjectSummary;
   tab: Tab;
   onChange: (next: Tab) => void;
 }) {
-  const color = projectColor(project.id);
-  const gradient = projectGradient(color.dot);
-
   const items: Array<{ id: Tab; label: string }> = [
     { id: 'campaigns', label: 'campaigns' },
     { id: 'brand-profile', label: 'brand profile' },
@@ -392,22 +371,13 @@ function SegmentedTabs({
             aria-selected={active}
             onClick={() => onChange(item.id)}
             className={clsx(
-              'relative h-8 px-3.5 rounded-lg text-body-sm font-medium transition-colors',
+              'h-8 px-3.5 rounded-lg text-body-sm font-medium transition-colors',
               active
                 ? 'text-fg bg-surface-raised shadow-card'
                 : 'text-fg-muted hover:text-fg',
             )}
           >
             {item.label}
-            {active && (
-              <span
-                aria-hidden
-                className={clsx(
-                  'absolute left-3 right-3 -bottom-px h-[2px] rounded-full bg-gradient-to-r',
-                  gradient,
-                )}
-              />
-            )}
           </button>
         );
       })}
@@ -433,7 +403,6 @@ function CampaignsTab({ project }: { project: ProjectSummary }) {
   const [showArchived, setShowArchived] = useState(false);
 
   const color = projectColor(project.id);
-  const gradient = projectGradient(color.dot);
 
   // Active campaigns float to top; "no-window" below; ended below them.
   const live = useMemo(() => {
@@ -462,22 +431,17 @@ function CampaignsTab({ project }: { project: ProjectSummary }) {
     <>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-h2 font-display font-semibold text-fg">campaigns</h2>
-        <button
-          type="button"
+        <Button
+          variant="gradient"
+          leadingIcon={<Plus className="w-3.5 h-3.5" />}
           onClick={openNew}
-          className={clsx(
-            'inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md text-white text-body-sm font-medium',
-            'bg-gradient-to-br shadow-card hover:brightness-110 active:scale-[0.99] transition',
-            gradient,
-          )}
         >
-          <Plus className="w-3.5 h-3.5" />
           new campaign
-        </button>
+        </Button>
       </div>
 
       {live.length === 0 ? (
-        <EmptyCampaigns onCreate={openNew} project={project} />
+        <EmptyCampaigns onCreate={openNew} />
       ) : (
         <ul className="space-y-3">
           {live.map(c => (
@@ -678,15 +642,7 @@ function ArchivedCampaignRow({
   );
 }
 
-function EmptyCampaigns({
-  onCreate,
-  project,
-}: {
-  onCreate: () => void;
-  project: ProjectSummary;
-}) {
-  const color = projectColor(project.id);
-  const gradient = projectGradient(color.dot);
+function EmptyCampaigns({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 px-8 py-12 text-center">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
@@ -697,18 +653,13 @@ function EmptyCampaigns({
         a campaign anchors investigations, plays, and creatives to a real-world push.
         create one to start grounding work in this project.
       </p>
-      <button
-        type="button"
+      <Button
+        variant="gradient"
+        leadingIcon={<Plus className="w-3.5 h-3.5" />}
         onClick={onCreate}
-        className={clsx(
-          'inline-flex items-center gap-1.5 h-9 px-4 rounded-md text-white text-body-sm font-medium',
-          'bg-gradient-to-br shadow-card hover:brightness-110 active:scale-[0.99] transition',
-          gradient,
-        )}
       >
-        <Plus className="w-3.5 h-3.5" />
         create first campaign
-      </button>
+      </Button>
     </div>
   );
 }

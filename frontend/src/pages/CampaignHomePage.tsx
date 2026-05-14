@@ -1,13 +1,12 @@
 /**
  * /projects/:projectId/c/:campaignId — campaign home.
  *
- * Launching pad for the campaign's "do work" surfaces. Hierarchy:
- *   identity card  →  primary "investigations" tile  →  secondary 3-card
- *   strip (plays / calc / creatives)  →  recent investigations feed.
+ * Compact header → 4-up tile grid (investigations is the first card with
+ * the brand-gradient CTA inside; plays / calculators / creatives are
+ * whole-card links) → recent investigations feed.
  *
- * Threads the parent project's color across the page (accent strip,
- * gradient wash, primary CTA, session-row strips) so this surface visually
- * belongs to its project.
+ * Project color appears as a whisper: 4px header strip, breadcrumb dot,
+ * session-row strips. The marquee gradient stays brand violet→blue.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -23,15 +22,13 @@ import {
   PlayCircle,
   Plus,
   Search,
-  Target,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { v4 as uuidv4 } from 'uuid';
+import { Button } from '../components/ui/Button';
 import {
   projectColor,
-  projectGradient,
   projectStrip,
-  projectTint,
   useActiveCampaign,
   useSwapActiveContext,
 } from '../components/ActiveCampaign';
@@ -123,12 +120,11 @@ export function CampaignHomePage(_props: Props) {
   }
 
   const color = projectColor(project.id);
-  const gradient = projectGradient(color.dot);
   const strip = projectStrip(color.dot);
-  const tint = projectTint(color.dot);
 
   const toolBase = `/projects/${projectId}/c/${campaignId}`;
   const liveSessionCount = sessions.filter(s => !s.is_archived).length;
+  const lastSession = sessions[0] ?? null;
 
   return (
     <>
@@ -136,63 +132,47 @@ export function CampaignHomePage(_props: Props) {
         project={project}
         campaign={campaign}
         strip={strip}
-        gradient={gradient}
-        tint={tint}
-        textCls={color.text}
-        ringCls={color.ring}
+        dotClass={color.dot}
         onAfterArchive={() => navigate(`/projects/${project.id}`)}
       />
 
-      {/* Primary tile — investigations */}
-      <PrimaryInvestigationsTile
-        gradient={gradient}
-        tint={tint}
-        textCls={color.text}
-        liveSessionCount={liveSessionCount}
-        onNew={() => navigate(`${toolBase}/investigations/${uuidv4()}`)}
-        onOpenLast={
-          sessions.length > 0
-            ? () => navigate(`${toolBase}/investigations/${sessions[0].id}`)
-            : undefined
-        }
-        lastTitle={sessions[0]?.title || null}
-        lastAccessed={sessions[0]?.last_accessed_at || null}
-      />
-
-      {/* Secondary tiles — plays, calculators, creatives */}
-      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+      {/* 4-up tile grid — investigations leads with the gradient CTA;
+          plays / calc / creatives are whole-card secondary links. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+        <InvestigationsTile
+          liveSessionCount={liveSessionCount}
+          onNew={() => navigate(`${toolBase}/investigations/${uuidv4()}`)}
+          lastSession={lastSession}
+          onOpenLast={
+            lastSession
+              ? () => navigate(`${toolBase}/investigations/${lastSession.id}`)
+              : undefined
+          }
+        />
         <SecondaryTile
           to={`${toolBase}/plays`}
           icon={<PlayCircle className="w-4 h-4" />}
           title="plays"
           subtitle="ready-to-run growth plays"
-          tint={tint}
-          textCls={color.text}
         />
         <SecondaryTile
           to={`${toolBase}/calc`}
           icon={<Calculator className="w-4 h-4" />}
           title="calculators"
           subtitle="CAC payback, ROAS, A/B, mix"
-          tint={tint}
-          textCls={color.text}
         />
         <SecondaryTile
           to={`${toolBase}/creatives`}
           icon={<ImageIcon className="w-4 h-4" />}
           title="creatives"
           subtitle="pdf + image library"
-          tint={tint}
-          textCls={color.text}
         />
       </div>
 
-      {/* Recent investigations within this campaign */}
       <RecentInvestigationsSection
         sessions={sessions}
         toolBase={toolBase}
         strip={strip}
-        gradient={gradient}
         onCreate={() => navigate(`${toolBase}/investigations/${uuidv4()}`)}
       />
     </>
@@ -200,26 +180,20 @@ export function CampaignHomePage(_props: Props) {
 }
 
 /* -------------------------------------------------------------------- */
-/* Identity header                                                       */
+/* Header — compact: breadcrumb + title + chip strip + overflow menu     */
 /* -------------------------------------------------------------------- */
 
 function CampaignIdentityHeader({
   project,
   campaign,
   strip,
-  gradient,
-  tint,
-  textCls,
-  ringCls,
+  dotClass,
   onAfterArchive,
 }: {
   project: ProjectSummary;
   campaign: CampaignSummary;
   strip: string;
-  gradient: string;
-  tint: string;
-  textCls: string;
-  ringCls: string;
+  dotClass: string;
   onAfterArchive: () => void;
 }) {
   const { getToken } = useAuth();
@@ -229,6 +203,7 @@ function CampaignIdentityHeader({
 
   const status = campaignStatus(campaign);
   const timeSignal = computeTimeSignal(campaign);
+  const hasDateChip = !!(campaign.starts_on || campaign.ends_on);
 
   async function handleArchive() {
     if (archiving) return;
@@ -253,67 +228,47 @@ function CampaignIdentityHeader({
 
   return (
     <div className="mb-6">
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur pl-6 pr-4 py-5 sm:pl-7">
-        {/* Project-colored left accent strip */}
-        <span
-          aria-hidden
-          className={clsx('absolute left-0 top-0 bottom-0 w-1', strip)}
-        />
+      <div className="relative rounded-2xl border border-border/60 bg-surface-raised/40 pl-5 pr-3 py-4">
+        <span aria-hidden className={clsx('absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl', strip)} />
 
-        <div className="flex items-start gap-5">
-          {/* Campaign glyph tile */}
-          <div
-            className={clsx(
-              'shrink-0 grid place-items-center rounded-xl ring-1',
-              'w-14 h-14 sm:w-16 sm:h-16',
-              tint,
-              ringCls,
-            )}
-          >
-            <Target className={clsx('w-6 h-6 sm:w-7 sm:h-7', textCls)} />
-          </div>
-
-          {/* Breadcrumb + title + meta */}
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1.5 inline-flex items-center gap-1.5">
-              <Link
-                to={`/projects/${project.id}`}
-                className="hover:text-brand transition-colors normal-case tracking-normal text-body-sm text-fg-muted"
-              >
+            {/* Breadcrumb */}
+            <p className="text-body-sm text-fg-muted inline-flex items-center gap-1.5 mb-1.5">
+              <span className={clsx('w-1.5 h-1.5 rounded-full', dotClass)} />
+              <Link to={`/projects/${project.id}`} className="hover:text-fg transition-colors">
                 {project.name}
               </Link>
               <ChevronRight className="w-3 h-3 text-fg-subtle" />
-              <span>campaign</span>
+              <span className="text-fg-subtle">campaign</span>
             </p>
 
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="font-display text-h1 text-fg leading-tight truncate">
-                {campaign.name}
-              </h1>
-              <StatusPill status={status} />
-            </div>
+            {/* Title */}
+            <h1 className="font-display text-h1 text-fg leading-tight truncate">
+              {campaign.name}
+            </h1>
 
-            <p className="text-body-base text-fg-muted mt-2 max-w-2xl leading-relaxed">
+            {/* Objective — single line, italic if empty */}
+            <p className="text-body-sm text-fg-muted mt-1.5 line-clamp-1 max-w-2xl">
               {campaign.objective || (
                 <span className="italic text-fg-subtle">no objective set</span>
               )}
             </p>
 
-            {(campaign.starts_on || campaign.ends_on || timeSignal) && (
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
-                {(campaign.starts_on || campaign.ends_on) && (
-                  <DateChip starts={campaign.starts_on} ends={campaign.ends_on} />
-                )}
-                {timeSignal && (
-                  <span className="inline-flex items-center h-6 rounded-md border border-border/60 bg-surface-sunken/40 px-2 font-mono text-[11px] text-fg-muted">
-                    {timeSignal}
-                  </span>
-                )}
-              </div>
-            )}
+            {/* Chip strip: status + dates + time-signal */}
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <StatusPill status={status} />
+              {hasDateChip && (
+                <DateChip starts={campaign.starts_on} ends={campaign.ends_on} />
+              )}
+              {timeSignal && (
+                <span className="inline-flex items-center h-6 rounded-md border border-border/60 bg-surface-sunken/40 px-2 font-mono text-[11px] text-fg-muted">
+                  {timeSignal}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Overflow menu */}
           <div className="shrink-0">
             <CampaignOverflowMenu
               projectId={project.id}
@@ -322,15 +277,6 @@ function CampaignIdentityHeader({
             />
           </div>
         </div>
-
-        {/* Faint gradient wash on the right edge */}
-        <div
-          aria-hidden
-          className={clsx(
-            'pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full opacity-20 blur-3xl bg-gradient-to-br',
-            gradient,
-          )}
-        />
       </div>
 
       {err && <div className="mt-3 text-rose-400 text-body-sm">{err}</div>}
@@ -376,7 +322,7 @@ function CampaignOverflowMenu({
         aria-label="campaign actions"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="grid place-items-center w-9 h-9 rounded-md text-fg-muted hover:text-fg hover:bg-surface-sunken/40 transition-colors"
+        className="grid place-items-center w-8 h-8 rounded-md text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
@@ -414,142 +360,92 @@ function CampaignOverflowMenu({
 }
 
 /* -------------------------------------------------------------------- */
-/* Primary investigations tile                                           */
+/* Tiles                                                                 */
 /* -------------------------------------------------------------------- */
 
-function PrimaryInvestigationsTile({
-  gradient,
-  tint,
-  textCls,
+function InvestigationsTile({
   liveSessionCount,
   onNew,
+  lastSession,
   onOpenLast,
-  lastTitle,
-  lastAccessed,
 }: {
-  gradient: string;
-  tint: string;
-  textCls: string;
   liveSessionCount: number;
   onNew: () => void;
+  lastSession: SessionListItem | null;
   onOpenLast: (() => void) | undefined;
-  lastTitle: string | null;
-  lastAccessed: string | null;
 }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-surface-raised/40 p-6 sm:p-7">
-      <div className="flex flex-col lg:flex-row lg:items-center gap-6">
-        <div className="flex items-start gap-4 flex-1 min-w-0">
-          <span
-            className={clsx(
-              'grid place-items-center w-12 h-12 rounded-xl shrink-0',
-              tint,
-              textCls,
-            )}
-          >
-            <Search className="w-5 h-5" />
+    <div className="rounded-2xl border border-border/60 bg-surface-raised/40 p-4 flex flex-col h-full">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-brand">
+          <Search className="w-4 h-4" />
+        </span>
+        {liveSessionCount > 0 && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle">
+            {liveSessionCount} live
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-1">
-              primary surface
-            </p>
-            <h2 className="font-display font-semibold text-h1 text-fg leading-tight">
-              investigations
-            </h2>
-            <p className="text-body-sm text-fg-muted mt-1.5 max-w-md">
-              ask a question, run a play, capture answers grounded in the brand
-              context.
-              {liveSessionCount > 0 && (
-                <>
-                  {' '}
-                  <span className="text-fg">
-                    {liveSessionCount} live in this campaign.
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
-        </div>
+        )}
+      </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {onOpenLast && (
-            <button
-              type="button"
-              onClick={onOpenLast}
-              className="inline-flex flex-col items-start h-11 px-3.5 rounded-md border border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40 transition-colors text-left"
-              title={lastTitle || 'open last investigation'}
-            >
-              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-fg-subtle leading-none">
-                last
-              </span>
-              <span className="text-body-sm text-fg truncate max-w-[180px]">
-                {lastTitle || 'untitled'}
-                {lastAccessed && (
-                  <span className="text-fg-subtle ml-1.5">
-                    · {formatRelative(lastAccessed)}
-                  </span>
-                )}
-              </span>
-            </button>
-          )}
+      <h3 className="font-display font-semibold text-fg text-body-base mb-0.5">
+        investigations
+      </h3>
+      <p className="text-body-sm text-fg-muted leading-relaxed mb-4">
+        ask a question, run a play, capture answers.
+      </p>
+
+      <div className="mt-auto flex flex-col gap-1.5">
+        <Button
+          variant="gradient"
+          size="sm"
+          leadingIcon={<Plus className="w-3.5 h-3.5" />}
+          onClick={onNew}
+          className="w-full"
+        >
+          new investigation
+        </Button>
+        {onOpenLast && lastSession && (
           <button
             type="button"
-            onClick={onNew}
-            className={clsx(
-              'inline-flex items-center gap-1.5 h-11 px-4 rounded-md text-white text-body-sm font-medium',
-              'bg-gradient-to-br shadow-card hover:brightness-110 active:scale-[0.99] transition',
-              gradient,
-            )}
+            onClick={onOpenLast}
+            title={lastSession.title || 'open last investigation'}
+            className="text-body-sm text-fg-muted hover:text-fg transition-colors truncate text-left px-1"
           >
-            <Plus className="w-3.5 h-3.5" />
-            new investigation
+            <span className="text-fg-subtle">last: </span>
+            {lastSession.title || 'untitled'}
           </button>
-        </div>
+        )}
       </div>
     </div>
   );
 }
-
-/* -------------------------------------------------------------------- */
-/* Secondary tile                                                        */
-/* -------------------------------------------------------------------- */
 
 function SecondaryTile({
   to,
   icon,
   title,
   subtitle,
-  tint,
-  textCls,
 }: {
   to: string;
   icon: React.ReactNode;
   title: string;
   subtitle: string;
-  tint: string;
-  textCls: string;
 }) {
   return (
     <Link
       to={to}
-      className="group block rounded-2xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 hover:border-border transition-colors p-4 flex items-center gap-3"
+      className="group rounded-2xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 hover:border-border transition-colors p-4 flex flex-col h-full"
     >
-      <span
-        className={clsx(
-          'grid place-items-center w-10 h-10 rounded-lg shrink-0',
-          tint,
-          textCls,
-        )}
-      >
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <h3 className="font-display font-semibold text-fg text-body-base leading-tight">
-          {title}
-        </h3>
-        <p className="text-body-sm text-fg-muted truncate">{subtitle}</p>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-surface-sunken/60 text-fg-muted group-hover:text-fg transition-colors">
+          {icon}
+        </span>
+        <ChevronRight className="w-4 h-4 text-fg-subtle group-hover:text-fg group-hover:translate-x-0.5 transition-all" />
       </div>
-      <ChevronRight className="w-4 h-4 text-fg-subtle group-hover:text-fg group-hover:translate-x-0.5 transition-all shrink-0" />
+      <h3 className="font-display font-semibold text-fg text-body-base mb-0.5">
+        {title}
+      </h3>
+      <p className="text-body-sm text-fg-muted leading-relaxed">{subtitle}</p>
     </Link>
   );
 }
@@ -562,13 +458,11 @@ function RecentInvestigationsSection({
   sessions,
   toolBase,
   strip,
-  gradient,
   onCreate,
 }: {
   sessions: SessionListItem[];
   toolBase: string;
   strip: string;
-  gradient: string;
   onCreate: () => void;
 }) {
   return (
@@ -589,7 +483,7 @@ function RecentInvestigationsSection({
       </header>
 
       {sessions.length === 0 ? (
-        <EmptyInvestigations gradient={gradient} onCreate={onCreate} />
+        <EmptyInvestigations onCreate={onCreate} />
       ) : (
         <ul className="space-y-2">
           {sessions.slice(0, 8).map(s => (
@@ -619,7 +513,7 @@ function SessionRow({
     <li>
       <Link
         to={`${toolBase}/investigations/${session.id}`}
-        className="relative block rounded-xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 hover:border-border transition-colors pl-5 pr-4 py-3.5 overflow-hidden"
+        className="relative block rounded-xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 hover:border-border transition-colors pl-5 pr-4 py-3 overflow-hidden"
       >
         <span
           aria-hidden
@@ -648,13 +542,7 @@ function SessionRow({
   );
 }
 
-function EmptyInvestigations({
-  gradient,
-  onCreate,
-}: {
-  gradient: string;
-  onCreate: () => void;
-}) {
+function EmptyInvestigations({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 px-8 py-12 text-center">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
@@ -667,18 +555,13 @@ function EmptyInvestigations({
         start one to ask questions, run a play, or work an answer to a brief — every
         turn is grounded in the campaign's brand context.
       </p>
-      <button
-        type="button"
+      <Button
+        variant="gradient"
+        leadingIcon={<Plus className="w-3.5 h-3.5" />}
         onClick={onCreate}
-        className={clsx(
-          'inline-flex items-center gap-1.5 h-9 px-4 rounded-md text-white text-body-sm font-medium',
-          'bg-gradient-to-br shadow-card hover:brightness-110 active:scale-[0.99] transition',
-          gradient,
-        )}
       >
-        <Plus className="w-3.5 h-3.5" />
         start first investigation
-      </button>
+      </Button>
     </div>
   );
 }
@@ -808,14 +691,6 @@ function formatDateWindow(
   return '';
 }
 
-/** Operational time signal derived from `starts_on` / `ends_on`.
- *  - both set + in-window  → "day X of Y"
- *  - both set + before     → "starts in Xd"
- *  - both set + after      → "ended Xd ago"
- *  - only ends_on + future → "ends in Xd"
- *  - only starts_on        → "running Xd"
- *  - neither               → null
- */
 function computeTimeSignal(c: CampaignSummary): string | null {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
