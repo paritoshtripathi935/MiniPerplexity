@@ -177,12 +177,20 @@ async def _get_default_campaign_id(
 
 
 async def touch_session(db: AsyncSession, session_id: str) -> None:
+    """Bump last_accessed_at on a session.
+
+    `expires_at` is also pushed forward to NEVER_EXPIRES — matches
+    `get_or_create_session`'s intent. Previously this used the anonymous
+    SESSION_TTL (10 min), which silently re-armed signed-in sessions for
+    cleanup; combined with the periodic sweep, that hard-deleted (cascade)
+    the entire conversation 10 min after each touch.
+    """
     sid = _to_uuid(session_id)
     now = _now()
     await db.execute(
         DBSession.__table__.update()
         .where(DBSession.id == sid)
-        .values(last_accessed_at=now, expires_at=now + SESSION_TTL)
+        .values(last_accessed_at=now, expires_at=now + NEVER_EXPIRES)
     )
 
 
@@ -209,19 +217,26 @@ async def get_session_campaign(
 
 
 async def cleanup_expired_sessions(db: AsyncSession) -> int:
-    """Sweep expired non-archived sessions.
+    """Sweep expired anonymous sessions.
 
     Effectively a no-op after migration 007: anonymous sessions no longer
     exist (every session must have NOT NULL campaign_id, and we only ever
     insert NEVER_EXPIRES for owned rows). Kept as a guarded background hook
-    so the lifecycle worker has something idempotent to call, and so any
-    rogue short-TTL inserts in the future still get reaped.
+    so the lifecycle worker has something idempotent to call.
+
+    Owned sessions (`user_id IS NOT NULL`) are off-limits here regardless
+    of `expires_at`. Chat history is product data, not scratchpad — any
+    short-TTL stamping is a bug to fix at the source, not to silently
+    cascade-delete via this sweep. A regression like the pre-fix
+    `touch_session` (which stamped a 10-min expires_at and then let this
+    sweep cascade-delete every message + query) must never recur.
     """
     now = _now()
     result = await db.execute(
         delete(DBSession).where(
             DBSession.expires_at < now,
             DBSession.is_archived.is_(False),
+            DBSession.user_id.is_(None),
         )
     )
     return result.rowcount or 0
