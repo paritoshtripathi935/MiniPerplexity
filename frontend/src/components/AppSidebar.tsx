@@ -36,6 +36,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PlayCircle,
+  Plug,
   Plus,
   Search,
   Settings,
@@ -173,6 +174,12 @@ function buildNav(toolBase: string | null): NavItem[] {
     // /projects/:id/c/:cid keep this row highlighted (but NOT the
     // /projects/:p/c/:c/{tool} paths, which highlight the tool row).
     { to: '/projects', label: 'projects', icon: FolderKanban },
+    {
+      to: '/settings/integrations',
+      label: 'integrations',
+      icon: Plug,
+      matchPrefixes: ['/settings/integrations'],
+    },
     { to: '/settings', label: 'settings', icon: Settings, end: true },
   ];
 }
@@ -320,12 +327,20 @@ function PrimaryNav({
 
   const isActive = (item: NavItem): boolean => {
     if (item.matchPrefixes?.length) {
-      // tool row — only active when we're inside a matching tool surface
-      return item.matchPrefixes.some(p =>
-        activeTool === p.replace(/^\//, '') ||
-        // map 'calculators' label → '/calc' route prefix
-        (p === '/calc' && activeTool === 'calc'),
-      );
+      return item.matchPrefixes.some(p => {
+        // tool-row match: lights up regardless of which campaign the
+        // tool URL points at (investigations / plays / calc)
+        const toolName = p.replace(/^\//, '');
+        if (
+          (toolName === 'investigations' || toolName === 'plays' || toolName === 'calc') &&
+          activeTool === toolName
+        ) {
+          return true;
+        }
+        // generic pathname-prefix match — used for non-tool rows like
+        // /settings/integrations
+        return pathname === p || pathname.startsWith(p + '/');
+      });
     }
     if (item.to === '/projects') {
       // projects row — active on /projects[/:id[/c/:cid]] but NOT once
