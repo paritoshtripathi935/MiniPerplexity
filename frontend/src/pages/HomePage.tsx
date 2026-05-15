@@ -19,16 +19,21 @@ import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   ArrowUpRight,
-  BarChart3,
   Calculator,
+  Image as ImageIcon,
   PlayCircle,
+  Plug,
   Search,
   Settings,
-  TrendingDown,
 } from 'lucide-react';
 import { useCommandPalette } from '../components/CommandPalette';
 import { useActiveCampaign } from '../components/ActiveCampaign';
-import { useBrandProfile, useSessions } from '../services/queries';
+import {
+  useBrandProfile,
+  usePlays,
+  usePlaysHistory,
+  useSessions,
+} from '../services/queries';
 
 interface Props {
   darkMode: boolean;
@@ -88,6 +93,20 @@ export function HomePage({}: Props) {
     { limit: 10, campaignId: activeCampaign?.id },
     !!isSignedIn,
   );
+  const { data: playsCatalog = [] } = usePlays(!!isSignedIn);
+  const { data: playsHistory = [] } = usePlaysHistory(
+    getToken,
+    { campaignId: activeCampaign?.id },
+    !!isSignedIn,
+  );
+  const playById = useMemo(
+    () => Object.fromEntries(playsCatalog.map(p => [p.id, p])),
+    [playsCatalog],
+  );
+  const recentPlays = useMemo(
+    () => playsHistory.slice(0, 3).map(h => ({ ...h, play: playById[h.play_id] })),
+    [playsHistory, playById],
+  );
 
   // Tool-link prefix for the active scope. Tool quick-actions and feed
   // rows target the scoped URL; falls back to /projects when no campaign
@@ -129,7 +148,7 @@ export function HomePage({}: Props) {
 
   return (
     <>
-      <header className="mb-8">
+      <header className="mb-8 space-y-2">
         {/* No page title — top-nav already says "Home" is active. The
          * operational state line is the lead, matching the Stitch dark
          * mock where the page identity lives in the sidebar chip. */}
@@ -138,6 +157,13 @@ export function HomePage({}: Props) {
           scenarioCount={scenarios.total}
           lastActivityIso={lastActivity}
         />
+        {activeProject && activeCampaign && (
+          <ActiveScopeStrip
+            projectName={activeProject.name}
+            campaignName={activeCampaign.name}
+            manageHref={`/projects/${activeProject.id}/c/${activeCampaign.id}`}
+          />
+        )}
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -190,32 +216,28 @@ export function HomePage({}: Props) {
               to={toolHref('/calc')}
             />
 
-            <FeedRow
-              icon={<TrendingDown className="w-4 h-4" />}
-              label="meta CAC trend"
-              trailing={
-                <span className="text-body-sm">
-                  <span className="text-fg-muted">—</span>{' '}
-                  <Link to="/settings" className="text-brand hover:underline">
-                    connect Meta
-                  </Link>
-                </span>
-              }
-              dim
-            />
+            {activeProject && activeCampaign && (
+              <FeedRow
+                icon={<ImageIcon className="w-4 h-4" />}
+                label="creatives library"
+                trailing={
+                  <span className="text-body-sm text-fg-muted">
+                    <span className="text-fg-subtle/60">→</span> open
+                  </span>
+                }
+                to={`/projects/${activeProject.id}/c/${activeCampaign.id}/creatives`}
+              />
+            )}
 
             <FeedRow
-              icon={<BarChart3 className="w-4 h-4" />}
-              label="channel mix vs. target ROAS"
+              icon={<Plug className="w-4 h-4" />}
+              label="data sources"
               trailing={
-                <span className="text-body-sm">
-                  <span className="text-fg-muted">—</span>{' '}
-                  <Link to="/settings" className="text-brand hover:underline">
-                    connect Google Ads
-                  </Link>
+                <span className="text-body-sm text-fg-muted">
+                  <span className="text-fg-subtle/60">→</span> meta, google ads, slack…
                 </span>
               }
-              dim
+              to="/settings/integrations"
             />
 
             {brandIncomplete && (
@@ -277,6 +299,30 @@ export function HomePage({}: Props) {
             )}
           </section>
 
+          {recentPlays.length > 0 && (
+            <section>
+              <SectionLabel>recent plays</SectionLabel>
+              <ul className="space-y-2">
+                {recentPlays.map(item => (
+                  <li key={item.play_id}>
+                    <Link
+                      to={toolHref('/plays')}
+                      className="flex items-center gap-3 rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur hover:border-brand/40 transition-colors px-3 py-2.5 focus-visible:outline-none focus-visible:shadow-focus"
+                    >
+                      <PlayCircle className="w-3.5 h-3.5 text-fg-muted shrink-0" />
+                      <span className="flex-1 min-w-0 text-body-sm text-fg truncate">
+                        {item.play?.title ?? item.play_id}
+                      </span>
+                      <span className="text-body-sm text-fg-muted shrink-0 tabular-nums">
+                        {item.run_count}× · {relativeTime(item.last_run_at)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section>
             <SectionLabel>quick actions</SectionLabel>
             <ul className="space-y-px">
@@ -317,6 +363,37 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
       {children}
     </h2>
+  );
+}
+
+function ActiveScopeStrip({
+  projectName,
+  campaignName,
+  manageHref,
+}: {
+  projectName: string;
+  campaignName: string;
+  manageHref: string;
+}) {
+  return (
+    <p className="flex items-center gap-2 text-body-sm">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+        active
+      </span>
+      <span className="text-fg truncate max-w-[40%]" title={projectName}>
+        {projectName}
+      </span>
+      <span className="text-fg-subtle/60" aria-hidden>›</span>
+      <span className="text-fg-muted truncate max-w-[40%]" title={campaignName}>
+        {campaignName}
+      </span>
+      <Link
+        to={manageHref}
+        className="ml-1 text-fg-subtle hover:text-fg transition-colors"
+      >
+        manage →
+      </Link>
+    </p>
   );
 }
 
