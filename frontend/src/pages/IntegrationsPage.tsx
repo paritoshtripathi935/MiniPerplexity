@@ -1,28 +1,28 @@
 /**
- * /settings/integrations — connect external ad platforms.
+ * /settings/integrations — connect external platforms.
  *
- * Phase 1 of the Meta integration (STATUS A5). Renders one card per
- * provider (Meta today, Google Ads stub for shape parity). Each card
- * has three possible states:
+ * Three-section layout:
  *
- *   1. unavailable — the deploy has no env credentials configured;
- *      "not configured on this deploy" copy, no CTA.
- *   2. available + disconnected — gradient "connect" CTA that fires
- *      the OAuth handshake.
- *   3. available + connected — "connected" badge, list of linked
- *      ad accounts per project (collapsed/expanded toggle), and a
- *      "disconnect" affordance.
+ *   1. Active integrations — providers with an active connection. Hidden
+ *      entirely when nothing is connected. Renders rich detail (ad
+ *      account linker per project for Meta).
+ *   2. Available now — providers the deploy is configured for but the
+ *      user hasn't connected yet (Meta when env creds exist).
+ *   3. Coming soon — Google Ads + Slack + Discord + Notion + HubSpot +
+ *      Linear + Zapier + Klaviyo + Shopify, dim cards with a "notify me"
+ *      mailto. These are the integrations the landing page implies and
+ *      the ones operators consistently ask for.
  *
- * The OAuth handshake is a full-page navigation (we redirect to Meta,
- * Meta redirects back to /api/v1/integrations/meta/callback which
- * 303s to here with ?meta_connected=1 or ?meta_error=...). We surface
- * those as a transient banner above the cards.
+ * The OAuth handshake is still a full-page navigation; the post-OAuth
+ * `?meta_connected=` / `?meta_error=` query params become a transient
+ * banner above the sections.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import {
   AlertCircle,
+  Bell,
   Check,
   ChevronRight,
   Link as LinkIcon,
@@ -32,6 +32,10 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../components/AppLayout';
+import {
+  BRAND_LOGOS,
+  MetaLogo,
+} from '../components/BrandLogos';
 import {
   disconnectMeta,
   getIntegrationsStatus,
@@ -51,6 +55,34 @@ interface Props {
   darkMode: boolean;
 }
 
+interface ComingSoonItem {
+  id: string;
+  name: string;
+  tagline: string;
+  category: 'ads' | 'collab' | 'crm' | 'ops' | 'commerce' | 'lifecycle';
+}
+
+const COMING_SOON: ComingSoonItem[] = [
+  { id: 'google_ads', name: 'google ads', tagline: 'search + youtube performance metrics', category: 'ads' },
+  { id: 'slack', name: 'slack', tagline: 'export investigations to a channel', category: 'collab' },
+  { id: 'notion', name: 'notion', tagline: 'sync briefs + play outputs to a database', category: 'collab' },
+  { id: 'discord', name: 'discord', tagline: 'push high-priority alerts to a server', category: 'collab' },
+  { id: 'hubspot', name: 'hubspot', tagline: 'crm-anchored lifecycle + cohort audits', category: 'crm' },
+  { id: 'linear', name: 'linear', tagline: 'turn next-steps into issues in one click', category: 'ops' },
+  { id: 'zapier', name: 'zapier', tagline: 'webhook bridge to 5,000+ tools', category: 'ops' },
+  { id: 'klaviyo', name: 'klaviyo', tagline: 'email + sms spend and flow performance', category: 'lifecycle' },
+  { id: 'shopify', name: 'shopify', tagline: 'order volume, blended cac, product velocity', category: 'commerce' },
+];
+
+const CATEGORY_LABEL: Record<ComingSoonItem['category'], string> = {
+  ads: 'ads',
+  collab: 'collab',
+  crm: 'crm',
+  ops: 'ops',
+  commerce: 'commerce',
+  lifecycle: 'lifecycle',
+};
+
 export function IntegrationsPage(_props: Props) {
   const { getToken, isSignedIn } = useAuth();
   const navigate = useNavigate();
@@ -62,21 +94,18 @@ export function IntegrationsPage(_props: Props) {
     { kind: 'success' | 'error'; text: string } | null
   >(null);
 
-  // Pick up the post-OAuth redirect query params and turn them into a
-  // dismissable banner. Clean them out of the URL so a manual refresh
-  // doesn't re-fire the banner.
   useEffect(() => {
     const connected = searchParams.get('meta_connected');
     const error = searchParams.get('meta_error');
     if (connected) {
-      setBanner({ kind: 'success', text: 'Meta connected.' });
+      setBanner({ kind: 'success', text: 'meta connected.' });
       const next = new URLSearchParams(searchParams);
       next.delete('meta_connected');
       setSearchParams(next, { replace: true });
     } else if (error) {
       setBanner({
         kind: 'error',
-        text: `Meta connect failed: ${error.replace(/_/g, ' ')}`,
+        text: `meta connect failed: ${error.replace(/_/g, ' ')}`,
       });
       const next = new URLSearchParams(searchParams);
       next.delete('meta_error');
@@ -107,41 +136,16 @@ export function IntegrationsPage(_props: Props) {
     () => status?.providers.find(p => p.provider === 'meta') ?? null,
     [status],
   );
-  const googleStatus = useMemo(
-    () => status?.providers.find(p => p.provider === 'google_ads') ?? null,
-    [status],
-  );
 
-  async function handleMetaConnect() {
-    setErr(null);
-    try {
-      const { authorize_url } = await getMetaAuthorizeUrl(getToken);
-      // Full-page redirect — preserves the CSRF cookie the backend
-      // just set on the response.
-      window.location.href = authorize_url;
-    } catch (e: any) {
-      setErr(e?.message ?? 'failed to start Meta connect');
-    }
-  }
-
-  async function handleMetaDisconnect() {
-    if (!window.confirm('Disconnect Meta? This unlinks any ad accounts mapped to your projects.')) return;
-    setErr(null);
-    try {
-      await disconnectMeta(getToken);
-      await refreshStatus();
-      setBanner({ kind: 'success', text: 'Meta disconnected.' });
-    } catch (e: any) {
-      setErr(e?.message ?? 'failed to disconnect');
-    }
-  }
+  const hasActive = !!metaStatus?.connected;
+  const hasAvailable = !!metaStatus?.available && !metaStatus?.connected;
 
   return (
     <>
       <PageHeader
         eyebrow="settings"
         title="integrations."
-        subtitle="connect the platforms you run paid acquisition on. Meta ad-account data grounds investigations and powers the home-page CAC tile."
+        subtitle="connect the platforms you run paid acquisition and ops on. Meta data grounds investigations; the rest are on the queue."
         actions={
           <button
             type="button"
@@ -188,59 +192,167 @@ export function IntegrationsPage(_props: Props) {
       {loading && !status ? (
         <p className="text-body-sm text-fg-muted">loading…</p>
       ) : (
-        <div className="space-y-3">
-          <MetaProviderCard
-            available={!!metaStatus?.available}
-            connected={!!metaStatus?.connected}
-            onConnect={handleMetaConnect}
-            onDisconnect={handleMetaDisconnect}
-          />
-          <GoogleAdsStubCard available={!!googleStatus?.available} />
+        <div className="space-y-8">
+          {hasActive && (
+            <Section
+              eyebrow="active"
+              title="connected"
+              subtitle="data flowing now. disconnect any time — historical investigations are kept."
+              count={1}
+            >
+              <MetaProviderCard
+                state="connected"
+                onConnect={() => {}}
+                onDisconnect={async () => {
+                  if (!window.confirm('disconnect meta? this unlinks any ad accounts mapped to your projects.')) return;
+                  setErr(null);
+                  try {
+                    await disconnectMeta(getToken);
+                    await refreshStatus();
+                    setBanner({ kind: 'success', text: 'meta disconnected.' });
+                  } catch (e: any) {
+                    setErr(e?.message ?? 'failed to disconnect');
+                  }
+                }}
+              />
+            </Section>
+          )}
+
+          {hasAvailable && (
+            <Section
+              eyebrow="available now"
+              title="ready to connect"
+              subtitle="configured on this deploy. one-click oauth, read-only access."
+              count={1}
+            >
+              <MetaProviderCard
+                state="available"
+                onConnect={async () => {
+                  setErr(null);
+                  try {
+                    const { authorize_url } = await getMetaAuthorizeUrl(getToken);
+                    window.location.href = authorize_url;
+                  } catch (e: any) {
+                    setErr(e?.message ?? 'failed to start meta connect');
+                  }
+                }}
+                onDisconnect={() => {}}
+              />
+            </Section>
+          )}
+
+          {/* Meta dormant — surface it inside Coming-soon-with-context */}
+          {!metaStatus?.available && (
+            <Section
+              eyebrow="awaiting deploy config"
+              title="dormant on this deploy"
+              subtitle="code is shipped; waiting on env credentials. ping the team to enable."
+              count={1}
+            >
+              <UnavailableMetaNotice />
+            </Section>
+          )}
+
+          <Section
+            eyebrow="coming soon"
+            title="on the roadmap"
+            subtitle="vote with a click — we ship the next integration based on demand."
+            count={COMING_SOON.length}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {COMING_SOON.map(item => (
+                <ComingSoonCard key={item.id} item={item} />
+              ))}
+            </div>
+          </Section>
         </div>
       )}
     </>
   );
 }
 
+/* ----------------------------- Sections --------------------------------- */
+
+function Section({
+  eyebrow,
+  title,
+  subtitle,
+  count,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <header className="flex items-end justify-between gap-4">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1">
+            {eyebrow}
+          </p>
+          <h2 className="font-display font-semibold text-fg text-h2 lowercase">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="text-body-sm text-fg-muted mt-1 max-w-2xl">
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {typeof count === 'number' && (
+          <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle whitespace-nowrap pb-1">
+            {count} item{count === 1 ? '' : 's'}
+          </span>
+        )}
+      </header>
+      {children}
+    </section>
+  );
+}
+
 /* ----------------------------- Meta card -------------------------------- */
 
 function MetaProviderCard({
-  available,
-  connected,
+  state,
   onConnect,
   onDisconnect,
 }: {
-  available: boolean;
-  connected: boolean;
+  state: 'connected' | 'available';
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
   return (
     <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur overflow-hidden">
+      <div className="absolute" />
       <header className="flex items-center gap-3 px-5 py-4 border-b border-border/40">
-        <span className="grid place-items-center w-10 h-10 rounded-lg bg-[#1877F2]/15 text-[#1877F2] font-semibold text-h2">
-          M
+        <span className="grid place-items-center w-11 h-11 rounded-xl bg-white/[0.04] border border-border/40">
+          <MetaLogo size={24} />
         </span>
         <div className="flex-1 min-w-0">
-          <h2 className="font-display font-semibold text-fg text-h2 lowercase">
+          <h3 className="font-display font-semibold text-fg text-h2 lowercase">
             meta
-          </h2>
+          </h3>
           <p className="text-body-sm text-fg-muted">
             facebook + instagram ads · spend, CPM, CPP, ROAS
           </p>
         </div>
-        <MetaStatusPill available={available} connected={connected} />
+        {state === 'connected' ? (
+          <span className="inline-flex items-center gap-1 px-2 h-6 rounded-md border border-emerald-400/30 bg-emerald-400/10 font-mono text-[10px] uppercase tracking-wider text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-status-blink" aria-hidden />
+            connected
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 h-6 rounded-md border border-border/60 bg-surface-sunken/40 font-mono text-[10px] uppercase tracking-wider text-fg-muted">
+            not connected
+          </span>
+        )}
       </header>
 
       <div className="px-5 py-4">
-        {!available ? (
-          <p className="text-body-sm text-fg-subtle italic">
-            not configured on this deploy. set <code className="font-mono text-fg-muted">META_APP_ID</code>,{' '}
-            <code className="font-mono text-fg-muted">META_APP_SECRET</code>,{' '}
-            <code className="font-mono text-fg-muted">META_OAUTH_REDIRECT_URI</code>, and{' '}
-            <code className="font-mono text-fg-muted">META_TOKEN_SECRET</code> in env to enable.
-          </p>
-        ) : !connected ? (
+        {state === 'available' ? (
           <div className="flex items-center justify-between gap-3">
             <p className="text-body-sm text-fg-muted">
               read-only access to your meta ad accounts. you'll pick which accounts to link per project.
@@ -262,32 +374,34 @@ function MetaProviderCard({
   );
 }
 
-function MetaStatusPill({
-  available,
-  connected,
-}: {
-  available: boolean;
-  connected: boolean;
-}) {
-  if (!available) {
-    return (
-      <span className="inline-flex items-center px-1.5 h-5 rounded-md border border-border/60 bg-surface-sunken/40 font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
-        unavailable
-      </span>
-    );
-  }
-  if (connected) {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded-md border border-emerald-400/30 bg-emerald-400/10 font-mono text-[10px] uppercase tracking-wider text-emerald-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden />
-        connected
-      </span>
-    );
-  }
+function UnavailableMetaNotice() {
   return (
-    <span className="inline-flex items-center px-1.5 h-5 rounded-md border border-border/60 bg-surface-sunken/40 font-mono text-[10px] uppercase tracking-wider text-fg-muted">
-      not connected
-    </span>
+    <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur overflow-hidden opacity-90">
+      <header className="flex items-center gap-3 px-5 py-4">
+        <span className="grid place-items-center w-11 h-11 rounded-xl bg-white/[0.04] border border-border/40">
+          <MetaLogo size={24} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-display font-semibold text-fg-muted text-h2 lowercase">
+            meta
+          </h3>
+          <p className="text-body-sm text-fg-subtle">
+            facebook + instagram ads · awaiting credentials
+          </p>
+        </div>
+        <span className="inline-flex items-center px-2 h-6 rounded-md border border-amber-400/30 bg-amber-400/10 font-mono text-[10px] uppercase tracking-wider text-amber-300">
+          deploy config
+        </span>
+      </header>
+      <div className="px-5 pb-4 -mt-1">
+        <p className="text-body-sm text-fg-subtle">
+          backend ships dormant until <code className="font-mono text-fg-muted">META_APP_ID</code>,{' '}
+          <code className="font-mono text-fg-muted">META_APP_SECRET</code>,{' '}
+          <code className="font-mono text-fg-muted">META_OAUTH_REDIRECT_URI</code>, and{' '}
+          <code className="font-mono text-fg-muted">META_TOKEN_SECRET</code> are present in env.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -411,6 +525,11 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
             {project.name}
           </span>
         </span>
+        {links && links.length > 0 && (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+            {links.length} linked
+          </span>
+        )}
       </button>
 
       {expanded && (
@@ -496,27 +615,46 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
   );
 }
 
-/* --------------------------- Google Ads stub ---------------------------- */
+/* --------------------------- Coming soon card --------------------------- */
 
-function GoogleAdsStubCard({ available }: { available: boolean }) {
+function ComingSoonCard({ item }: { item: ComingSoonItem }) {
+  const Logo = BRAND_LOGOS[item.id];
+  const subject = encodeURIComponent(`+1 for ${item.name} integration`);
+  const body = encodeURIComponent(
+    `I'd connect ${item.name} to PaidPilot if it shipped — using it for ${item.tagline}.`,
+  );
   return (
-    <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur opacity-70">
-      <header className="flex items-center gap-3 px-5 py-4">
-        <span className="grid place-items-center w-10 h-10 rounded-lg bg-fg/10 text-fg-muted font-semibold text-h2">
-          G
+    <a
+      href={`mailto:hello@paidpilot.app?subject=${subject}&body=${body}`}
+      className="group block rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-4 hover:border-brand/30 hover:bg-surface-raised/60 transition-colors"
+    >
+      <div className="flex items-start gap-3 mb-3">
+        <span className="grid place-items-center w-10 h-10 rounded-lg bg-white/[0.04] border border-border/40 shrink-0">
+          {Logo ? <Logo size={20} /> : null}
         </span>
         <div className="flex-1 min-w-0">
-          <h2 className="font-display font-semibold text-fg-muted text-h2 lowercase">
-            google ads
-          </h2>
-          <p className="text-body-sm text-fg-subtle">
-            search + youtube · coming soon
+          <div className="flex items-center gap-2 mb-0.5">
+            <h3 className="font-display font-semibold text-fg text-body-base lowercase truncate">
+              {item.name}
+            </h3>
+            <span className="font-mono text-[9px] uppercase tracking-wider text-fg-subtle border border-border/60 rounded px-1 py-px shrink-0">
+              {CATEGORY_LABEL[item.category]}
+            </span>
+          </div>
+          <p className="text-body-sm text-fg-muted line-clamp-2">
+            {item.tagline}
           </p>
         </div>
-        <span className="inline-flex items-center px-1.5 h-5 rounded-md border border-border/60 bg-surface-sunken/40 font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
-          {available ? 'available' : 'soon'}
+      </div>
+      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/30">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+          coming soon
         </span>
-      </header>
-    </section>
+        <span className="inline-flex items-center gap-1 text-body-sm text-fg-muted group-hover:text-brand transition-colors">
+          <Bell className="w-3 h-3" />
+          notify me
+        </span>
+      </div>
+    </a>
   );
 }
