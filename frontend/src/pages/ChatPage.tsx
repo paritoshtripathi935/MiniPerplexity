@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { v4 as uuidv4 } from 'uuid';
-import { PanelLeftClose, PanelLeftOpen, Youtube } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Quote, Youtube } from 'lucide-react';
 import clsx from 'clsx';
 import { ChatMessage } from '../components/ChatMessage';
 import { SearchBar, type ComposerHandle } from '../components/SearchBar';
 import { SessionsSidebar } from '../components/SessionsSidebar';
 import { PlayRunModal } from '../components/PlayRunModal';
 import { VideosDrawer, collectVideos } from '../components/VideosDrawer';
+import { collectCitations, useCitationDrawer } from '../components/CitationDrawer';
 import { ChatEmptyState } from '../components/ChatEmptyState';
 import { ModelSelector } from '../components/ModelSelector';
 import {
@@ -511,6 +512,13 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   // of the "videos · N" chip in the header — no chip when there are zero.
   const videoCount = useMemo(() => collectVideos(messages).length, [messages]);
 
+  // Citations across the conversation, de-duped by source URL. Drives the
+  // visibility of the "citations · N" chip — same affordance pattern as
+  // videos. Per-pill clicks still use the message's own search_results
+  // (existing behavior); the header chip opens a conversation-wide view.
+  const allCitations = useMemo(() => collectCitations(messages), [messages]);
+  const citationDrawer = useCitationDrawer();
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
       {/* Sessions sidebar — collapsible (PAI-14). When collapsed, hidden
@@ -566,6 +574,22 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               </span>
             )}
           </div>
+          {allCitations.length > 0 && (
+            <button
+              type="button"
+              onClick={() => citationDrawer.open(allCitations, 0)}
+              title="browse all citations"
+              className={clsx(
+                'inline-flex items-center gap-1.5 h-7 px-2 rounded-md border text-body-sm transition-colors shrink-0',
+                'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
+              )}
+            >
+              <Quote className="w-3.5 h-3.5" />
+              <span className="font-mono text-[10px] uppercase tracking-wider tabular-nums">
+                citations · {allCitations.length}
+              </span>
+            </button>
+          )}
           {videoCount > 0 && (
             <button
               type="button"
