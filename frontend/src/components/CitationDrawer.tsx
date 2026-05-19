@@ -24,7 +24,7 @@ import {
 } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, ShieldCheck, X } from 'lucide-react';
 import clsx from 'clsx';
-import type { MessageSearchResult } from '../types';
+import type { Message, MessageSearchResult } from '../types';
 import { getDomain } from '../utils/url';
 
 interface DrawerState {
@@ -229,6 +229,26 @@ export function CitationDrawer() {
       </aside>
     </div>
   );
+}
+
+/** Collect every citation that's been surfaced anywhere in the
+ *  conversation, in the order they first appeared. De-duplicated by
+ *  source URL so the drawer's prev/next doesn't loop through the same
+ *  page twice. Used by the header "citations" chip to open the drawer
+ *  with a conversation-wide view. */
+export function collectCitations(messages: Message[]): MessageSearchResult[] {
+  const seen = new Set<string>();
+  const out: MessageSearchResult[] = [];
+  for (const m of messages) {
+    if (!m.search_results?.length) continue;
+    for (const r of m.search_results) {
+      const key = r.source || r.title || JSON.stringify(r);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r);
+    }
+  }
+  return out;
 }
 
 function FooterStepButton({
