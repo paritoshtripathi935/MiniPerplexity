@@ -1,6 +1,32 @@
 // Add API host from environment variable
 const API_HOST = import.meta.env.VITE_API_HOST || 'http://127.0.0.1:8000';
 
+import { notifyUnauthorized } from './authEvents';
+
+/** Called from every fetch wrapper after a non-OK response. Fires the
+ *  global "auth failed" event only when:
+ *    - response.status === 401, AND
+ *    - the request actually carried an Authorization header
+ *      (anonymous endpoints can legitimately 401 without meaning
+ *      the user's session is dead).
+ *  Anything else is a no-op — the caller still throws. */
+function maybeNotifyUnauthorized(response: Response, headers: HeadersInit | undefined): void {
+  if (response.status !== 401) return;
+  // Detect whether we attached Authorization. `headers` may be plain
+  // object, Headers instance, or undefined.
+  let hadAuth = false;
+  if (headers) {
+    if (headers instanceof Headers) {
+      hadAuth = headers.has('Authorization');
+    } else if (Array.isArray(headers)) {
+      hadAuth = headers.some(([k]) => k.toLowerCase() === 'authorization');
+    } else {
+      hadAuth = Object.keys(headers).some(k => k.toLowerCase() === 'authorization');
+    }
+  }
+  if (hadAuth) notifyUnauthorized();
+}
+
 /**
  * `getToken` matches the signature returned by Clerk's `useAuth()` hook
  * (`@clerk/clerk-react`). When provided, every request gets an
@@ -391,10 +417,12 @@ export type BrandProfileUpdate = Partial<Omit<BrandProfile, 'user_id' | 'onboard
 };
 
 export async function getBrandProfile(getToken: GetToken): Promise<BrandProfile> {
-  const response = await fetch(`${API_HOST}/api/v1/brand-profile`, {
-    headers: { ...(await authHeaders(getToken)) },
-  });
-  if (!response.ok) throw new Error(`Failed to load brand profile: ${response.status}`);
+  const headers = { ...(await authHeaders(getToken)) };
+  const response = await fetch(`${API_HOST}/api/v1/brand-profile`, { headers });
+  if (!response.ok) {
+    maybeNotifyUnauthorized(response, headers);
+    throw new Error(`Failed to load brand profile: ${response.status}`);
+  }
   return await response.json();
 }
 
@@ -402,12 +430,16 @@ export async function putBrandProfile(
   payload: BrandProfileUpdate,
   getToken: GetToken
 ): Promise<BrandProfile> {
+  const headers = { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) };
   const response = await fetch(`${API_HOST}/api/v1/brand-profile`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    headers,
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error(`Failed to save brand profile: ${response.status}`);
+  if (!response.ok) {
+    maybeNotifyUnauthorized(response, headers);
+    throw new Error(`Failed to save brand profile: ${response.status}`);
+  }
   return await response.json();
 }
 
@@ -498,15 +530,14 @@ async function jsonRequest<T>(
   init: RequestInit,
   getToken: GetToken,
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers || {}),
-      ...(await authHeaders(getToken)),
-    },
-  });
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(init.headers || {}),
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
+    maybeNotifyUnauthorized(response, headers);
     let detail: string | undefined;
     try {
       const body = await response.json();

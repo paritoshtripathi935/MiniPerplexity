@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
-import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, useAuth, useClerk } from '@clerk/clerk-react';
 import LoginPage from './components/LoginPage';
 import { AppLayout } from './components/AppLayout';
 import { useActiveCampaign } from './components/ActiveCampaign';
@@ -8,6 +8,7 @@ import { Onboarding } from './components/Onboarding';
 import { HomePage } from './pages/HomePage';
 import { LandingPage } from './pages/LandingPage';
 import { getBrandProfile, type BrandProfile } from './services/api';
+import { subscribeUnauthorized } from './services/authEvents';
 import { preloadQueries } from './services/queries';
 import { wakeupBackend } from './utils/api';
 // Type-only import — types are erased at build time, no bundle cost.
@@ -80,6 +81,27 @@ function preloadRouteChunks() {
 /** Cross-route shared state lives here; pages get what they need via props. */
 function AuthedShell() {
   const { getToken, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
+
+  // Global "backend rejected our bearer token" handler. Without this, a
+  // 401 from any auth-required endpoint just gets swallowed by component-
+  // level `.catch(() => null)` blocks, and the user ends up stuck on
+  // surfaces that read "no data → first-time user" — the canonical
+  // failure mode being the onboarding wizard locked on Step 1 with empty
+  // fields. Signing out hard-resets Clerk's local session and bounces
+  // the user back to /sign-in where they can re-authenticate.
+  //
+  // Skip the handler while signed out so a stray anonymous 401 (a guard
+  // race during sign-out itself) doesn't loop.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    return subscribeUnauthorized(() => {
+      // Fire-and-forget — signOut() handles its own promises. We want
+      // to redirect immediately so the user sees the sign-in form
+      // rather than the stuck UI.
+      void signOut({ redirectUrl: '/sign-in' });
+    });
+  }, [isSignedIn, signOut]);
   // Initial theme: dark-first per PAI-13. Users who explicitly chose light
   // (stored as `paidpilot-theme=light`) keep their preference; everyone else
   // gets dark, regardless of OS preference. The operator-tool aesthetic is
