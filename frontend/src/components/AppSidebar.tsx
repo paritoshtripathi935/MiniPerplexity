@@ -278,14 +278,9 @@ function SidebarBody({
 
       {/* Bottom — help + docs */}
       <div className="px-2 py-2 border-t border-border/40 space-y-0.5">
-        <SidebarExternal
-          href="mailto:hello@paidpilot.app"
-          label="help"
-          icon={HelpCircle}
-          collapsed={collapsed}
-        />
-        <SidebarExternal
-          href="/docs"
+        <SidebarHelpButton collapsed={collapsed} />
+        <SidebarInternalLink
+          to="/docs"
           label="docs"
           icon={BookOpen}
           collapsed={collapsed}
@@ -293,6 +288,37 @@ function SidebarBody({
         />
       </div>
     </div>
+  );
+}
+
+/** "help" — opens a mailto with subject + body prefilled with the
+ *  page the user was on when they clicked. Beats a generic "what
+ *  do you need help with?" inbox dump. */
+function SidebarHelpButton({ collapsed }: { collapsed: boolean }) {
+  const { pathname, search } = useLocation();
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const where = pathname + (search || '');
+    const subject = encodeURIComponent('PaidPilot — help');
+    const body = encodeURIComponent(
+      `Hi PaidPilot team,\n\n[describe what you need help with]\n\n— sent from ${where}`,
+    );
+    window.location.href = `mailto:hello@paidpilot.app?subject=${subject}&body=${body}`;
+  };
+  return (
+    <RowWithTooltip label="help" collapsed={collapsed}>
+      <button
+        type="button"
+        onClick={handleClick}
+        className={clsx(
+          'w-full flex items-center h-9 rounded-md text-body-sm text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 transition-colors',
+          collapsed ? 'justify-center w-9 mx-auto' : 'gap-2.5 px-2.5',
+        )}
+      >
+        <HelpCircle className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+        {!collapsed && <span className="truncate">help</span>}
+      </button>
+    </RowWithTooltip>
   );
 }
 
@@ -434,6 +460,41 @@ function SidebarExternal({
         <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
         {!collapsed && <span className="truncate">{label}</span>}
       </a>
+    </RowWithTooltip>
+  );
+}
+
+/** Internal SPA navigation — for in-app routes like /docs. Renders a
+ *  React Router `Link` so navigation doesn't trigger a full page reload
+ *  (the old SidebarExternal used a raw `<a>`, which was fine on Netlify
+ *  thanks to the SPA redirect, but caused a visible flash and lost in-
+ *  memory state on the way through). */
+function SidebarInternalLink({
+  to,
+  label,
+  icon: Icon,
+  collapsed,
+  onNavigate,
+}: {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <RowWithTooltip label={label} collapsed={collapsed}>
+      <Link
+        to={to}
+        onClick={onNavigate}
+        className={clsx(
+          'flex items-center h-9 rounded-md text-body-sm text-fg-subtle hover:text-fg hover:bg-surface-sunken/40 transition-colors',
+          collapsed ? 'justify-center w-9 mx-auto' : 'gap-2.5 px-2.5',
+        )}
+      >
+        <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+        {!collapsed && <span className="truncate">{label}</span>}
+      </Link>
     </RowWithTooltip>
   );
 }
