@@ -120,14 +120,18 @@ class AnakinProvider(SearchProvider):
         )
 
     def _request_body(self, query: str) -> Dict[str, Any]:
-        """Centralised request shape. Adjust here when we have a real spec."""
+        """Centralised request shape — locked against the live API.
+
+        Live discovery during eval (2026-05-29):
+          - The query field is `prompt`, not `query`. Sending `query`
+            returns 400 `invalid_request: "Prompt is required"`.
+          - `num_results`, `include_content`, `include_citations` were
+            accepted without complaint when the request was otherwise
+            well-formed; keeping them in as plausibly-supported hints
+            until docs say otherwise. No-op if the server ignores."""
         return {
-            "query": query,
+            "prompt": query,
             "num_results": self.results_per_query,
-            # We want extraction in the same call — Anakin's pitch is
-            # "search with content extraction". The flag name is a guess
-            # against common conventions; flip to whatever the real spec
-            # says.
             "include_content": True,
             "include_citations": True,
         }
