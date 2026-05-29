@@ -631,6 +631,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                     key={message.id}
                     message={message}
                     darkMode={darkMode}
+                    activeModelId={me?.preferred_chat_model ?? undefined}
                     onRegenerate={
                       message.originatingQuery && message.originatingSearchResults?.length
                         ? handleRegenerate

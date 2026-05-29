@@ -30,18 +30,56 @@ import { useCitationDrawer } from './CitationDrawer';
  */
 const THINK_RE = /<think\b[^>]*>([\s\S]*?)(?:<\/think>|$)/gi;
 
-function splitThinking(content: string): { body: string; thinking: string } {
-  // qwq-32b (and possibly other Qwen reasoning models) on Cloudflare emits
-  // `</think>` at the end of the reasoning chain but no opening `<think>`
-  // (Cloudflare's wrapper strips the chat-template prefix). Detect that
-  // case — `</think>` present without a preceding `<think>` — and synthesize
-  // an opener at the start so the regex below can extract cleanly.
+/** Models whose chain-of-thought streams *before* any opening `<think>`
+ *  tag arrives. qwq-32b on Cloudflare strips the chat-template's opener
+ *  and only emits `</think>` at the end. Without help, the very first
+ *  tokens flow into the answer body, then jump into the thinking
+ *  disclosure the instant the closer arrives — exactly the "ends, then
+ *  shows thinking" flicker the user reported.
+ *
+ *  Models in this set get a synthetic `<think>` prepended *while
+ *  streaming* whenever neither a real opener nor a closer has appeared
+ *  yet. Once `</think>` lands, the normal extraction path takes over
+ *  with no special case needed. Stream finished without ever emitting
+ *  `</think>` → no synthetic prepend (the guard checks `isStreaming`),
+ *  so we never wrongly hide a final answer that just happened to look
+ *  like reasoning.
+ *
+ *  Matching is by substring so future revisions (`@cf/qwen/qwq-32b-v2`)
+ *  keep working without a code edit. */
+const REASONING_TAG_MODEL_HINTS = ['qwq'];
+
+function modelEmitsThinkingMidStream(modelId: string | undefined): boolean {
+  if (!modelId) return false;
+  const lower = modelId.toLowerCase();
+  return REASONING_TAG_MODEL_HINTS.some(hint => lower.includes(hint));
+}
+
+function splitThinking(
+  content: string,
+  opts: { isStreaming?: boolean; modelId?: string } = {},
+): { body: string; thinking: string } {
   const firstClose = content.search(/<\/think>/i);
   const firstOpen = content.search(/<think\b/i);
-  const normalized =
-    firstClose >= 0 && (firstOpen < 0 || firstOpen > firstClose)
-      ? '<think>' + content
-      : content;
+
+  // Case 1 — qwq pattern, closer present but no opener: synthesise an
+  // opener at the start so the regex extracts cleanly. (Always safe;
+  // unchanged from prior behaviour.)
+  // Case 2 — qwq pattern, *streaming*, neither tag present yet: treat
+  // the in-flight content as in-progress reasoning instead of letting
+  // it bleed into the answer body. This is what fixes the flicker.
+  let normalized = content;
+  if (firstClose >= 0 && (firstOpen < 0 || firstOpen > firstClose)) {
+    normalized = '<think>' + content;
+  } else if (
+    opts.isStreaming &&
+    firstOpen < 0 &&
+    firstClose < 0 &&
+    content.trim().length > 0 &&
+    modelEmitsThinkingMidStream(opts.modelId)
+  ) {
+    normalized = '<think>' + content;
+  }
 
   const thinkParts: string[] = [];
   const body = normalized.replace(THINK_RE, (_, inner: string) => {
@@ -66,6 +104,11 @@ interface ChatMessageProps {
   /** Fired when a suggestion chip is clicked. The host submits the question
    * directly (no prefill-and-edit step) so the user can keep moving. */
   onFollowupSubmit?: (text: string) => void;
+  /** The chat model currently in use (e.g. `@cf/qwen/qwq-32b`). Threaded
+   *  through to splitThinking so mid-stream content from `</think>`-only
+   *  models gets routed into the thinking disclosure from the first
+   *  token, not after the closer arrives. */
+  activeModelId?: string;
 }
 
 /** Document-style chat message with inline citation pills + Copy / Regenerate. */
@@ -74,6 +117,7 @@ export function ChatMessage({
   onRegenerate,
   showFollowups,
   onFollowupSubmit,
+  activeModelId,
 }: ChatMessageProps) {
   const { user } = useUser();
   if (message.type !== 'assistant') {
@@ -85,6 +129,7 @@ export function ChatMessage({
       onRegenerate={onRegenerate ? () => onRegenerate(message) : undefined}
       showFollowups={!!showFollowups}
       onFollowupSubmit={onFollowupSubmit}
+      activeModelId={activeModelId}
     />
   );
 }
@@ -109,25 +154,31 @@ function AssistantTurn({
   onRegenerate,
   showFollowups,
   onFollowupSubmit,
+  activeModelId,
 }: {
   message: Message;
   onRegenerate?: () => void;
   showFollowups: boolean;
   onFollowupSubmit?: (text: string) => void;
+  activeModelId?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const isSearching = !!message.isSearching;
   const searchingUrls = message.searchingUrls ?? [];
+  const isStreaming = !!message.isStreaming;
 
   // Pull `<think>…</think>` blocks out of the content so they render in a
   // separate disclosure instead of polluting the answer body. See
   // splitThinking() — also defends react-markdown against malformed inline
-  // HTML for models that emit raw <think> tags.
+  // HTML for models that emit raw <think> tags. Pass `isStreaming` +
+  // `activeModelId` so reasoning models that emit `</think>` without a
+  // matching opener (qwq-32b) get an early synthetic `<think>` instead
+  // of showing the chain-of-thought as answer text until the closer
+  // arrives.
   const { body: visibleContent, thinking } = useMemo(
-    () => splitThinking(message.content),
-    [message.content],
+    () => splitThinking(message.content, { isStreaming, modelId: activeModelId }),
+    [message.content, isStreaming, activeModelId],
   );
-  const isStreaming = !!message.isStreaming;
 
   const handleCopy = async () => {
     try {
