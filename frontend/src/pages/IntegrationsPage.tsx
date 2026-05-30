@@ -175,9 +175,27 @@ export function IntegrationsPage(_props: Props) {
     };
   }, [isSignedIn, slackStatusFlag?.connected, getToken]);
 
-  const activeCount =
-    (metaStatus?.connected ? 1 : 0) + (slackStatusFlag?.connected ? 1 : 0);
-  const totalCount = PROVIDERS.length;
+  // Tag-count buckets for the summary strip. Mirrors `statusState()` so
+  // the totals stay in sync with what each card renders. The numbers
+  // sum to PROVIDERS.length.
+  const counts = useMemo(() => {
+    let active = 0;
+    let live = 0;
+    let comingSoon = 0;
+    for (const p of PROVIDERS) {
+      const state = statusState({
+        isMeta: p.id === 'meta',
+        metaConnected: !!metaStatus?.connected,
+        metaAvailable: !!metaStatus?.available,
+        isSlack: p.id === 'slack',
+        slackConnected: !!slackStatusFlag?.connected,
+      });
+      if (state === 'active') active += 1;
+      else if (state === 'live') live += 1;
+      else comingSoon += 1;
+    }
+    return { active, live, comingSoon };
+  }, [metaStatus?.connected, metaStatus?.available, slackStatusFlag?.connected]);
 
   async function handleSlackDisconnect() {
     if (!window.confirm('disconnect slack? you can re-paste the webhook url later to reconnect.')) return;
@@ -242,7 +260,7 @@ export function IntegrationsPage(_props: Props) {
           a separate "active" section. */}
       <div className="mb-5 flex flex-wrap items-center gap-2 text-body-sm text-fg-muted">
         <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
-          {activeCount} active · {totalCount - activeCount} coming soon
+          {counts.active} active · {counts.live} live · {counts.comingSoon} coming soon
         </span>
         <span className="text-fg-subtle">·</span>
         <span>vote with a click — we ship the next integration based on demand</span>
@@ -385,7 +403,7 @@ function ProviderCard({
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/30">
-          <StatusTag active={isActive} />
+          <StatusTag state={statusState({ isMeta, metaConnected, metaAvailable, isSlack, slackConnected })} />
           <CardAction
             provider={provider}
             isMeta={isMeta}
@@ -429,12 +447,51 @@ function ProviderCard({
   );
 }
 
-function StatusTag({ active }: { active: boolean }) {
-  if (active) {
+/** Status tag state machine — three values:
+ *
+ *   - "active"      — this user has the integration connected. Emerald
+ *                     pill with a blinking dot.
+ *   - "live"        — the integration is shipped + reachable but this
+ *                     user hasn't connected it yet. Brand-tinted pill,
+ *                     no dot.
+ *   - "coming-soon" — not yet built. Neutral grey pill.
+ *
+ *   The previous binary (active / coming-soon) was misleading once
+ *   Slack went live — disconnected users saw "coming soon" on a card
+ *   they could literally click connect on. "live" closes that gap.
+ */
+type StatusTagState = 'active' | 'live' | 'coming-soon';
+
+function statusState(args: {
+  isMeta: boolean;
+  metaConnected: boolean;
+  metaAvailable: boolean;
+  isSlack: boolean;
+  slackConnected: boolean;
+}): StatusTagState {
+  if (args.isSlack) {
+    return args.slackConnected ? 'active' : 'live';
+  }
+  if (args.isMeta) {
+    if (args.metaConnected) return 'active';
+    return args.metaAvailable ? 'live' : 'coming-soon';
+  }
+  return 'coming-soon';
+}
+
+function StatusTag({ state }: { state: StatusTagState }) {
+  if (state === 'active') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 h-6 rounded-md border border-emerald-400/30 bg-emerald-400/10 font-mono text-[10px] uppercase tracking-wider text-emerald-400">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-status-blink" aria-hidden />
         active
+      </span>
+    );
+  }
+  if (state === 'live') {
+    return (
+      <span className="inline-flex items-center px-2 h-6 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] uppercase tracking-wider text-brand">
+        live
       </span>
     );
   }
