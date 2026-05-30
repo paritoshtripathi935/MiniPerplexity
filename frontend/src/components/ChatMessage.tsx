@@ -30,6 +30,21 @@ import { useCitationDrawer } from './CitationDrawer';
  */
 const THINK_RE = /<think\b[^>]*>([\s\S]*?)(?:<\/think>|$)/gi;
 
+/** Private-Use-Area sentinel for "the model emitted a <br>". Survives
+ *  markdown parsing as a plain character (no parser claims PUA) and is
+ *  exchanged for an actual <br/> element inside walkCitations. Picked
+ *  arbitrarily from the BMP PUA block — never appears in real content. */
+const BR_SENTINEL = '';
+const BR_TAG_RE = /<br\s*\/?>/gi;
+
+/** Convert literal `<br>` / `<br/>` / `<br />` tags (case-insensitive)
+ *  in model output into our sentinel so we can render them as real line
+ *  breaks downstream. */
+function normalizeBrTags(content: string): string {
+  if (!content) return content;
+  return content.replace(BR_TAG_RE, BR_SENTINEL);
+}
+
 /** Models whose chain-of-thought streams *before* any opening `<think>`
  *  tag arrives. qwq-32b on Cloudflare strips the chat-template's opener
  *  and only emits `</think>` at the end. Without help, the very first
@@ -175,10 +190,23 @@ function AssistantTurn({
   // matching opener (qwq-32b) get an early synthetic `<think>` instead
   // of showing the chain-of-thought as answer text until the closer
   // arrives.
-  const { body: visibleContent, thinking } = useMemo(
+  const { body, thinking } = useMemo(
     () => splitThinking(message.content, { isStreaming, modelId: activeModelId }),
     [message.content, isStreaming, activeModelId],
   );
+  // Normalise literal <br> tags in the prose-rendered body. react-
+  // markdown@9 strips raw HTML by default, so models that emit `<br>`
+  // inside table cells (a common pattern because markdown tables don't
+  // support newlines in cells) end up rendering the literal text `<br>`
+  // in the output. We replace those occurrences with a Private-Use-
+  // Area sentinel that survives markdown parsing untouched; the
+  // citation walker (walkCitations) splits text nodes on the sentinel
+  // and emits real <br/> elements — covering tables, lists, paragraphs
+  // uniformly without enabling raw-HTML passthrough (and its XSS
+  // surface). Not applied to `thinking` because that renders in a
+  // <pre> with whitespace-pre-wrap, where the PUA char would surface
+  // as a tofu glyph and real newlines work natively.
+  const visibleContent = useMemo(() => normalizeBrTags(body), [body]);
 
   const handleCopy = async () => {
     try {
@@ -476,6 +504,21 @@ function walkCitations(
   keyBase: string,
 ): React.ReactNode {
   if (typeof node === 'string') {
+    // Step 1 — line-break sentinels. The content normalizer at the top
+    // of the pipeline converted every `<br>` variant the model emitted
+    // into a single PUA character (see BR_SENTINEL). Split here and
+    // emit real `<br/>` elements between the surviving text fragments,
+    // then recurse on each fragment so citation markers inside the
+    // segmented text still resolve.
+    if (node.includes(BR_SENTINEL)) {
+      const segs = node.split(BR_SENTINEL);
+      const out: React.ReactNode[] = [];
+      segs.forEach((seg, i) => {
+        if (i > 0) out.push(<br key={`${keyBase}-br-${i}`} />);
+        if (seg) out.push(walkCitations(seg, results, `${keyBase}-s${i}`));
+      });
+      return out;
+    }
     if (!node.includes('[')) return node;
     const out: React.ReactNode[] = [];
     let last = 0;
