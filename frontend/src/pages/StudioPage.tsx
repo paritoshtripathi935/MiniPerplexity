@@ -65,6 +65,7 @@ import {
   type StudioGenerateRequest,
   type StudioPreview,
 } from '../services/api';
+import { downloadFile } from '../utils/download';
 
 interface Props {
   darkMode: boolean;
@@ -892,16 +893,19 @@ function PreviewTile({
             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
             {copied ? 'copied' : 'prompt'}
           </button>
-          <a
-            href={preview.download_url}
-            download={preview.filename}
-            onClick={e => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              void downloadFile(preview.download_url, preview.filename);
+            }}
             title="download"
             className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[10px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
           >
             <Download className="w-3 h-3" />
             download
-          </a>
+          </button>
         </div>
       )}
 
@@ -919,16 +923,19 @@ function PreviewTile({
             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             {copied ? 'copied' : 'prompt'}
           </button>
-          <a
-            href={preview.download_url}
-            download={preview.filename}
-            onClick={e => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              void downloadFile(preview.download_url, preview.filename);
+            }}
             title="download"
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             download
-          </a>
+          </button>
         </div>
       )}
     </div>
@@ -1016,16 +1023,19 @@ function SavedTile({
             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             {copied ? 'copied' : 'prompt'}
           </button>
-          <a
-            href={previewUrl}
-            download={creative.filename}
-            onClick={e => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (previewUrl) void downloadFile(previewUrl, creative.filename);
+            }}
             title="download"
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             download
-          </a>
+          </button>
         </div>
       )}
     </div>
