@@ -445,7 +445,7 @@ function StickyComposer({
     <div className="sticky top-2 z-30">
       <form
         onSubmit={onSubmit}
-        className="rounded-2xl border border-border/60 bg-surface-raised/60 backdrop-blur-xl p-4 space-y-3 shadow-card"
+        className="rounded-xl border border-border/60 bg-surface-raised/95 backdrop-blur-xl p-4 space-y-3 shadow-2xl"
       >
         {/* Row 1 — brief eyebrow + suggest button on the left;
             char counter + kbd hint on the right. */}
@@ -816,31 +816,23 @@ function PreviewTile({
   }
 
   return (
-    <div
-      className={clsx(
-        'group relative aspect-square overflow-hidden rounded-2xl border bg-surface-raised/40 backdrop-blur transition-colors',
-        saved
-          ? 'border-emerald-400/30'
-          : 'border-brand/30 shadow-[0_0_18px_rgba(124,92,255,0.12)]',
-      )}
-    >
+    <div className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-surface-raised/40 transition-colors">
       <img
         src={preview.download_url}
         alt={preview.prompt}
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-[1.05]"
         loading="lazy"
       />
 
-      {/* Top-right corner: action buttons (preview) or SAVED chip */}
+      {/* Top-right corner: circular action buttons (preview) or SAVED chip */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
         {saved ? (
-          <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] uppercase tracking-wider text-emerald-300">
-            <Check className="w-2.5 h-2.5" />
+          <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-300">
             saved
           </span>
         ) : (
           <>
-            <CornerIconBtn
+            <CircleActionBtn
               onClick={e => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -851,12 +843,12 @@ function PreviewTile({
               disabled={saving}
             >
               {saving ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Bookmark className="w-3 h-3" />
+                <Bookmark className="w-4 h-4" />
               )}
-            </CornerIconBtn>
-            <CornerIconBtn
+            </CircleActionBtn>
+            <CircleActionBtn
               onClick={e => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -866,29 +858,22 @@ function PreviewTile({
               accent="rose"
               disabled={saving}
             >
-              <X className="w-3 h-3" />
-            </CornerIconBtn>
+              <X className="w-4 h-4" />
+            </CircleActionBtn>
           </>
         )}
       </div>
 
-      {/* Top-left chip */}
-      {!saved && (
-        <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-1.5 h-5 rounded border border-brand/40 bg-brand/15 backdrop-blur font-mono text-[9px] uppercase tracking-wider text-brand">
-          <Sparkles className="w-2.5 h-2.5" />
-          preview
-        </span>
-      )}
-
-      {/* Hover overlay: copy + download */}
-      <div className="absolute inset-x-0 bottom-0 p-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-t from-black/60 to-transparent">
+      {/* Full-tile dimmed overlay on hover — Stitch convention. Centered
+          vertical buttons stack copy + download. */}
+      <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2.5">
         <button
           type="button"
           onClick={handleCopy}
           title={copied ? 'copied' : 'copy prompt'}
-          className="inline-flex items-center gap-1 h-6 px-2 rounded border border-border/60 bg-surface-raised/80 backdrop-blur text-[10px] font-mono uppercase text-fg-muted hover:text-fg transition-colors"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
         >
-          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           {copied ? 'copied' : 'prompt'}
         </button>
         <a
@@ -896,9 +881,9 @@ function PreviewTile({
           download={preview.filename}
           onClick={e => e.stopPropagation()}
           title="download"
-          className="inline-flex items-center gap-1 h-6 px-2 rounded border border-border/60 bg-surface-raised/80 backdrop-blur text-[10px] font-mono uppercase text-fg-muted hover:text-fg transition-colors"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
         >
-          <Download className="w-3 h-3" />
+          <Download className="w-3.5 h-3.5" />
           download
         </a>
       </div>
@@ -954,7 +939,7 @@ function SavedTile({
   }
 
   return (
-    <div className="group relative aspect-square overflow-hidden rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur transition-colors hover:border-brand/30">
+    <div className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-surface-raised/40 transition-colors">
       {previewErr ? (
         <div className="absolute inset-0 grid place-items-center text-fg-subtle">
           <AlertCircle className="w-4 h-4" />
@@ -963,7 +948,7 @@ function SavedTile({
         <img
           src={previewUrl}
           alt={creative.prompt || creative.filename}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
+          className="absolute inset-0 w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-[1.05]"
           loading="lazy"
         />
       ) : (
@@ -972,20 +957,19 @@ function SavedTile({
         </div>
       )}
 
-      <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-1.5 h-5 rounded border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] uppercase tracking-wider text-emerald-300">
-        <Check className="w-2.5 h-2.5" />
+      <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 h-5 rounded-full border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-300">
         saved
       </span>
 
       {previewUrl && (
-        <div className="absolute inset-x-0 bottom-0 p-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-t from-black/60 to-transparent">
+        <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2.5">
           <button
             type="button"
             onClick={handleCopy}
             title={copied ? 'copied' : 'copy prompt'}
-            className="inline-flex items-center gap-1 h-6 px-2 rounded border border-border/60 bg-surface-raised/80 backdrop-blur text-[10px] font-mono uppercase text-fg-muted hover:text-fg transition-colors"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
           >
-            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             {copied ? 'copied' : 'prompt'}
           </button>
           <a
@@ -993,9 +977,9 @@ function SavedTile({
             download={creative.filename}
             onClick={e => e.stopPropagation()}
             title="download"
-            className="inline-flex items-center gap-1 h-6 px-2 rounded border border-border/60 bg-surface-raised/80 backdrop-blur text-[10px] font-mono uppercase text-fg-muted hover:text-fg transition-colors"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
           >
-            <Download className="w-3 h-3" />
+            <Download className="w-3.5 h-3.5" />
             download
           </a>
         </div>
@@ -1006,7 +990,7 @@ function SavedTile({
 
 function ShimmerTile() {
   return (
-    <div className="aspect-square rounded-2xl border border-border/40 bg-surface-raised/40 overflow-hidden relative">
+    <div className="aspect-square rounded-xl border border-border/40 bg-surface-raised/40 overflow-hidden relative">
       <div
         className="absolute inset-0 animate-shimmer"
         style={{
@@ -1022,7 +1006,10 @@ function ShimmerTile() {
   );
 }
 
-function CornerIconBtn({
+/** Circular action button (Stitch convention) — 32px round, semi-
+ *  transparent semantic tint at rest, fills on hover. Used for the
+ *  save (emerald) + discard (rose) affordances on preview tiles. */
+function CircleActionBtn({
   children,
   onClick,
   title,
@@ -1042,10 +1029,10 @@ function CornerIconBtn({
       title={title}
       disabled={disabled}
       className={clsx(
-        'grid place-items-center w-7 h-7 rounded border backdrop-blur transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+        'grid place-items-center w-8 h-8 rounded-full border backdrop-blur transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
         accent === 'emerald'
-          ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20'
-          : 'border-rose-400/30 bg-rose-400/10 text-rose-300 hover:bg-rose-400/20',
+          ? 'border-emerald-400/30 bg-emerald-400/20 text-emerald-300 hover:bg-emerald-400 hover:text-white hover:border-emerald-400'
+          : 'border-rose-400/30 bg-rose-400/20 text-rose-300 hover:bg-rose-400 hover:text-white hover:border-rose-400',
       )}
     >
       {children}
