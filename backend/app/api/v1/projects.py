@@ -668,6 +668,12 @@ class CreativeOut(BaseModel):
     mime_type: str
     size_bytes: int
     provider: str
+    # The storage backend's key for this asset. Exposed so the studio
+    # timeline can de-dupe between the active-batch row (which renders
+    # from preview metadata) and historic batches (which render from
+    # persisted Creative rows). Not a sensitive value — it's an opaque
+    # pointer; presigning rules are enforced server-side.
+    storage_key: str
     uploaded_at: str
     uploaded_by: Optional[str] = None
     # Studio metadata — populated when the row was AI-generated, NULL on
@@ -691,6 +697,7 @@ def _serialize_creative(c: CampaignCreative) -> CreativeOut:
         mime_type=c.mime_type,
         size_bytes=c.size_bytes,
         provider=c.provider,
+        storage_key=c.storage_key,
         uploaded_at=c.uploaded_at.isoformat(),
         uploaded_by=str(c.uploaded_by) if c.uploaded_by else None,
         prompt=c.prompt,

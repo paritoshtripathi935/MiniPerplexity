@@ -869,6 +869,9 @@ export interface Creative {
   mime_type: string;
   size_bytes: number;
   provider: string;
+  /** Storage-backend key. Exposed so the studio timeline can de-dupe
+   *  active-batch preview tiles against historic Creative rows. */
+  storage_key: string;
   uploaded_at: string;
   uploaded_by: string | null;
   /** AI-generation provenance — populated on rows produced by /studio,
