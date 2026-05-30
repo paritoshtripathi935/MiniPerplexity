@@ -1,13 +1,22 @@
 import { Link } from 'react-router-dom';
 import { Logo } from '../Logo';
 
-const LINKS: Array<{ label: string; href: string }> = [
-  { label: 'Product', href: '#features' },
-  { label: 'Plays', href: '#plays' },
-  { label: 'Calculators', href: '#calculators' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'Changelog', href: '#changelog' },
-  { label: 'Docs', href: '#docs' },
+/** Three kinds of links live up here:
+ *   - in-page anchors that map to real sections (Product, Plays, …)
+ *   - internal SPA routes (Docs)
+ *   - external pages (none right now; would set isExternal=true)
+ *
+ *  Anything that doesn't map to one of those three gets removed —
+ *  dead anchors (`#changelog`, `#docs` against a section that doesn't
+ *  exist) are worse than fewer working links. */
+type LinkKind = 'anchor' | 'route';
+
+const LINKS: Array<{ label: string; href: string; kind: LinkKind }> = [
+  { label: 'Product', href: '#features', kind: 'anchor' },
+  { label: 'Plays', href: '#plays', kind: 'anchor' },
+  { label: 'Calculators', href: '#calculators', kind: 'anchor' },
+  { label: 'Pricing', href: '#pricing', kind: 'anchor' },
+  { label: 'Docs', href: '/docs', kind: 'route' },
 ];
 
 export function LandingNav() {
@@ -24,15 +33,25 @@ export function LandingNav() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
-          {LINKS.map(link => (
-            <a
-              key={link.label}
-              href={link.href}
-              className="text-[14px] text-fg-muted hover:text-fg transition-colors"
-            >
-              {link.label}
-            </a>
-          ))}
+          {LINKS.map(link =>
+            link.kind === 'route' ? (
+              <Link
+                key={link.label}
+                to={link.href}
+                className="text-[14px] text-fg-muted hover:text-fg transition-colors"
+              >
+                {link.label}
+              </Link>
+            ) : (
+              <a
+                key={link.label}
+                href={link.href}
+                className="text-[14px] text-fg-muted hover:text-fg transition-colors"
+              >
+                {link.label}
+              </a>
+            ),
+          )}
         </div>
 
         <div className="flex items-center gap-3">
