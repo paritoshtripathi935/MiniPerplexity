@@ -11,6 +11,7 @@ import { PlayRunModal } from '../components/PlayRunModal';
 import { VideosDrawer, collectVideos } from '../components/VideosDrawer';
 import { collectCitations, useCitationDrawer } from '../components/CitationDrawer';
 import { ChatEmptyState } from '../components/ChatEmptyState';
+import { ErrorBanner } from '../components/ErrorBanner';
 import { ModelSelector } from '../components/ModelSelector';
 import {
   getNextSteps, improveInvestigationPrompt, performSearch, getSessionHistory, streamAnswer,
@@ -650,8 +651,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               </div>
             )}
             {error && (
-              <div className="mt-6 p-4 rounded-md bg-danger-subtle text-danger text-body-sm">
-                {error}
+              <div className="mt-6">
+                <ErrorBanner
+                  error={error}
+                  onDismiss={() => setError(null)}
+                />
               </div>
             )}
             <div ref={messagesEndRef} />

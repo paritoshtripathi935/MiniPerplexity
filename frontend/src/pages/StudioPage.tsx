@@ -54,6 +54,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../components/AppLayout';
+import { ErrorBanner } from '../components/ErrorBanner';
 import {
   discardStudioPreviews,
   generateCreatives,
@@ -619,12 +620,7 @@ function StickyComposer({
           </div>
         </div>
 
-        {err && (
-          <p className="text-body-sm text-rose-300 flex items-start gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            {err}
-          </p>
-        )}
+        {err && <ErrorBanner error={err} />}
       </form>
     </div>
   );

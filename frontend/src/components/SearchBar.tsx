@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { ArrowUp, Link as LinkIcon, Loader2, Sparkles, X } from 'lucide-react';
 import clsx from 'clsx';
+import { ErrorBanner } from './ErrorBanner';
 import { SlashMenu } from './SlashMenu';
 import type { Play } from '../services/api';
 import { getDomain, isValidUrl } from '../utils/url';
@@ -351,16 +352,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
       )}
 
       {improveErr && (
-        <p className="text-[11px] text-rose-300 flex items-start gap-1">
-          {improveErr} ·{' '}
-          <button
-            type="button"
-            onClick={() => setImproveErr(null)}
-            className="text-fg-subtle hover:text-fg underline"
-          >
-            dismiss
-          </button>
-        </p>
+        <ErrorBanner error={improveErr} onDismiss={() => setImproveErr(null)} />
       )}
     </div>
   );
