@@ -886,10 +886,21 @@ export interface StudioGenerateRequest {
   aspect_ratio?: '1:1' | '9:16' | '1.91:1' | '4:5';
   style?: 'photo' | 'illustration' | 'minimal' | '3d';
   variants?: number;
+  /** When true, server loads the campaign's brand profile and appends
+   *  a distilled context phrase (company name, voice, campaign
+   *  objective) to the Flux prompt. */
+  bake_context?: boolean;
 }
 
 export interface StudioGenerateResponse {
   creatives: Creative[];
+  /** The fully-composed prompt that was sent to Flux. Surfaced so the
+   *  UI can show "this is what we sent" and the user can debug
+   *  surprises without guessing at the modifiers. */
+  composed_prompt: string;
+  /** True when bake_context was both requested and honored (a request
+   *  with bake_context=true but no brand profile returns false here). */
+  context_baked: boolean;
 }
 
 /** Ask the backend for a Studio prompt drafted from the campaign's

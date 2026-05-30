@@ -75,6 +75,7 @@ from app.services.image_gen import (
     ImageGenError,
     ImageGenNotConfiguredError,
     compose_prompt as compose_image_prompt,
+    distill_brand_context,
 )
 from app.services.language_model import CloudflareAPIError, CloudflareChat
 from app.services.system_prompt import render_brand_block, render_campaign_block
@@ -961,6 +962,11 @@ class StudioGenerateRequest(BaseModel):
     aspect_ratio: Optional[str] = None
     style: Optional[str] = None
     variants: int = Field(default=_STUDIO_DEFAULT_VARIANTS, ge=1, le=_STUDIO_MAX_VARIANTS)
+    # When true: server loads brand profile + campaign and appends a
+    # distilled one-line context phrase to the Flux prompt. Default
+    # true — generations look more on-brand and the user can opt out
+    # via the toggle when they want a "bare" prompt.
+    bake_context: bool = True
 
     @model_validator(mode="after")
     def _validate_enums(self) -> "StudioGenerateRequest":
@@ -977,6 +983,13 @@ class StudioGenerateRequest(BaseModel):
 
 class StudioGenerateOut(BaseModel):
     creatives: list[CreativeOut]
+    # The fully-composed prompt that was sent to Flux for this batch.
+    # Returned so the UI can show "what we sent" and the user can
+    # debug surprises ("why does this look like the wrong product?").
+    composed_prompt: str
+    # True when bake_context was honored for this batch (some calls
+    # request it but skip when no brand profile exists for the campaign).
+    context_baked: bool
 
 
 async def _upload_bytes_to_storage(
@@ -1038,14 +1051,26 @@ async def generate_campaign_creatives(
             detail="object storage not configured on this deploy.",
         )
 
+    # Load + distil brand context only when the user opted to bake it
+    # in. Skipping the brand-profile query when bake_context=False saves
+    # a round-trip on every generate.
+    brand_context_phrase: Optional[str] = None
+    if payload.bake_context:
+        brand = await get_brand_profile(db, campaign.project_id)
+        brand_context_phrase = distill_brand_context(brand, campaign) or None
+
     composed = compose_image_prompt(
         user_prompt=payload.prompt,
         aspect_ratio=payload.aspect_ratio,
         style=payload.style,
+        brand_context=brand_context_phrase,
     )
+    context_baked = bool(brand_context_phrase)
     logger.info(
-        "studio generate: campaign=%s variants=%d aspect=%s style=%s prompt_len=%d",
-        campaign.id, payload.variants, payload.aspect_ratio, payload.style, len(composed),
+        "studio generate: campaign=%s variants=%d aspect=%s style=%s "
+        "context_baked=%s prompt_len=%d",
+        campaign.id, payload.variants, payload.aspect_ratio, payload.style,
+        context_baked, len(composed),
     )
 
     generator = FluxImageGenerator()
@@ -1069,6 +1094,8 @@ async def generate_campaign_creatives(
                 )
                 return StudioGenerateOut(
                     creatives=[_serialize_creative(c) for c in creatives],
+                    composed_prompt=composed,
+                    context_baked=context_baked,
                 )
             raise HTTPException(status_code=502, detail=str(e))
 
@@ -1103,6 +1130,8 @@ async def generate_campaign_creatives(
                 )
                 return StudioGenerateOut(
                     creatives=[_serialize_creative(c) for c in creatives],
+                    composed_prompt=composed,
+                    context_baked=context_baked,
                 )
             raise HTTPException(status_code=502, detail=str(e))
 
@@ -1129,6 +1158,8 @@ async def generate_campaign_creatives(
     await db.commit()
     return StudioGenerateOut(
         creatives=[_serialize_creative(c) for c in creatives],
+        composed_prompt=composed,
+        context_baked=context_baked,
     )
 
 

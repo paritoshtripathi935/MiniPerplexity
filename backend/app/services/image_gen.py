@@ -174,7 +174,7 @@ def compose_prompt(
     user_prompt: str,
     aspect_ratio: Optional[str] = None,
     style: Optional[str] = None,
-    brand_voice: Optional[str] = None,
+    brand_context: Optional[str] = None,
 ) -> str:
     """Combine the user's free-text prompt with structured modifiers.
 
@@ -183,12 +183,48 @@ def compose_prompt(
     so the aspect-ratio dropdown becomes a *prompt-level* hint rather
     than a render dimension. Users still get visually-appropriate
     framing; they'd just crop in their design tool for the final asset.
+
+    `brand_context`, when set, is a short distilled phrase the caller
+    has assembled from the campaign's brand profile (company, voice,
+    channels). Appended as a final modifier; Flux uses it to steer
+    palette + mood toward the brand without dominating the user's
+    primary prompt.
     """
     parts = [user_prompt.strip()]
     if style and style in _STYLE_MODIFIERS:
         parts.append(_STYLE_MODIFIERS[style])
     if aspect_ratio and aspect_ratio in _ASPECT_HINTS:
         parts.append(_ASPECT_HINTS[aspect_ratio])
-    if brand_voice and brand_voice.strip():
-        parts.append(f"brand voice: {brand_voice.strip()}")
+    if brand_context and brand_context.strip():
+        parts.append(brand_context.strip())
     return ", ".join(p for p in parts if p)
+
+
+def distill_brand_context(profile, campaign) -> str:
+    """Compose a tight one-line context phrase for the generator.
+
+    The full brand-profile system block is 100s of tokens — too rich for
+    a Flux prompt where the user's primary intent should dominate.
+    Distil to: brand name, voice (the one knob that actually shifts
+    visuals), and the campaign objective if it's specific enough to
+    influence imagery.
+    """
+    bits: list[str] = []
+    if profile is not None:
+        if getattr(profile, "company_name", None):
+            bits.append(f"brand: {profile.company_name}")
+        voice = getattr(profile, "voice_guidelines", None)
+        if voice:
+            # Cap to ~100 chars — full voice docs run paragraphs.
+            v = voice.strip()
+            if len(v) > 100:
+                v = v[:99].rstrip() + "…"
+            bits.append(f"voice: {v}")
+    if campaign is not None:
+        objective = getattr(campaign, "objective", None)
+        if objective and objective.strip():
+            obj = objective.strip()
+            if len(obj) > 100:
+                obj = obj[:99].rstrip() + "…"
+            bits.append(f"campaign objective: {obj}")
+    return ", ".join(bits)
