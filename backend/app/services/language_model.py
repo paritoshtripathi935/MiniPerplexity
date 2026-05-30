@@ -678,3 +678,84 @@ class CloudflareChat:
         # Collapse newlines — image-gen prompts are one paragraph.
         cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
         return cleaned
+
+    def improve_question(
+        self,
+        *,
+        brand_block: str,
+        campaign_block: str,
+        draft: str,
+    ) -> str:
+        """Refine a user's investigation prompt using brand + campaign
+        context.
+
+        Differs from suggest_image_prompt (which writes a Flux-shaped
+        image-gen prompt) — this returns a *better question* for the
+        chat surface. Same fast/cheap model. Output is a single short
+        question the user can edit-and-send.
+
+        Rules baked into the directive:
+          - Stays a question, not an instruction or essay.
+          - Stays one or two sentences max; long prompts hurt LLM focus
+            on the answer side.
+          - Inherits the user's intent — we sharpen, not replace.
+          - Mentions specific channels / metrics / time horizons when
+            the draft implies them but doesn't name them, since those
+            anchor better answers (e.g. "Q4 ROAS" beats "performance").
+        """
+        if not draft or not draft.strip():
+            raise CloudflareAPIError("draft cannot be empty")
+
+        directive = (
+            "You are a senior performance-marketing copilot helping a "
+            "marketer write a sharper investigation question for an AI "
+            "assistant. The assistant will answer THEIR question — your "
+            "job is to refine THEIR question.\n\n"
+            "Rules:\n"
+            "- Output ONLY the refined question. No preamble, no header, "
+            "no quotes around it, no options A/B/C.\n"
+            "- Keep it ONE OR TWO sentences. Strict.\n"
+            "- It must remain a question (or a request) — not an "
+            "instruction list, not an essay, not a brief.\n"
+            "- Keep the user's intent. Don't replace their topic; "
+            "sharpen the framing.\n"
+            "- When the draft implies metrics (CAC, ROAS, CPP, CTR), "
+            "channels (Meta, Google, TikTok, Klaviyo), or a time horizon, "
+            "name them explicitly — concrete questions get better "
+            "answers than abstract ones.\n"
+            "- Match the brand voice if relevant; otherwise keep the "
+            "register operator-direct."
+        )
+        context_parts = [brand_block.strip(), campaign_block.strip()]
+        context_parts = [p for p in context_parts if p]
+        context = "\n\n".join(context_parts) or "no brand or campaign context available"
+
+        user_msg = (
+            f"BRAND + CAMPAIGN CONTEXT:\n{context}\n\n"
+            f"USER'S DRAFT QUESTION:\n{draft.strip()[:600]}\n\n"
+            "Write the refined question now. One or two sentences. "
+            "Output the question only."
+        )
+
+        formatted = [
+            {"role": "system", "content": directive},
+            {"role": "user", "content": user_msg},
+        ]
+        response = self._call_for_prompt(
+            formatted,
+            max_tokens=SHORT_CALL_MAX_TOKENS,
+            model=DEFAULT_NEXT_STEPS_MODEL,
+        )
+        raw = _extract_response_text(response)
+
+        cleaned = (raw or "").strip()
+        for prefix in (
+            "Refined question:", "refined question:",
+            "Question:", "question:",
+        ):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+        cleaned = cleaned.strip('"').strip("'").strip("*").strip("`").strip()
+        # Collapse newlines — single-line questions only.
+        cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
+        return cleaned

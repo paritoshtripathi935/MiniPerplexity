@@ -966,6 +966,36 @@ export async function discardStudioPreviews(
   );
 }
 
+/** Refine the user's chat-composer draft using brand + campaign
+ *  context. Backend returns a one-or-two-sentence sharpened question;
+ *  the UI replaces the textarea contents with it. */
+export async function improveInvestigationPrompt(
+  projectId: string,
+  campaignId: string,
+  draft: string,
+  getToken: GetToken,
+): Promise<{ question: string }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/questions/improve`,
+    { method: 'POST', headers, body: JSON.stringify({ draft }) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Improve failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
 /** Ask the backend for a Studio prompt drafted from the campaign's
  *  brand profile + objective + date window. Optional `hint` is the
  *  text the user has already typed (refined toward) — empty hint

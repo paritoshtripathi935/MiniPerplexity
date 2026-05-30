@@ -1378,3 +1378,63 @@ async def suggest_studio_prompt(
             detail="empty suggestion — retry or write your own prompt",
         )
     return StudioPromptSuggestOut(prompt=prompt)
+
+
+# =========================================================================
+# Question improver — sharpen an investigation prompt
+# =========================================================================
+
+class QuestionImproveIn(BaseModel):
+    """The user's draft chat-composer text. Must be non-empty; output
+    is a refined one-or-two-sentence version grounded in the active
+    campaign's brand + campaign context."""
+    draft: str = Field(..., min_length=1, max_length=2000)
+
+
+class QuestionImproveOut(BaseModel):
+    question: str
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/questions/improve",
+    response_model=QuestionImproveOut,
+)
+async def improve_investigation_question(
+    payload: QuestionImproveIn,
+    project_id: str,
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    """Refine the user's draft chat question using the campaign's brand
+    profile + objective. Same fast/cheap model that powers next-step
+    chips and the Studio prompt suggester. Non-blocking failure mode —
+    a 502 surfaces in the UI but never locks the user out of just
+    sending their draft as-is."""
+    try:
+        proj_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="project not found")
+    brand = await get_brand_profile(db, proj_uuid)
+
+    brand_block = render_brand_block(brand) if brand else ""
+    campaign_block = render_campaign_block(campaign) or f"Active campaign: {campaign.name}"
+
+    chat = CloudflareChat(
+        api_key=CLOUDFLARE_API_KEY,
+        account_id=CLOUDFLARE_ACCOUNT_ID,
+    )
+    try:
+        improved = chat.improve_question(
+            brand_block=brand_block,
+            campaign_block=campaign_block,
+            draft=payload.draft,
+        )
+    except CloudflareAPIError as e:
+        raise HTTPException(status_code=502, detail=f"could not improve: {e}")
+
+    if not improved or len(improved) < 6:
+        raise HTTPException(
+            status_code=502,
+            detail="empty refinement — retry or send your draft as-is",
+        )
+    return QuestionImproveOut(question=improved)

@@ -8,7 +8,7 @@ import React, {
   useState,
   forwardRef,
 } from 'react';
-import { ArrowUp, Link as LinkIcon, Sparkles, X } from 'lucide-react';
+import { ArrowUp, Link as LinkIcon, Loader2, Sparkles, X } from 'lucide-react';
 import clsx from 'clsx';
 import { SlashMenu } from './SlashMenu';
 import type { Play } from '../services/api';
@@ -27,6 +27,11 @@ interface Props {
   activePlay?: Play | null;
   /** Fired when the user dismisses the active-play chip. */
   onClearActivePlay?: () => void;
+  /** When provided, an "improve" button appears in the bottom toolbar
+   *  while the textarea has content. Click → caller refines the draft
+   *  via brand + campaign context and returns the sharpened version;
+   *  the composer replaces its content with the returned string. */
+  onImprovePrompt?: (draft: string) => Promise<string>;
 }
 
 /** Imperative API for prefilling the composer from starter prompts. */
@@ -54,13 +59,45 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
     onPlaySelect,
     activePlay,
     onClearActivePlay,
+    onImprovePrompt,
   },
   ref
 ) {
   const [query, setQuery] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [improving, setImproving] = useState(false);
+  const [improveErr, setImproveErr] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /** Hand the current draft to the parent's improver, replace the
+   *  textarea content with the returned refinement. Disabled while
+   *  in flight or while the regular send is loading. Errors are
+   *  shown as a small inline hint under the toolbar — non-blocking. */
+  const handleImprove = useCallback(async () => {
+    if (!onImprovePrompt || improving || loading) return;
+    const draft = query.trim();
+    if (draft.length < 4) return;
+    setImproving(true);
+    setImproveErr(null);
+    try {
+      const refined = await onImprovePrompt(draft);
+      if (refined && refined.trim()) {
+        setQuery(refined);
+        // Give the textarea focus + put the caret at the end so the
+        // user can immediately tweak without re-clicking.
+        const ta = textareaRef.current;
+        if (ta) {
+          ta.focus();
+          ta.setSelectionRange(refined.length, refined.length);
+        }
+      }
+    } catch (e: any) {
+      setImproveErr(e?.message ?? 'improve failed');
+    } finally {
+      setImproving(false);
+    }
+  }, [onImprovePrompt, improving, loading, query]);
 
   const hasUrl = !!customUrl.trim();
   // Slash-menu mode is on whenever the textarea content (trimmed of leading
@@ -226,6 +263,38 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
                 or paste one
               </span>
             )}
+
+            {/* Improve-prompt button — only visible when the textarea
+                has 4+ chars of draft text AND the parent provided an
+                onImprovePrompt handler (which it does on /investigations
+                routes scoped to a campaign). Brand-tinted to mirror
+                Studio's "suggest from campaign" affordance. */}
+            {onImprovePrompt && query.trim().length >= 4 && (
+              <button
+                type="button"
+                onClick={handleImprove}
+                disabled={improving || loading}
+                title="rewrite this prompt using brand + campaign context"
+                className={clsx(
+                  'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-body-md',
+                  'transition-colors duration-150',
+                  'border border-brand/30 bg-brand/5 text-brand',
+                  'hover:bg-brand/15 disabled:opacity-50 disabled:cursor-not-allowed',
+                )}
+              >
+                {improving ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span className="text-[11px]">improving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3 h-3" />
+                    <span className="text-[11px]">improve</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -276,6 +345,19 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      )}
+
+      {improveErr && (
+        <p className="text-[11px] text-rose-300 flex items-start gap-1">
+          {improveErr} ·{' '}
+          <button
+            type="button"
+            onClick={() => setImproveErr(null)}
+            className="text-fg-subtle hover:text-fg underline"
+          >
+            dismiss
+          </button>
+        </p>
       )}
     </div>
   );

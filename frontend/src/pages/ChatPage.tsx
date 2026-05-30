@@ -13,7 +13,7 @@ import { collectCitations, useCitationDrawer } from '../components/CitationDrawe
 import { ChatEmptyState } from '../components/ChatEmptyState';
 import { ModelSelector } from '../components/ModelSelector';
 import {
-  getNextSteps, performSearch, getSessionHistory, streamAnswer,
+  getNextSteps, improveInvestigationPrompt, performSearch, getSessionHistory, streamAnswer,
   type Play, type StreamDoneEvent,
 } from '../services/api';
 import {
@@ -668,6 +668,23 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               onPlaySelect={p => setSlashPlay(p)}
               activePlay={activePlay}
               onClearActivePlay={() => setActivePlay(null)}
+              // Improve-prompt only available when we have a real
+              // campaign scope. Without it the backend has nothing to
+              // ground the rewrite against, so we don't even show the
+              // button (SearchBar checks for the callback).
+              onImprovePrompt={
+                projectId && campaignId
+                  ? async draft => {
+                      const { question } = await improveInvestigationPrompt(
+                        projectId,
+                        campaignId,
+                        draft,
+                        getToken,
+                      );
+                      return question;
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>

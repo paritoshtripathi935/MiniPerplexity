@@ -223,6 +223,57 @@ function buildSections(): Section[] {
       ),
     },
     {
+      id: 'improve-prompt',
+      eyebrow: 'sharpen the ask',
+      title: 'improve prompt',
+      icon: <Sparkles className="w-4 h-4" />,
+      body: (
+        <>
+          <P>
+            type a rough draft in the composer ("how do i scale ads"), click
+            the brand-tinted <strong className="text-fg">improve</strong>{' '}
+            button next to the URL action, and the model rewrites your draft
+            into a sharper question grounded in your active campaign's brand
+            profile + objective. the textarea content swaps in place so you
+            can edit it further or send as-is.
+          </P>
+          <P>what the improver does:</P>
+          <Ul>
+            <li>
+              names the specific channels (meta, klaviyo, google ads) and
+              metrics (CAC, ROAS, CPP) implied by your brand profile so the
+              answer has something concrete to anchor on
+            </li>
+            <li>
+              keeps it ONE OR TWO sentences — long prompts hurt the answer
+              model's focus
+            </li>
+            <li>
+              preserves your intent — it sharpens the framing, never replaces
+              the topic
+            </li>
+            <li>
+              references the active campaign's time horizon when the draft
+              implies "when" but doesn't say it explicitly ("Q4" vs "later
+              this year")
+            </li>
+          </Ul>
+          <P>
+            the improve button only appears when (1) you've typed at least
+            four characters and (2) you're inside a real campaign scope. if
+            the button is missing, switch into a campaign first from the
+            top-nav switcher.
+          </P>
+          <Callout icon={<Info className="w-3.5 h-3.5" />}>
+            <strong className="text-fg">runs on the small + fast model</strong>{' '}
+            (llama-3.2-3b) so the rewrite lands in ~2s. doesn't burn answer-
+            quality budget — your selected chat model still does the actual
+            investigation.
+          </Callout>
+        </>
+      ),
+    },
+    {
       id: 'models',
       eyebrow: 'choose your engine',
       title: 'model selection',
