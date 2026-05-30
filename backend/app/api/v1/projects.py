@@ -69,6 +69,13 @@ from app.services.storage import (
     get_storage,
     is_storage_configured,
 )
+from app.services.image_gen import (
+    FluxImageGenerator,
+    ImageGenError,
+    ImageGenNotConfiguredError,
+    compose_prompt as compose_image_prompt,
+)
+import httpx
 
 router = APIRouter()
 
@@ -659,6 +666,11 @@ class CreativeOut(BaseModel):
     provider: str
     uploaded_at: str
     uploaded_by: Optional[str] = None
+    # Studio metadata — populated when the row was AI-generated, NULL on
+    # user uploads. Lets the library UI render a "generated" badge and
+    # the studio surface re-show the prompt that produced an asset.
+    prompt: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class CreativeDownloadOut(BaseModel):
@@ -677,6 +689,8 @@ def _serialize_creative(c: CampaignCreative) -> CreativeOut:
         provider=c.provider,
         uploaded_at=c.uploaded_at.isoformat(),
         uploaded_by=str(c.uploaded_by) if c.uploaded_by else None,
+        prompt=c.prompt,
+        ai_model=c.ai_model,
     )
 
 
@@ -909,3 +923,207 @@ async def delete_campaign_creative_endpoint(
                 "Storage delete failed for creative key=%s; row removed.",
                 removed.storage_key,
             )
+
+
+# ===========================================================================
+# /studio — AI image generation
+# ===========================================================================
+#
+# Renders ad creatives via Cloudflare Workers AI (Flux) and persists each
+# to the campaign's creatives library, side-by-side with user uploads.
+# Server-side flow: generate → grab a presigned URL through the existing
+# storage abstraction → PUT bytes from the backend → insert row with
+# prompt+ai_model metadata. The library then renders the new tiles via
+# the same GET endpoint the uploaded library uses.
+#
+# Defaults match the product decisions:
+#   - 3 variants per click (covers the "pick the best of three" workflow)
+#   - aspect-ratio is a prompt-level hint (Cloudflare's hosted Flux
+#     renders at the model's native ~1024×1024 — actual cropping for
+#     platform specs happens downstream in the user's design tool)
+#   - 4 styles (photo / illustration / minimal / 3d)
+
+
+# Hard cap on variants per request — generous but bounded so a runaway
+# client can't fan out into a 50-image generation.
+_STUDIO_MAX_VARIANTS = 4
+_STUDIO_DEFAULT_VARIANTS = 3
+
+_STUDIO_ALLOWED_ASPECT_RATIOS = {"1:1", "9:16", "1.91:1", "4:5"}
+_STUDIO_ALLOWED_STYLES = {"photo", "illustration", "minimal", "3d"}
+
+
+class StudioGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=4, max_length=1000)
+    aspect_ratio: Optional[str] = None
+    style: Optional[str] = None
+    variants: int = Field(default=_STUDIO_DEFAULT_VARIANTS, ge=1, le=_STUDIO_MAX_VARIANTS)
+
+    @model_validator(mode="after")
+    def _validate_enums(self) -> "StudioGenerateRequest":
+        if self.aspect_ratio and self.aspect_ratio not in _STUDIO_ALLOWED_ASPECT_RATIOS:
+            raise ValueError(
+                f"aspect_ratio must be one of {sorted(_STUDIO_ALLOWED_ASPECT_RATIOS)}"
+            )
+        if self.style and self.style not in _STUDIO_ALLOWED_STYLES:
+            raise ValueError(
+                f"style must be one of {sorted(_STUDIO_ALLOWED_STYLES)}"
+            )
+        return self
+
+
+class StudioGenerateOut(BaseModel):
+    creatives: list[CreativeOut]
+
+
+async def _upload_bytes_to_storage(
+    *,
+    storage_key: str,
+    body_bytes: bytes,
+    content_type: str,
+    presigned_url: str,
+    method: str,
+    body_field: Optional[str],
+    fields: dict[str, str],
+) -> None:
+    """Server-side mirror of what the browser does on the upload flow.
+    Handles both the raw-PUT (R2) and multipart-PUT (UploadThing) shapes
+    via the same `PresignedUpload`-shaped inputs."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        if body_field:
+            # multipart/form-data — UploadThing path. httpx builds the
+            # boundary; do NOT set Content-Type manually.
+            files = {body_field: (storage_key.rsplit("/", 1)[-1], body_bytes, content_type)}
+            data = dict(fields or {})
+            resp = await client.request(method, presigned_url, files=files, data=data)
+        else:
+            # raw body — R2 path. Content-Type must match what was signed.
+            resp = await client.request(
+                method,
+                presigned_url,
+                content=body_bytes,
+                headers={"Content-Type": content_type},
+            )
+    if resp.status_code >= 400:
+        raise ImageGenError(
+            f"storage upload failed ({resp.status_code}): {resp.text[:300]}"
+        )
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/generate",
+    response_model=StudioGenerateOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_campaign_creatives(
+    payload: StudioGenerateRequest,
+    campaign: Campaign = Depends(_require_campaign),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Render N image variants for the active campaign and write each
+    to the creatives library.
+
+    Errors:
+      - 503 if Cloudflare env or storage env is missing on this deploy
+      - 502 if Cloudflare returns an error (rate limit, content policy)
+      - 400 on validation failures (prompt empty, bad enum)
+    """
+    if not is_storage_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="object storage not configured on this deploy.",
+        )
+
+    composed = compose_image_prompt(
+        user_prompt=payload.prompt,
+        aspect_ratio=payload.aspect_ratio,
+        style=payload.style,
+    )
+    logger.info(
+        "studio generate: campaign=%s variants=%d aspect=%s style=%s prompt_len=%d",
+        campaign.id, payload.variants, payload.aspect_ratio, payload.style, len(composed),
+    )
+
+    generator = FluxImageGenerator()
+    storage = get_storage()
+    creatives: list[CampaignCreative] = []
+
+    for i in range(payload.variants):
+        try:
+            image = await generator.generate(composed)
+        except ImageGenNotConfiguredError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        except ImageGenError as e:
+            # If one variant fails partway through, return whatever
+            # already-persisted variants we have plus a 502 on the
+            # incomplete run. UI handles partial success.
+            if creatives:
+                await db.commit()
+                logger.warning(
+                    "studio partial success: %d/%d variants saved before error: %s",
+                    len(creatives), payload.variants, e,
+                )
+                return StudioGenerateOut(
+                    creatives=[_serialize_creative(c) for c in creatives],
+                )
+            raise HTTPException(status_code=502, detail=str(e))
+
+        # Upload through the same storage abstraction the browser flow uses.
+        try:
+            presigned = storage.presigned_upload(
+                key=f"campaigns/{campaign.id}/studio/{uuid.uuid4()}.png",
+                content_type=image.mime_type,
+                max_size_bytes=_CREATIVE_MAX_BYTES,
+                expires_in=300,
+            )
+        except StorageNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+        try:
+            await _upload_bytes_to_storage(
+                storage_key=presigned.storage_key,
+                body_bytes=image.bytes_,
+                content_type=image.mime_type,
+                presigned_url=presigned.upload_url,
+                method=presigned.method,
+                body_field=presigned.body_field,
+                fields=dict(presigned.fields or {}),
+            )
+        except ImageGenError as e:
+            # Storage failure mid-run — same partial-success path.
+            if creatives:
+                await db.commit()
+                logger.warning(
+                    "studio partial success after storage error: %d/%d saved (%s)",
+                    len(creatives), payload.variants, e,
+                )
+                return StudioGenerateOut(
+                    creatives=[_serialize_creative(c) for c in creatives],
+                )
+            raise HTTPException(status_code=502, detail=str(e))
+
+        # Display filename — the user sees this in the library tile.
+        # Truncate the prompt + suffix the variant index so a 3-variant
+        # batch reads as e.g. "holiday hero · 1.png".
+        prompt_slug = payload.prompt.strip()[:60].rstrip()
+        display_filename = f"{prompt_slug} · {i + 1}.png" if prompt_slug else f"generated-{i + 1}.png"
+
+        row = await insert_campaign_creative(
+            db,
+            campaign_id=campaign.id,
+            uploaded_by=user.id,
+            storage_key=presigned.storage_key,
+            filename=display_filename,
+            mime_type=image.mime_type,
+            size_bytes=len(image.bytes_),
+            provider=storage.name,
+            prompt=payload.prompt.strip(),
+            ai_model=image.model,
+        )
+        creatives.append(row)
+
+    await db.commit()
+    return StudioGenerateOut(
+        creatives=[_serialize_creative(c) for c in creatives],
+    )

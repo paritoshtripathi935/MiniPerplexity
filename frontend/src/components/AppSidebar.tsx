@@ -40,6 +40,7 @@ import {
   Plus,
   Search,
   Settings,
+  Wand2,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useActiveCampaign } from './ActiveCampaign';
@@ -168,6 +169,12 @@ function buildNav(toolBase: string | null): NavItem[] {
       label: 'calculators',
       icon: Calculator,
       matchPrefixes: ['/calc'],
+    },
+    {
+      to: tool('/studio'),
+      label: 'studio',
+      icon: Wand2,
+      matchPrefixes: ['/studio'],
     },
     // Projects + campaigns gets its own top-level entry — it's the
     // navigation pivot now. `end: false` so /projects/:id and
@@ -347,8 +354,8 @@ function PrimaryNav({
   // the campaign-scoped path and the legacy /investigations|/plays|/calc
   // paths (which redirect, but may briefly render before resolution).
   const toolMatch =
-    /^\/projects\/[^/]+\/c\/[^/]+\/(investigations|plays|calc)(\/|$)/.exec(pathname) ||
-    /^\/(investigations|plays|calc)(\/|$)/.exec(pathname);
+    /^\/projects\/[^/]+\/c\/[^/]+\/(investigations|plays|calc|studio)(\/|$)/.exec(pathname) ||
+    /^\/(investigations|plays|calc|studio)(\/|$)/.exec(pathname);
   const activeTool = toolMatch?.[1] ?? null;
 
   const isActive = (item: NavItem): boolean => {
@@ -358,7 +365,7 @@ function PrimaryNav({
         // tool URL points at (investigations / plays / calc)
         const toolName = p.replace(/^\//, '');
         if (
-          (toolName === 'investigations' || toolName === 'plays' || toolName === 'calc') &&
+          (toolName === 'investigations' || toolName === 'plays' || toolName === 'calc' || toolName === 'studio') &&
           activeTool === toolName
         ) {
           return true;

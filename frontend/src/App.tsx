@@ -34,6 +34,7 @@ const importProjectDetailPage = () => import('./pages/ProjectDetailPage');
 const importCampaignHomePage = () => import('./pages/CampaignHomePage');
 const importCreativesPage = () => import('./pages/CreativesPage');
 const importDocsPage = () => import('./pages/DocsPage');
+const importStudioPage = () => import('./pages/StudioPage');
 
 const ChatPage = lazy(() => importChatPage().then(m => ({ default: m.ChatPage })));
 const PlaysPage = lazy(() => importPlaysPage().then(m => ({ default: m.PlaysPage })));
@@ -59,6 +60,7 @@ const CreativesPage = lazy(() =>
   importCreativesPage().then(m => ({ default: m.CreativesPage })),
 );
 const DocsPage = lazy(() => importDocsPage().then(m => ({ default: m.DocsPage })));
+const StudioPage = lazy(() => importStudioPage().then(m => ({ default: m.StudioPage })));
 
 /** Warm the lazy route chunks shortly after first paint. Runs once on
  * AppLayout mount; uses requestIdleCallback when available so it doesn't
@@ -279,6 +281,14 @@ function AuthedShell() {
             element={
               <Suspense fallback={null}>
                 <CreativesPage darkMode={darkMode} />
+              </Suspense>
+            }
+          />
+          <Route
+            path="projects/:projectId/c/:campaignId/studio"
+            element={
+              <Suspense fallback={null}>
+                <StudioPage darkMode={darkMode} />
               </Suspense>
             }
           />

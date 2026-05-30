@@ -871,6 +871,52 @@ export interface Creative {
   provider: string;
   uploaded_at: string;
   uploaded_by: string | null;
+  /** AI-generation provenance — populated on rows produced by /studio,
+   *  NULL on user uploads. Lets the library render a "generated" badge
+   *  and the studio surface re-show the prompt that produced an asset. */
+  prompt?: string | null;
+  ai_model?: string | null;
+}
+
+/** Request shape for POST /creatives/generate. Aspect-ratio is a
+ *  prompt-level hint on Cloudflare's hosted Flux (native ~1024×1024
+ *  output); final crop happens in the user's design tool. */
+export interface StudioGenerateRequest {
+  prompt: string;
+  aspect_ratio?: '1:1' | '9:16' | '1.91:1' | '4:5';
+  style?: 'photo' | 'illustration' | 'minimal' | '3d';
+  variants?: number;
+}
+
+export interface StudioGenerateResponse {
+  creatives: Creative[];
+}
+
+export async function generateCreatives(
+  projectId: string,
+  campaignId: string,
+  payload: StudioGenerateRequest,
+  getToken: GetToken,
+): Promise<StudioGenerateResponse> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/generate`,
+    { method: 'POST', headers, body: JSON.stringify(payload) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Generate failed: ${response.status}`);
+  }
+  return await response.json();
 }
 
 export interface CreativeUploadAuth {

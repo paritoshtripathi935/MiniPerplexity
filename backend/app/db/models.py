@@ -672,6 +672,10 @@ class CampaignCreative(Base):
     provider: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'r2'")
     )
+    # AI-generation provenance — populated by /studio writes, NULL on
+    # user uploads. See migration 012.
+    prompt: Mapped[Optional[str]] = mapped_column(Text)
+    ai_model: Mapped[Optional[str]] = mapped_column(Text)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
