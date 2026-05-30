@@ -27,19 +27,25 @@ import {
   Image as ImageIcon,
   Loader2,
   Repeat,
+  Save,
   Sparkles,
   Target,
+  Trash2,
   Wand2,
+  X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../components/AppLayout';
 import {
+  discardStudioPreviews,
   generateCreatives,
   getCreativeDownloadUrl,
   listCreatives,
+  saveStudioPreviews,
   suggestStudioPrompt,
   type Creative,
   type StudioGenerateRequest,
+  type StudioPreview,
 } from '../services/api';
 
 interface Props {
@@ -140,6 +146,15 @@ export function StudioPage(_props: Props) {
   const [creatives, setCreatives] = useState<Creative[] | null>(null);
   const [latestBatchIds, setLatestBatchIds] = useState<Set<string>>(new Set());
 
+  // Un-persisted previews from the most recent generate run. Lives in
+  // storage but no DB row yet — user must save explicitly. Discarding
+  // here fires the best-effort storage delete in the background. We
+  // intentionally don't carry previews across navigations: leaving the
+  // page implicitly discards everything in this zone (storage cleanup
+  // is handled by a future sweep).
+  const [previews, setPreviews] = useState<StudioPreview[]>([]);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+
   const refresh = useCallback(async () => {
     if (!isSignedIn || !projectId || !campaignId) return;
     try {
@@ -164,6 +179,15 @@ export function StudioPage(_props: Props) {
   async function runGenerate(overridePrompt?: string) {
     const effective = (overridePrompt ?? prompt).trim();
     if (generating || !effective || effective.length < 4) return;
+    // Starting a new run discards any unsaved previews from the prior
+    // run — same storage-cleanup contract as the user clicking
+    // "discard all" explicitly. Keeps the review zone focused on the
+    // most recent batch.
+    if (previews.length > 0) {
+      const stale = previews.map(p => p.storage_key);
+      void discardStudioPreviews(projectId, campaignId, stale, getToken);
+      setPreviews([]);
+    }
     setGenerating(true);
     setErr(null);
     try {
@@ -179,18 +203,62 @@ export function StudioPage(_props: Props) {
         },
         getToken,
       );
-      const freshIds = new Set(resp.creatives.map(c => c.id));
-      setCreatives(prev => {
-        const existing = (prev ?? []).filter(c => !freshIds.has(c.id));
-        return [...resp.creatives, ...existing];
-      });
-      setLatestBatchIds(freshIds);
+      setPreviews(resp.previews);
       setLastComposed({ prompt: resp.composed_prompt, baked: resp.context_baked });
     } catch (e: any) {
       setErr(e?.message ?? 'generation failed');
     } finally {
       setGenerating(false);
     }
+  }
+
+  /** Persist one or more previews to the campaign library. Removes
+   *  them from the review zone on success; on failure surfaces the
+   *  error and leaves them in place for the user to retry. */
+  async function handleSave(items: StudioPreview[]) {
+    if (items.length === 0) return;
+    const keys = new Set(items.map(p => p.storage_key));
+    setSavingKeys(prev => {
+      const next = new Set(prev);
+      keys.forEach(k => next.add(k));
+      return next;
+    });
+    setErr(null);
+    try {
+      const { creatives: saved } = await saveStudioPreviews(
+        projectId,
+        campaignId,
+        items,
+        getToken,
+      );
+      // Merge into the recent grid (newest first, deduped).
+      const savedIds = new Set(saved.map(c => c.id));
+      setCreatives(prev => {
+        const existing = (prev ?? []).filter(c => !savedIds.has(c.id));
+        return [...saved, ...existing];
+      });
+      setLatestBatchIds(savedIds);
+      // Drop the saved previews from the review zone.
+      setPreviews(prev => prev.filter(p => !keys.has(p.storage_key)));
+    } catch (e: any) {
+      setErr(e?.message ?? 'save failed');
+    } finally {
+      setSavingKeys(prev => {
+        const next = new Set(prev);
+        keys.forEach(k => next.delete(k));
+        return next;
+      });
+    }
+  }
+
+  /** Drop a preview from the review zone + best-effort delete from
+   *  storage. Fire-and-forget — the cleanup endpoint is a 204 either
+   *  way and a residual orphan gets swept later. */
+  function handleDiscard(items: StudioPreview[]) {
+    if (items.length === 0) return;
+    const keys = items.map(p => p.storage_key);
+    setPreviews(prev => prev.filter(p => !keys.includes(p.storage_key)));
+    void discardStudioPreviews(projectId, campaignId, keys, getToken);
   }
 
   async function handleGenerate(e: FormEvent) {
@@ -432,6 +500,69 @@ export function StudioPage(_props: Props) {
           />
         )}
 
+        {/* ---------------------- review previews ---------------------- */}
+        {(generating || previews.length > 0) && (
+          <section>
+            <div className="flex items-center gap-3 mb-3 flex-wrap">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+                review · pick what to keep
+              </h2>
+              {previews.length > 0 && (
+                <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                  {previews.length} preview{previews.length === 1 ? '' : 's'}
+                </span>
+              )}
+              <span className="flex-1 h-px bg-border/40" aria-hidden />
+              {previews.length > 1 && !generating && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleSave(previews)}
+                    disabled={savingKeys.size > 0}
+                    className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-body-sm hover:bg-emerald-400/15 transition-colors disabled:opacity-50"
+                  >
+                    <Save className="w-3 h-3" />
+                    save all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDiscard(previews)}
+                    disabled={savingKeys.size > 0}
+                    className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/60 text-fg-muted hover:text-rose-300 hover:border-rose-400/30 text-body-sm transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    discard all
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {generating ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from({ length: variants }).map((_, i) => (
+                  <ShimmerTile key={i} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {previews.map(p => (
+                  <PreviewTile
+                    key={p.storage_key}
+                    preview={p}
+                    saving={savingKeys.has(p.storage_key)}
+                    onSave={() => handleSave([p])}
+                    onDiscard={() => handleDiscard([p])}
+                    onReuse={() => {
+                      setPrompt(p.prompt);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* ----------------------------- recents ----------------------------- */}
         <section>
           <div className="flex items-baseline gap-3 mb-3">
@@ -446,17 +577,9 @@ export function StudioPage(_props: Props) {
             <span className="flex-1 h-px bg-border/40" aria-hidden />
           </div>
 
-          {generating && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-              {Array.from({ length: variants }).map((_, i) => (
-                <ShimmerTile key={i} />
-              ))}
-            </div>
-          )}
-
           {creatives === null ? (
             <p className="text-body-sm text-fg-muted">loading…</p>
-          ) : generated.length === 0 && !generating ? (
+          ) : generated.length === 0 ? (
             <EmptyState />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -623,6 +746,109 @@ function GeneratedTile({
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Un-persisted preview tile. Stronger visual treatment than
+ *  GeneratedTile because the user has an explicit decision to make
+ *  here. Save (gradient-tinted) and Discard (neutral, hover-rose) are
+ *  the two primary actions; reuse-prompt + download live behind the
+ *  hover overlay alongside copy-prompt to mirror GeneratedTile. */
+function PreviewTile({
+  preview,
+  saving,
+  onSave,
+  onDiscard,
+  onReuse,
+}: {
+  preview: StudioPreview;
+  saving: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  onReuse: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function handleCopy(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(preview.prompt);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-brand/40 bg-surface-raised/40 backdrop-blur overflow-hidden shadow-[0_0_24px_rgba(124,92,255,0.18)] group">
+      <div className="aspect-square w-full bg-surface-sunken/60 relative">
+        <img
+          src={preview.download_url}
+          alt={preview.prompt}
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="lazy"
+        />
+        <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-1.5 h-5 rounded-md border border-brand/40 bg-brand/15 backdrop-blur font-mono text-[10px] uppercase tracking-wider text-brand">
+          <Sparkles className="w-2.5 h-2.5" />
+          preview · unsaved
+        </span>
+        {/* Hover overlay — copy + reuse + download. Save / discard
+            sit in the persistent footer so the user always sees them. */}
+        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <TileIconBtn onClick={handleCopy} title={copied ? 'copied' : 'copy prompt'}>
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          </TileIconBtn>
+          <TileIconBtn onClick={e => { e.preventDefault(); e.stopPropagation(); onReuse(); }} title="re-use prompt">
+            <Repeat className="w-3 h-3" />
+          </TileIconBtn>
+          <a
+            href={preview.download_url}
+            download={preview.filename}
+            onClick={e => e.stopPropagation()}
+            title="download"
+            className="grid place-items-center w-7 h-7 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur text-fg-muted hover:text-fg hover:bg-surface-raised transition-colors"
+          >
+            <Download className="w-3 h-3" />
+          </a>
+        </div>
+      </div>
+      <div className="p-3 space-y-2.5">
+        <p className="text-body-sm text-fg line-clamp-2 leading-snug" title={preview.prompt}>
+          {preview.prompt}
+        </p>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-md border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-body-sm hover:bg-emerald-400/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                saving…
+              </>
+            ) : (
+              <>
+                <Save className="w-3 h-3" />
+                save
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onDiscard}
+            disabled={saving}
+            title="discard"
+            aria-label="discard"
+            className="grid place-items-center w-8 h-8 rounded-md border border-border/60 text-fg-muted hover:text-rose-300 hover:border-rose-400/30 transition-colors disabled:opacity-50"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );

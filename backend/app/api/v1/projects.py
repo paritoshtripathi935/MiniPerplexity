@@ -18,7 +18,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -981,8 +981,29 @@ class StudioGenerateRequest(BaseModel):
         return self
 
 
+class StudioPreview(BaseModel):
+    """An ephemeral generated image — uploaded to storage but NOT yet
+    persisted to campaign_creatives. The UI shows previews in a review
+    zone; the user picks the ones worth keeping (save endpoint) and the
+    rest get deleted (discard endpoint). Avoids the "library fills with
+    rejects" problem from auto-persisting every variant."""
+    storage_key: str
+    download_url: str
+    mime_type: str
+    size_bytes: int
+    filename: str
+    # Echoed for the save flow — the client passes these back so the
+    # backend doesn't have to re-derive what model / prompt / batch
+    # produced this preview.
+    prompt: str
+    ai_model: str
+
+
 class StudioGenerateOut(BaseModel):
-    creatives: list[CreativeOut]
+    # Renamed from `creatives` — these aren't persisted creatives yet.
+    # Frontend renders them in a "review previews" zone; save / discard
+    # is the next user action.
+    previews: list[StudioPreview]
     # The fully-composed prompt that was sent to Flux for this batch.
     # Returned so the UI can show "what we sent" and the user can
     # debug surprises ("why does this look like the wrong product?").
@@ -1075,7 +1096,7 @@ async def generate_campaign_creatives(
 
     generator = FluxImageGenerator()
     storage = get_storage()
-    creatives: list[CampaignCreative] = []
+    previews: list[StudioPreview] = []
 
     for i in range(payload.variants):
         try:
@@ -1083,17 +1104,16 @@ async def generate_campaign_creatives(
         except ImageGenNotConfiguredError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except ImageGenError as e:
-            # If one variant fails partway through, return whatever
-            # already-persisted variants we have plus a 502 on the
-            # incomplete run. UI handles partial success.
-            if creatives:
-                await db.commit()
+            # Partial-success: return whatever previews already uploaded
+            # so the user sees them in the review zone, plus a soft 200
+            # with the error attached. Frontend handles partial state.
+            if previews:
                 logger.warning(
-                    "studio partial success: %d/%d variants saved before error: %s",
-                    len(creatives), payload.variants, e,
+                    "studio partial success: %d/%d variants uploaded before error: %s",
+                    len(previews), payload.variants, e,
                 )
                 return StudioGenerateOut(
-                    creatives=[_serialize_creative(c) for c in creatives],
+                    previews=previews,
                     composed_prompt=composed,
                     context_baked=context_baked,
                 )
@@ -1121,46 +1141,166 @@ async def generate_campaign_creatives(
                 fields=dict(presigned.fields or {}),
             )
         except ImageGenError as e:
-            # Storage failure mid-run — same partial-success path.
-            if creatives:
-                await db.commit()
+            if previews:
                 logger.warning(
-                    "studio partial success after storage error: %d/%d saved (%s)",
-                    len(creatives), payload.variants, e,
+                    "studio partial success after storage error: %d/%d (%s)",
+                    len(previews), payload.variants, e,
                 )
                 return StudioGenerateOut(
-                    creatives=[_serialize_creative(c) for c in creatives],
+                    previews=previews,
                     composed_prompt=composed,
                     context_baked=context_baked,
                 )
             raise HTTPException(status_code=502, detail=str(e))
 
-        # Display filename — the user sees this in the library tile.
-        # Truncate the prompt + suffix the variant index so a 3-variant
-        # batch reads as e.g. "holiday hero · 1.png".
+        # Display filename — used as a fallback in the library tile when
+        # the user doesn't supply one on save. Truncate the prompt +
+        # suffix the variant index so a 3-variant batch reads as e.g.
+        # "holiday hero · 1.png".
         prompt_slug = payload.prompt.strip()[:60].rstrip()
-        display_filename = f"{prompt_slug} · {i + 1}.png" if prompt_slug else f"generated-{i + 1}.png"
+        display_filename = (
+            f"{prompt_slug} · {i + 1}.png" if prompt_slug else f"generated-{i + 1}.png"
+        )
 
+        # Eagerly mint a download URL so the UI can show the preview
+        # without a second round-trip. 1 hour TTL is plenty for a
+        # review-then-save flow.
+        download_url = storage.presigned_download(
+            key=presigned.storage_key,
+            filename=display_filename,
+            expires_in=3600,
+        )
+
+        previews.append(
+            StudioPreview(
+                storage_key=presigned.storage_key,
+                download_url=download_url,
+                mime_type=image.mime_type,
+                size_bytes=len(image.bytes_),
+                filename=display_filename,
+                prompt=payload.prompt.strip(),
+                ai_model=image.model,
+            )
+        )
+
+    # IMPORTANT: no db.commit() — generate intentionally does not
+    # persist. Unsaved previews stay in storage until the user clicks
+    # save (DB row gets written) or discard (storage object gets
+    # deleted). Orphan sweep is a future cron — for now we accept
+    # ephemeral storage costs on rejected variants.
+    return StudioGenerateOut(
+        previews=previews,
+        composed_prompt=composed,
+        context_baked=context_baked,
+    )
+
+
+# -------- Save / discard previews --------------------------------------
+
+
+class StudioSaveItem(BaseModel):
+    """One preview the user wants to keep. The client echoes back the
+    storage_key + metadata from the original generate response — the
+    backend verifies the key belongs to this campaign before writing
+    the DB row."""
+    storage_key: str
+    filename: str = Field(..., min_length=1, max_length=255)
+    mime_type: str = Field(..., min_length=1, max_length=128)
+    size_bytes: int = Field(..., ge=0, le=_CREATIVE_MAX_BYTES)
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    ai_model: str = Field(..., min_length=1, max_length=128)
+
+
+class StudioSaveIn(BaseModel):
+    items: list[StudioSaveItem] = Field(..., min_length=1, max_length=4)
+
+
+class StudioSaveOut(BaseModel):
+    creatives: list[CreativeOut]
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/save-from-studio",
+    response_model=StudioSaveOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def save_studio_previews(
+    payload: StudioSaveIn,
+    campaign: Campaign = Depends(_require_campaign),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persist one or more Studio previews as campaign_creatives rows.
+    The client passes back the storage_key + metadata it received from
+    /creatives/generate — server validates the key belongs to this
+    campaign's studio prefix (so a malicious client can't smuggle in a
+    different campaign's key) and writes the rows."""
+    storage = get_storage()
+    expected_prefix = f"campaigns/{campaign.id}/studio/"
+
+    saved: list[CampaignCreative] = []
+    for item in payload.items:
+        if not item.storage_key.startswith(expected_prefix):
+            raise HTTPException(
+                status_code=400,
+                detail=f"storage_key {item.storage_key!r} does not belong to this campaign's studio.",
+            )
+        if item.mime_type not in _CREATIVE_ALLOWED_MIME:
+            raise HTTPException(
+                status_code=415, detail=f"mime '{item.mime_type}' not allowed."
+            )
         row = await insert_campaign_creative(
             db,
             campaign_id=campaign.id,
             uploaded_by=user.id,
-            storage_key=presigned.storage_key,
-            filename=display_filename,
-            mime_type=image.mime_type,
-            size_bytes=len(image.bytes_),
+            storage_key=item.storage_key,
+            filename=item.filename,
+            mime_type=item.mime_type,
+            size_bytes=item.size_bytes,
             provider=storage.name,
-            prompt=payload.prompt.strip(),
-            ai_model=image.model,
+            prompt=item.prompt,
+            ai_model=item.ai_model,
         )
-        creatives.append(row)
+        saved.append(row)
 
     await db.commit()
-    return StudioGenerateOut(
-        creatives=[_serialize_creative(c) for c in creatives],
-        composed_prompt=composed,
-        context_baked=context_baked,
-    )
+    return StudioSaveOut(creatives=[_serialize_creative(c) for c in saved])
+
+
+class StudioDiscardIn(BaseModel):
+    """Storage keys to delete (best-effort) without persisting a DB
+    row. Used when the user rejects preview tiles."""
+    storage_keys: list[str] = Field(..., min_length=1, max_length=8)
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/discard-studio",
+    status_code=204,
+)
+async def discard_studio_previews(
+    payload: StudioDiscardIn,
+    campaign: Campaign = Depends(_require_campaign),
+):
+    """Best-effort delete of un-saved Studio previews. The route gates
+    on _require_campaign for auth; key-prefix check below blocks cross-
+    campaign deletion attempts. Failures are logged but don't 5xx —
+    the unsaved object becomes orphan storage that a future cron sweeps."""
+    storage = get_storage()
+    expected_prefix = f"campaigns/{campaign.id}/studio/"
+    for key in payload.storage_keys:
+        if not key.startswith(expected_prefix):
+            # Don't error — silently skip; a malicious client gets a
+            # 204 either way and learns nothing about other campaigns.
+            logger.warning(
+                "discard skipped: key %r outside campaign %s studio prefix",
+                key, campaign.id,
+            )
+            continue
+        try:
+            storage.delete(key=key)
+        except Exception:
+            logger.exception("storage delete failed for studio preview key=%s", key)
+    return Response(status_code=204)
 
 
 class StudioPromptSuggestIn(BaseModel):

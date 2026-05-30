@@ -892,8 +892,21 @@ export interface StudioGenerateRequest {
   bake_context?: boolean;
 }
 
+/** An un-persisted generation. Lives in storage but has no DB row
+ *  until the user clicks save. Echoed back unmodified on save so the
+ *  backend doesn't have to re-derive metadata. */
+export interface StudioPreview {
+  storage_key: string;
+  download_url: string;
+  mime_type: string;
+  size_bytes: number;
+  filename: string;
+  prompt: string;
+  ai_model: string;
+}
+
 export interface StudioGenerateResponse {
-  creatives: Creative[];
+  previews: StudioPreview[];
   /** The fully-composed prompt that was sent to Flux. Surfaced so the
    *  UI can show "this is what we sent" and the user can debug
    *  surprises without guessing at the modifiers. */
@@ -901,6 +914,53 @@ export interface StudioGenerateResponse {
   /** True when bake_context was both requested and honored (a request
    *  with bake_context=true but no brand profile returns false here). */
   context_baked: boolean;
+}
+
+export async function saveStudioPreviews(
+  projectId: string,
+  campaignId: string,
+  items: StudioPreview[],
+  getToken: GetToken,
+): Promise<{ creatives: Creative[] }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/save-from-studio`,
+    { method: 'POST', headers, body: JSON.stringify({ items }) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Save failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+/** Best-effort delete of unsaved Studio previews from storage. The UI
+ *  can fire-and-forget — a 4xx/5xx just leaves an orphan that a future
+ *  cron will sweep. */
+export async function discardStudioPreviews(
+  projectId: string,
+  campaignId: string,
+  storageKeys: string[],
+  getToken: GetToken,
+): Promise<void> {
+  if (storageKeys.length === 0) return;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/discard-studio`,
+    { method: 'POST', headers, body: JSON.stringify({ storage_keys: storageKeys }) },
+  );
 }
 
 /** Ask the backend for a Studio prompt drafted from the campaign's
