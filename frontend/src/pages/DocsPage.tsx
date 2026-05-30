@@ -12,18 +12,19 @@
  * not the route order in the app. Every feature lands in one (and
  * only one) section so search-by-symbol works (grep "model" → one hit).
  */
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ArrowUp,
   BookOpen,
   Calculator,
-  ChevronRight,
   CornerDownLeft,
   FolderKanban,
   Image as ImageIcon,
   Info,
   Keyboard,
   ListChecks,
+  Menu,
   Moon,
   Plug,
   PlayCircle,
@@ -34,11 +35,12 @@ import {
   SquareSlash,
   Target,
   UserCircle2,
+  Wand2,
+  X,
   Youtube,
   Zap,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { PageHeader } from '../components/AppLayout';
 
 interface Props {
   darkMode: boolean;
@@ -48,12 +50,41 @@ interface Props {
 /* Section registry — single source of truth for content + TOC          */
 /* -------------------------------------------------------------------- */
 
+/** Groups drive the floating bottom-right "guide nav" popover. Same
+ *  order as STITCH_PROMPTS_DOCS.md so the popover reads as a
+ *  category-grouped index. */
+type SectionGroup =
+  | 'start'
+  | 'building-blocks'
+  | 'conversations'
+  | 'tools'
+  | 'connections'
+  | 'navigation'
+  | 'settings';
+
+const GROUP_LABEL: Record<SectionGroup, string> = {
+  'start': 'start here',
+  'building-blocks': 'building blocks',
+  'conversations': 'conversations',
+  'tools': 'tools',
+  'connections': 'connections',
+  'navigation': 'navigation',
+  'settings': 'settings',
+};
+
 interface Section {
   id: string;
   eyebrow: string;
   title: string;
   icon: ReactNode;
   body: ReactNode;
+  /** Optional aspect-video placeholder label rendered above the body
+   *  (mirrors the Stitch screenshot-placeholder convention). Only the
+   *  marquee sections that benefit visually carry one; everything else
+   *  goes straight from step label → h2 → body. */
+  placeholder?: string;
+  /** Which group the floating TOC slots this section under. */
+  group: SectionGroup;
 }
 
 const STORAGE_KEY_SCENARIO = 'paidpilot.calc.scenarios.v1';
@@ -65,6 +96,8 @@ function buildSections(): Section[] {
       eyebrow: 'start here',
       title: 'three minutes',
       icon: <BookOpen className="w-4 h-4" />,
+      group: 'start',
+      placeholder: 'dashboard onboarding screenshot',
       body: (
         <>
           <P>
@@ -101,6 +134,8 @@ function buildSections(): Section[] {
       eyebrow: 'building blocks',
       title: 'projects + campaigns',
       icon: <FolderKanban className="w-4 h-4" />,
+      group: 'building-blocks',
+      placeholder: 'project + campaign hierarchy view',
       body: (
         <>
           <P>
@@ -131,6 +166,7 @@ function buildSections(): Section[] {
       eyebrow: 'context',
       title: 'brand profile',
       icon: <Target className="w-4 h-4" />,
+      group: 'building-blocks',
       body: (
         <>
           <P>
@@ -181,6 +217,8 @@ function buildSections(): Section[] {
       eyebrow: 'conversations',
       title: 'investigations',
       icon: <Search className="w-4 h-4" />,
+      group: 'conversations',
+      placeholder: 'investigation chat surface',
       body: (
         <>
           <P>
@@ -227,6 +265,7 @@ function buildSections(): Section[] {
       eyebrow: 'sharpen the ask',
       title: 'improve prompt',
       icon: <Sparkles className="w-4 h-4" />,
+      group: 'conversations',
       body: (
         <>
           <P>
@@ -278,6 +317,7 @@ function buildSections(): Section[] {
       eyebrow: 'choose your engine',
       title: 'model selection',
       icon: <Sparkles className="w-4 h-4" />,
+      group: 'conversations',
       body: (
         <>
           <P>
@@ -286,7 +326,7 @@ function buildSections(): Section[] {
             persists across sessions. every option is grounded with the same
             brand + campaign context — only the engine changes.
           </P>
-          <ModelGrid />
+          <ModelShowcase />
           <P className="mt-5">
             two other models run on fixed, hidden paths and aren't user-
             selectable: the search reranker (qwen3, fast structured output)
@@ -306,6 +346,7 @@ function buildSections(): Section[] {
       eyebrow: 'sources',
       title: 'citation drawer',
       icon: <Quote className="w-4 h-4" />,
+      group: 'conversations',
       body: (
         <>
           <P>
@@ -344,6 +385,7 @@ function buildSections(): Section[] {
       eyebrow: 'sources',
       title: 'videos drawer',
       icon: <Youtube className="w-4 h-4" />,
+      group: 'conversations',
       body: (
         <>
           <P>
@@ -366,6 +408,7 @@ function buildSections(): Section[] {
       eyebrow: 'follow-ups',
       title: 'next-step chips',
       icon: <CornerDownLeft className="w-4 h-4" />,
+      group: 'conversations',
       body: (
         <>
           <P>
@@ -389,6 +432,7 @@ function buildSections(): Section[] {
       eyebrow: 'library',
       title: 'plays',
       icon: <PlayCircle className="w-4 h-4" />,
+      group: 'tools',
       body: (
         <>
           <P>
@@ -422,6 +466,7 @@ function buildSections(): Section[] {
       eyebrow: 'composer',
       title: 'slash menu + url paste',
       icon: <SquareSlash className="w-4 h-4" />,
+      group: 'tools',
       body: (
         <>
           <P>
@@ -454,6 +499,7 @@ function buildSections(): Section[] {
       eyebrow: 'math',
       title: 'calculators + scenarios',
       icon: <Calculator className="w-4 h-4" />,
+      group: 'tools',
       body: (
         <>
           <P>four calculators ship today:</P>
@@ -494,6 +540,8 @@ function buildSections(): Section[] {
       eyebrow: 'library',
       title: 'creatives',
       icon: <ImageIcon className="w-4 h-4" />,
+      group: 'tools',
+      placeholder: 'campaign creatives library',
       body: (
         <>
           <P>
@@ -517,10 +565,76 @@ function buildSections(): Section[] {
       ),
     },
     {
+      id: 'studio',
+      eyebrow: 'creative generation',
+      title: 'studio',
+      icon: <Wand2 className="w-4 h-4" />,
+      group: 'tools',
+      placeholder: 'studio composer + timeline',
+      body: (
+        <>
+          <P>
+            <strong className="text-fg">studio</strong> generates ad
+            creatives from a text prompt — three variants per click, rendered
+            by cloudflare's flux model in ~10-15 seconds. unlike a one-shot
+            image-gen tool, every batch is anchored to the active campaign
+            and the prompt is optionally <em>baked</em> with your brand voice
+            + campaign objective so the output looks on-brand.
+          </P>
+          <P>the composer carries:</P>
+          <Ul>
+            <li>
+              <strong className="text-fg">suggest from campaign</strong> — a
+              brand-tinted button that drafts a prompt for you from the
+              campaign's brand profile + objective. type your own draft and
+              it flips to "refine from campaign" instead.
+            </li>
+            <li>
+              <strong className="text-fg">aspect-ratio chips</strong> — 1:1
+              (meta feed), 9:16 (reels / tiktok), 1.91:1 (link preview), 4:5
+              (instagram portrait). currently a prompt-level hint since the
+              hosted flux model renders at ~1024×1024 natively; final crop
+              happens in your design tool.
+            </li>
+            <li>
+              <strong className="text-fg">style chips</strong> — photo,
+              illustration, minimal, 3d. modifies the rendering style; null
+              means "let the model pick".
+            </li>
+            <li>
+              <strong className="text-fg">brand + campaign toggle</strong> —
+              when on, the server appends a distilled context phrase
+              (company, voice, objective) to the prompt before flux sees it.
+              default on; flip off for bare prompts.
+            </li>
+          </Ul>
+          <P>
+            after generation, the three variants land in a{' '}
+            <strong className="text-fg">review · pick what to keep</strong>{' '}
+            timeline row. each tile gets a save (emerald bookmark) and a
+            discard (rose X) button in the top-right corner; hover the tile
+            to copy the prompt or download. saved tiles flip to a "saved"
+            chip in place — you don't lose them on the next generate.
+            discards delete from storage in the background; no DB row gets
+            written until you save.
+          </P>
+          <P>
+            saved variants land in the campaign's{' '}
+            <DocLink to="/projects">creatives library</DocLink> alongside any
+            pdfs / images you uploaded manually. they carry the prompt + the
+            model id in their metadata so you can find them later via
+            full-text search.
+          </P>
+        </>
+      ),
+    },
+    {
       id: 'integrations',
       eyebrow: 'connections',
       title: 'integrations',
       icon: <Plug className="w-4 h-4" />,
+      group: 'connections',
+      placeholder: 'integrations grid — slack, meta, more',
       body: (
         <>
           <P>
@@ -554,6 +668,7 @@ function buildSections(): Section[] {
       eyebrow: 'getting around',
       title: 'sidebar, palette, sessions',
       icon: <ListChecks className="w-4 h-4" />,
+      group: 'navigation',
       body: (
         <>
           <P>
@@ -587,6 +702,7 @@ function buildSections(): Section[] {
       eyebrow: 'keyboard',
       title: 'shortcuts',
       icon: <Keyboard className="w-4 h-4" />,
+      group: 'navigation',
       body: (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-body-sm">
           <ShortcutRow keys={['⌘', 'K']} label="open command palette" />
@@ -609,6 +725,7 @@ function buildSections(): Section[] {
       eyebrow: 'preferences',
       title: 'settings + theme',
       icon: <SettingsIcon className="w-4 h-4" />,
+      group: 'settings',
       body: (
         <>
           <P>
@@ -646,6 +763,7 @@ function buildSections(): Section[] {
       eyebrow: 'identity',
       title: 'account + sign-out',
       icon: <UserCircle2 className="w-4 h-4" />,
+      group: 'settings',
       body: (
         <>
           <P>
@@ -672,6 +790,7 @@ function buildSections(): Section[] {
       eyebrow: 'still stuck?',
       title: 'help',
       icon: <Info className="w-4 h-4" />,
+      group: 'settings',
       body: (
         <P>
           click <strong className="text-fg">help</strong> at the bottom of
@@ -697,87 +816,161 @@ function buildSections(): Section[] {
 
 export function DocsPage(_props: Props) {
   const sections = useMemo(() => buildSections(), []);
-  const activeId = useScrollSpy(sections.map(s => s.id));
-
-  // Suppress an unused-var warning for the storage key constant. It's
-  // referenced by the scenarios section copy in spirit (and used elsewhere
-  // in the app) — kept here for future "this is where the data lives"
-  // callouts without re-grepping.
   void STORAGE_KEY_SCENARIO;
 
+  /** Search filter — title-match only. Empty query → show all. Step
+   *  numbers stay ABSOLUTE so a filter doesn't reorder the guide. */
+  const [search, setSearch] = useState('');
+  const visibleIds = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return new Set(sections.map(s => s.id));
+    return new Set(
+      sections
+        .filter(s => s.title.toLowerCase().includes(q) || s.eyebrow.toLowerCase().includes(q))
+        .map(s => s.id),
+    );
+  }, [search, sections]);
+
+  // Cmd+K / Ctrl+K focuses the search input.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const total = sections.length;
+
   return (
-    <>
-      <PageHeader
-        eyebrow="documentation"
-        title="how paidpilot works."
-        subtitle="the operator's guide — every feature, what it's for, when to reach for it. a project = your brand, a campaign = a real push, everything else hangs off those two."
-        actions={
-          <Link
-            to="/"
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40 text-body-sm transition-colors"
-          >
-            back to home
-            <ChevronRight className="w-3.5 h-3.5" />
-          </Link>
-        }
-      />
-
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:gap-10">
-        {/* Main content stream */}
-        <main className="min-w-0 space-y-14">
-          {sections.map(s => (
-            <SectionBlock key={s.id} section={s} />
-          ))}
-          <FooterMeta />
-        </main>
-
-        {/* Sticky TOC — lg+ only */}
-        <aside className="hidden lg:block">
-          <div className="sticky top-20">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
-              on this page
-            </p>
-            <ul className="space-y-px border-l border-border/40 pl-3">
-              {sections.map(s => (
-                <li key={s.id}>
-                  <a
-                    href={`#${s.id}`}
-                    className={clsx(
-                      'block text-body-sm py-1 -ml-3 pl-3 border-l-2 transition-colors',
-                      activeId === s.id
-                        ? 'border-brand text-fg'
-                        : 'border-transparent text-fg-subtle hover:text-fg',
-                    )}
-                  >
-                    {s.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
+    <div className="max-w-[800px] mx-auto px-5 sm:px-6 -mt-4 sm:-mt-6">
+      {/* Hero */}
+      <header className="text-center mb-32 pt-8">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+          official walkthrough
+        </p>
+        <h1 className="font-display text-5xl text-fg mb-4 lowercase">
+          how paidpilot works.
+        </h1>
+        <p className="text-body-lg text-fg-muted max-w-xl mx-auto mb-8 leading-relaxed">
+          follow this guided sequence to learn the operator's workspace for
+          performance marketing.
+        </p>
+        <div className="relative max-w-lg mx-auto">
+          <Search
+            aria-hidden
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle"
+          />
+          <input
+            ref={searchRef}
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="search the guide…"
+            className="w-full bg-surface-raised/40 border border-border/60 rounded-full py-3 pl-12 pr-24 text-body-base text-fg placeholder:text-fg-subtle focus:outline-none focus:border-brand/40 focus:shadow-[0_0_18px_rgba(124,92,255,0.15)] transition-all"
+          />
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <Kbd>⌘</Kbd>
+            <Kbd>K</Kbd>
           </div>
-        </aside>
+        </div>
+      </header>
+
+      {/* Sections */}
+      <div className="space-y-32 mb-32">
+        {sections.map((s, i) => {
+          if (!visibleIds.has(s.id)) return null;
+          return (
+            <SectionBlock
+              key={s.id}
+              section={s}
+              step={i + 1}
+              total={total}
+            />
+          );
+        })}
+        {visibleIds.size === 0 && (
+          <p className="text-center text-body-base text-fg-muted">
+            no sections match "{search}".{' '}
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="text-brand hover:underline"
+            >
+              clear search
+            </button>
+          </p>
+        )}
       </div>
-    </>
+
+      {/* Final CTA */}
+      <FinalCTA />
+
+      {/* Last-updated footer */}
+      <p className="mt-8 mb-12 text-center font-mono text-[10px] text-fg-subtle uppercase tracking-widest">
+        last updated · 2026-05-30
+      </p>
+
+      {/* Floating guide nav */}
+      <FloatingGuideNav sections={sections} />
+    </div>
   );
 }
 
 /* -------------------------------------------------------------------- */
-/* Section block                                                         */
+/* Section block — centered timeline row                                 */
 /* -------------------------------------------------------------------- */
 
-function SectionBlock({ section }: { section: Section }) {
+function SectionBlock({
+  section,
+  step,
+  total,
+}: {
+  section: Section;
+  step: number;
+  total: number;
+}) {
   return (
     <section id={section.id} className="scroll-mt-24">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-fg-muted">{section.icon}</span>
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
-          {section.eyebrow}
+      <div className="text-center mb-8">
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-brand/80">
+          step {String(step).padStart(2, '0')} of {String(total).padStart(2, '0')}
         </p>
+        <h2 className="font-display text-4xl text-fg mt-2 lowercase">
+          {section.title}
+        </h2>
       </div>
-      <h2 className="font-display text-h2 text-fg mb-4 lowercase">
-        {section.title}
-      </h2>
-      <div className="max-w-3xl space-y-3">{section.body}</div>
+
+      {section.placeholder && (
+        <div
+          className="w-full aspect-video rounded-xl border border-border/40 bg-surface-sunken/40 mb-8 grid place-items-center relative overflow-hidden"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(45deg, transparent, transparent 12px, rgba(255,255,255,0.012) 12px, rgba(255,255,255,0.012) 13px)',
+          }}
+        >
+          <span className="font-mono text-[11px] text-fg-subtle uppercase tracking-widest">
+            {section.placeholder}
+          </span>
+        </div>
+      )}
+
+      <div className="space-y-3">{section.body}</div>
+
+      <div className="mt-12 flex justify-center">
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="inline-flex items-center gap-1.5 font-mono text-[10px] text-fg-subtle hover:text-fg uppercase tracking-wider transition-colors"
+        >
+          <ArrowUp className="w-3 h-3" />
+          back to top
+        </button>
+      </div>
     </section>
   );
 }
@@ -841,45 +1034,228 @@ const MODELS: ModelEntry[] = [
   },
 ];
 
-function ModelGrid() {
+/** Model section gets a special showcase treatment: the default model
+ *  is rendered as a featured full-width card with a brand-violet border
+ *  + a Default badge bleeding into the top-right corner; siblings live
+ *  in a 2-up grid below it. Matches the Stitch mock convention for
+ *  this specific section. */
+function ModelShowcase() {
+  const featured = MODELS.find(m => m.isDefault);
+  const siblings = MODELS.filter(m => !m.isDefault);
+  if (!featured) return null;
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-      {MODELS.map(m => (
-        <div
-          key={m.id}
-          className={clsx(
-            'rounded-2xl border bg-surface-raised/40 backdrop-blur p-4',
-            m.isDefault ? 'border-brand/30' : 'border-border/60',
-          )}
-        >
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <h3 className="font-display font-semibold text-fg text-body-base lowercase">
+    <div className="space-y-4">
+      <p className="text-body-lg text-fg-muted leading-relaxed text-center max-w-2xl mx-auto">
+        paidpilot routes investigations through one of five specialised
+        models. each is tuned for a different shape of question — pick from
+        the model dropdown in any investigation header.
+      </p>
+
+      {/* Featured card */}
+      <div className="relative overflow-hidden rounded-2xl border-2 border-brand/60 bg-surface-raised/40 backdrop-blur p-6">
+        <span className="absolute top-0 right-0 px-3 py-1 bg-brand text-white font-mono text-[10px] uppercase tracking-wider">
+          default
+        </span>
+        <div className="mb-3">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-brand/80 mb-1">
+            {featured.pretty}
+          </p>
+          <span className="inline-flex items-center px-2 h-5 rounded-full border border-brand/30 bg-brand/10 font-mono text-[10px] uppercase tracking-wider text-brand">
+            {featured.characteristic}
+          </span>
+        </div>
+        <h3 className="font-display text-h2 text-fg mb-2 lowercase">
+          the performance powerhouse
+        </h3>
+        <p className="text-body-base text-fg-muted mb-4 leading-relaxed">
+          {featured.pitch}
+        </p>
+        <div className="pt-3 border-t border-border/40">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-1.5">
+            when to pick
+          </p>
+          <p className="text-body-base text-fg italic">"{featured.pickWhen}"</p>
+        </div>
+      </div>
+
+      {/* Sibling grid — 2-up at md+, single column on small screens. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {siblings.map(m => (
+          <div
+            key={m.id}
+            className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-4"
+          >
+            <p className="font-mono text-[11px] uppercase tracking-wider text-fg-muted mb-1">
               {m.pretty}
-            </h3>
-            <span
-              className={clsx(
-                'inline-flex items-center px-1.5 h-5 rounded-md font-mono text-[10px] uppercase tracking-wider border',
-                m.isDefault
-                  ? 'border-brand/30 bg-brand/5 text-brand'
-                  : 'border-border/60 bg-surface-sunken/40 text-fg-subtle',
-              )}
-            >
+            </p>
+            <span className="inline-flex items-center px-2 h-5 rounded-full border border-border/60 bg-surface-sunken/40 font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-3">
               {m.characteristic}
             </span>
-          </div>
-          <p className="text-body-sm text-fg mb-2">{m.pitch}</p>
-          <p className="text-body-sm text-fg-muted">
-            <strong className="text-fg-muted font-medium">when to pick:</strong>{' '}
-            {m.pickWhen}
-          </p>
-          {m.emitsThinking && (
-            <p className="text-body-sm text-fg-subtle mt-2 italic">
-              tip: the chain-of-thought renders in a collapsible "thinking"
-              disclosure above the answer.
+            <p className="text-body-sm text-fg-muted mb-3 leading-relaxed">
+              {m.pitch}
             </p>
-          )}
+            <div className="pt-3 border-t border-border/40">
+              <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-1">
+                when to pick
+              </p>
+              <p className="text-body-sm text-fg-muted">{m.pickWhen}</p>
+            </div>
+            {m.emitsThinking && (
+              <p className="text-body-sm text-fg-subtle mt-3 italic">
+                tip: the chain-of-thought renders in a collapsible "thinking"
+                disclosure above the answer.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+/* Final CTA + floating guide nav                                        */
+/* -------------------------------------------------------------------- */
+
+function FinalCTA() {
+  return (
+    <section className="w-full text-center">
+      <div className="rounded-2xl border border-brand/30 bg-brand/5 px-6 py-10 sm:px-12 sm:py-12">
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-brand/80 mb-2">
+          ready to start?
+        </p>
+        <h3 className="font-display text-3xl text-fg mb-3 lowercase">
+          build your first campaign.
+        </h3>
+        <p className="text-body-base text-fg-muted mb-6 max-w-md mx-auto">
+          you've completed the conceptual walkthrough. open a project,
+          set up a campaign, and run your first investigation.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+          <Link
+            to="/projects"
+            className="inline-flex items-center h-10 px-5 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-base font-medium shadow-[0_0_18px_rgba(124,92,255,0.3)] hover:shadow-[0_0_24px_rgba(124,92,255,0.45)] transition-shadow"
+          >
+            create a project
+          </Link>
+          <a
+            href="mailto:hello@paidpilot.app?subject=Hello%20from%20the%20guide"
+            className="inline-flex items-center h-10 px-5 rounded-md border border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40 text-body-base transition-colors"
+          >
+            email the team
+          </a>
         </div>
-      ))}
+      </div>
+    </section>
+  );
+}
+
+/** Bottom-right floating "guide nav" pill that opens a popover with the
+ *  category-grouped section index. Replaces the sticky right-rail TOC
+ *  from the previous design — the centered single-column layout doesn't
+ *  have rail space for a persistent TOC. */
+function FloatingGuideNav({ sections }: { sections: Section[] }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  // Bucket sections into their groups, preserving the order they were
+  // declared in buildSections().
+  const grouped = useMemo(() => {
+    const groups: Record<SectionGroup, Section[]> = {
+      'start': [],
+      'building-blocks': [],
+      'conversations': [],
+      'tools': [],
+      'connections': [],
+      'navigation': [],
+      'settings': [],
+    };
+    for (const s of sections) groups[s.group].push(s);
+    return groups;
+  }, [sections]);
+
+  const order: SectionGroup[] = [
+    'start',
+    'building-blocks',
+    'conversations',
+    'tools',
+    'connections',
+    'navigation',
+    'settings',
+  ];
+
+  return (
+    <div
+      ref={rootRef}
+      className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2"
+    >
+      {open && (
+        <div
+          role="menu"
+          className="w-64 rounded-xl border border-border/60 bg-surface-raised/95 backdrop-blur-xl shadow-2xl p-3 max-h-[60vh] overflow-y-auto motion-safe:animate-fade-in"
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle mb-3 px-1">
+            table of contents
+          </p>
+          <div className="space-y-3">
+            {order.map(group => {
+              const items = grouped[group];
+              if (items.length === 0) return null;
+              return (
+                <div key={group}>
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-brand/80 px-1 mb-1">
+                    {GROUP_LABEL[group]}
+                  </p>
+                  <ul>
+                    {items.map(s => (
+                      <li key={s.id}>
+                        <a
+                          href={`#${s.id}`}
+                          onClick={() => setOpen(false)}
+                          className="block px-1 py-1 text-body-sm text-fg-muted hover:text-fg rounded transition-colors"
+                        >
+                          {s.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-label={open ? 'close guide nav' : 'open guide nav'}
+        aria-expanded={open}
+        className="inline-flex items-center gap-2 h-10 px-4 rounded-full bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-sm font-medium shadow-[0_0_24px_rgba(124,92,255,0.35)] hover:shadow-[0_0_30px_rgba(124,92,255,0.5)] transition-all"
+      >
+        {open ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+        <span className="font-mono text-[11px] uppercase tracking-wider">
+          {open ? 'close' : 'guide nav'}
+        </span>
+      </button>
     </div>
   );
 }
@@ -967,77 +1343,6 @@ function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {
   );
 }
 
-function FooterMeta() {
-  return (
-    <div className="pt-8 border-t border-border/40">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-subtle">
-        end of guide
-      </p>
-      <p className="text-body-sm text-fg-muted mt-2 max-w-2xl">
-        missing a feature? something behaving differently than this describes?
-        email{' '}
-        <a
-          href="mailto:hello@paidpilot.app?subject=Docs%20feedback"
-          className="text-brand hover:underline"
-        >
-          hello@paidpilot.app
-        </a>{' '}
-        — docs lag behind code occasionally and we're happy to fix it.
-      </p>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------- */
-/* Scroll-spy                                                            */
-/* -------------------------------------------------------------------- */
-
-/** Watches every section's intersection with the viewport. The id whose
- *  top is closest to (but past) the top of the scroll area becomes
- *  active. Drives the TOC's left-bar highlight. */
-function useScrollSpy(ids: string[]): string | null {
-  const [active, setActive] = useState<string | null>(ids[0] ?? null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!ids.length) return;
-
-    const visible = new Map<string, number>();
-    const observer = new IntersectionObserver(
-      entries => {
-        for (const entry of entries) {
-          const id = entry.target.id;
-          if (entry.isIntersecting) {
-            // Use boundingClientRect.top as priority — sections nearer
-            // the top of the viewport win on ties.
-            visible.set(id, entry.boundingClientRect.top);
-          } else {
-            visible.delete(id);
-          }
-        }
-        if (visible.size === 0) return;
-        // Pick the one with the smallest non-negative top (or the
-        // largest negative if all are above the viewport).
-        let best: { id: string; top: number } | null = null;
-        for (const [id, top] of visible) {
-          if (best === null || Math.abs(top) < Math.abs(best.top)) {
-            best = { id, top };
-          }
-        }
-        if (best) setActive(best.id);
-      },
-      {
-        rootMargin: '-96px 0px -55% 0px',
-        threshold: [0, 0.1, 0.5, 1],
-      },
-    );
-
-    for (const id of ids) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, [ids]);
-
-  return active;
-}
+// FooterMeta + useScrollSpy were removed when the layout switched from
+// the 3-column dev-docs to the centered timeline (the floating
+// FloatingGuideNav replaces the sticky TOC + scroll-spy).
