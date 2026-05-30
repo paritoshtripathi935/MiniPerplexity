@@ -32,6 +32,7 @@ import {
   generateCreatives,
   getCreativeDownloadUrl,
   listCreatives,
+  suggestStudioPrompt,
   type Creative,
   type StudioGenerateRequest,
 } from '../services/api';
@@ -76,7 +77,32 @@ export function StudioPage(_props: Props) {
   const [style, setStyle] = useState<Style | null>('photo');
   const [variants] = useState(3);
   const [generating, setGenerating] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /** Pulls a fresh prompt draft from the backend, grounded in the
+   *  campaign's brand profile + objective. Refines toward whatever the
+   *  user has already typed (if anything). Surfaces errors via the
+   *  same banner the generate flow uses — both failures are
+   *  "non-blocking" (user can still write their own prompt). */
+  async function handleSuggest() {
+    if (suggesting || generating) return;
+    setSuggesting(true);
+    setErr(null);
+    try {
+      const { prompt: draft } = await suggestStudioPrompt(
+        projectId,
+        campaignId,
+        prompt.trim() || null,
+        getToken,
+      );
+      if (draft) setPrompt(draft);
+    } catch (e: any) {
+      setErr(e?.message ?? 'could not draft a prompt from campaign');
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   // Library state (scoped to this campaign — same fetch as /creatives)
   const [creatives, setCreatives] = useState<Creative[] | null>(null);
@@ -153,20 +179,45 @@ export function StudioPage(_props: Props) {
           className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-5 space-y-4"
         >
           <div>
-            <label
-              htmlFor="studio-prompt"
-              className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2 block"
-            >
-              brief
-            </label>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label
+                htmlFor="studio-prompt"
+                className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80"
+              >
+                brief
+              </label>
+              <button
+                type="button"
+                onClick={handleSuggest}
+                disabled={suggesting || generating}
+                title={
+                  prompt.trim()
+                    ? 'refine your draft using brand + campaign context'
+                    : 'draft a prompt from this campaign'
+                }
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-brand/30 bg-brand/5 text-brand text-body-sm hover:bg-brand/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {suggesting ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    drafting…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3 h-3" />
+                    {prompt.trim() ? 'refine from campaign' : 'suggest from campaign'}
+                  </>
+                )}
+              </button>
+            </div>
             <textarea
               id="studio-prompt"
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              placeholder="describe the creative — concept, subject, mood. e.g. 'a hero shot of our holiday gift bundle on a warm cream background, premium feel, soft window light'"
+              placeholder="describe the creative — concept, subject, mood. e.g. 'a hero shot of our holiday gift bundle on a warm cream background, premium feel, soft window light' · or click suggest from campaign to draft one"
               rows={3}
               maxLength={1000}
-              disabled={generating}
+              disabled={generating || suggesting}
               className="w-full px-3 py-2 rounded-md border border-border/60 bg-surface-sunken/40 text-body-base text-fg placeholder:text-fg-subtle focus:border-brand/60 focus:outline-none transition-colors resize-none disabled:opacity-50"
             />
           </div>

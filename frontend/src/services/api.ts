@@ -892,6 +892,37 @@ export interface StudioGenerateResponse {
   creatives: Creative[];
 }
 
+/** Ask the backend for a Studio prompt drafted from the campaign's
+ *  brand profile + objective + date window. Optional `hint` is the
+ *  text the user has already typed (refined toward) — empty hint
+ *  drafts from context alone. */
+export async function suggestStudioPrompt(
+  projectId: string,
+  campaignId: string,
+  hint: string | null | undefined,
+  getToken: GetToken,
+): Promise<{ prompt: string }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/suggest-prompt`,
+    { method: 'POST', headers, body: JSON.stringify({ hint: hint ?? null }) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Suggest prompt failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
 export async function generateCreatives(
   projectId: string,
   campaignId: string,

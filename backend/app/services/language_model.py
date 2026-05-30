@@ -598,3 +598,83 @@ class CloudflareChat:
             if len(cleaned) == 3:
                 break
         return cleaned
+
+    def suggest_image_prompt(
+        self,
+        *,
+        brand_block: str,
+        campaign_block: str,
+        hint: Optional[str] = None,
+    ) -> str:
+        """Compose a creative-brief prompt for the studio image generator
+        from brand + campaign context.
+
+        Single-shot LLM call on the fast/cheap model — output is one
+        line of free-text that drops straight into the Studio prompt
+        textarea. The user can then edit it or hit generate as-is.
+
+        `brand_block` is the system-prompt brand snippet (company name,
+        ICP, channels, voice). `campaign_block` is the campaign objective
+        + date window. `hint` is whatever the user has already typed in
+        the Studio textarea — if present, the LLM refines toward it
+        instead of generating from scratch.
+        """
+        directive = (
+            "You are a senior performance-marketing creative director. Your job "
+            "is to write a single, vivid image-generation prompt that an AI "
+            "image model (Flux) can render straight into an ad creative.\n\n"
+            "Rules:\n"
+            "- Output ONLY the prompt text. No preamble, no headers, no "
+            "options A/B/C, no quotes around it.\n"
+            "- Under 60 words, single paragraph.\n"
+            "- Concrete visual nouns + scene + mood. Mention subject, "
+            "setting, lighting, framing. Avoid copywriting / headlines / "
+            "logos / text-on-image (image models render text poorly).\n"
+            "- Match the brand voice. Reference the campaign objective "
+            "if it's specific enough to influence the image.\n"
+            "- Photorealistic by default unless the brand voice implies "
+            "otherwise."
+        )
+        context_parts = [brand_block.strip(), campaign_block.strip()]
+        context_parts = [p for p in context_parts if p]
+        context = "\n\n".join(context_parts) or "no brand or campaign context available"
+
+        user_msg = f"BRAND + CAMPAIGN CONTEXT:\n{context}\n\n"
+        if hint and hint.strip():
+            user_msg += (
+                f"USER'S DRAFT (refine into a stronger image-gen prompt — "
+                f"keep the user's intent):\n{hint.strip()[:600]}\n\n"
+                "Write the refined prompt now."
+            )
+        else:
+            user_msg += (
+                "Write a single image-gen prompt for an ad creative aligned "
+                "with this brand + campaign. Output the prompt only."
+            )
+
+        formatted = [
+            {"role": "system", "content": directive},
+            {"role": "user", "content": user_msg},
+        ]
+        try:
+            response = self._call_for_prompt(
+                formatted,
+                max_tokens=SHORT_CALL_MAX_TOKENS,
+                model=DEFAULT_NEXT_STEPS_MODEL,
+            )
+            raw = _extract_response_text(response)
+        except CloudflareAPIError as e:
+            raise
+
+        # Clean up: strip leading/trailing whitespace + accidental
+        # markdown emphasis + surrounding quotes the model sometimes
+        # adds despite the explicit instruction.
+        cleaned = (raw or "").strip()
+        # Strip a leading "Prompt:" preamble if it slips through.
+        for prefix in ("Prompt:", "prompt:", "Image prompt:", "Image:"):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+        cleaned = cleaned.strip('"').strip("'").strip("*").strip("`").strip()
+        # Collapse newlines — image-gen prompts are one paragraph.
+        cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
+        return cleaned

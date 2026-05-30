@@ -69,12 +69,15 @@ from app.services.storage import (
     get_storage,
     is_storage_configured,
 )
+from app.constants.constants import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_KEY
 from app.services.image_gen import (
     FluxImageGenerator,
     ImageGenError,
     ImageGenNotConfiguredError,
     compose_prompt as compose_image_prompt,
 )
+from app.services.language_model import CloudflareAPIError, CloudflareChat
+from app.services.system_prompt import render_brand_block, render_campaign_block
 import httpx
 
 router = APIRouter()
@@ -1127,3 +1130,67 @@ async def generate_campaign_creatives(
     return StudioGenerateOut(
         creatives=[_serialize_creative(c) for c in creatives],
     )
+
+
+class StudioPromptSuggestIn(BaseModel):
+    """`hint` is the text the user has already typed in the Studio
+    composer when they click "suggest from campaign". When empty, the
+    LLM drafts from brand+campaign context alone; when present, it
+    refines toward the user's intent."""
+    hint: Optional[str] = Field(default=None, max_length=600)
+
+
+class StudioPromptSuggestOut(BaseModel):
+    prompt: str
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/suggest-prompt",
+    response_model=StudioPromptSuggestOut,
+)
+async def suggest_studio_prompt(
+    payload: StudioPromptSuggestIn,
+    project_id: str,
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compose an image-gen prompt from the campaign's brand profile +
+    objective + date window.
+
+    Same fast model that powers next-step chips (llama-3.2-3b) — short
+    output, low latency. Falls back to a generic prompt if Cloudflare
+    is unreachable so the UI never lands on a hard error for a
+    nice-to-have feature.
+    """
+    # Pull the brand profile (per-project, keyed via Campaign's project).
+    try:
+        proj_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="project not found")
+    brand = await get_brand_profile(db, proj_uuid)
+
+    brand_block = render_brand_block(brand) if brand else ""
+    campaign_block = render_campaign_block(campaign) or f"Active campaign: {campaign.name}"
+
+    chat = CloudflareChat(
+        api_key=CLOUDFLARE_API_KEY,
+        account_id=CLOUDFLARE_ACCOUNT_ID,
+    )
+    try:
+        prompt = chat.suggest_image_prompt(
+            brand_block=brand_block,
+            campaign_block=campaign_block,
+            hint=payload.hint,
+        )
+    except CloudflareAPIError as e:
+        # Non-fatal: surface the message but the frontend treats this
+        # as "try again" rather than blocking the user from typing
+        # their own prompt.
+        raise HTTPException(status_code=502, detail=f"prompt suggestion failed: {e}")
+
+    if not prompt or len(prompt) < 8:
+        raise HTTPException(
+            status_code=502,
+            detail="empty suggestion — retry or write your own prompt",
+        )
+    return StudioPromptSuggestOut(prompt=prompt)
