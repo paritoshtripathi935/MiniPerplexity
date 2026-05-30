@@ -22,6 +22,7 @@
 import useSWR, { useSWRConfig, type SWRConfiguration } from 'swr';
 import {
   getBrandProfile,
+  getIntegrationsStatus,
   getMe,
   getPlaysHistory,
   getSessionHistory,
@@ -32,6 +33,7 @@ import {
   type BrandProfile,
   type CampaignSummary,
   type GetToken,
+  type IntegrationsStatus,
   type Play,
   type PlayHistoryItem,
   type ProjectSummary,
@@ -68,6 +70,7 @@ export const QK = {
   sessionHistory: (sessionId: string) => `/session/${sessionId}/history` as const,
   projects: '/projects' as const,
   campaigns: (projectId: string) => `/projects/${projectId}/campaigns` as const,
+  integrationsStatus: '/integrations/status' as const,
 };
 
 /* ----------------------------- Hooks ----------------------------------- */
@@ -84,6 +87,18 @@ export function useMe(getToken: GetToken, enabled = true) {
   return useSWR<UserProfile | null>(
     enabled ? QK.me : null,
     () => getMe(getToken).catch(() => null),
+    SHARED,
+  );
+}
+
+/** Live integrations status — drives feature gating for "share to slack"
+ *  buttons on chat turns, "data sources" rows on the home page, etc.
+ *  Returns null on error so callers can `?.providers?.find(...)?.connected`
+ *  without an extra null-check ladder. */
+export function useIntegrationsStatus(getToken: GetToken, enabled = true) {
+  return useSWR<IntegrationsStatus | null>(
+    enabled ? QK.integrationsStatus : null,
+    () => getIntegrationsStatus(getToken).catch(() => null),
     SHARED,
   );
 }

@@ -717,7 +717,7 @@ export async function putProjectBrandProfile(
 // ---------- Integrations: Meta (STATUS A5) --------------------------------
 
 export interface ProviderStatus {
-  provider: 'meta' | 'google_ads';
+  provider: 'meta' | 'google_ads' | 'slack';
   /** True iff the deploy has the env credentials needed to run OAuth. */
   available: boolean;
   /** True iff this user has a row in `provider_connections` for this provider. */
@@ -1042,5 +1042,94 @@ export async function uploadCreative(
     },
     getToken,
   );
+}
+
+// ---------- Slack incoming-webhook integration --------------------------
+
+export interface SlackStatus {
+  connected: boolean;
+  /** Display-safe URL with the secret token elided. Only present when
+   *  `connected: true`. */
+  masked_url?: string;
+  connected_at?: string;
+}
+
+export async function getSlackStatus(getToken: GetToken): Promise<SlackStatus> {
+  return jsonRequest<SlackStatus>(
+    `${API_HOST}/api/v1/integrations/slack`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function connectSlack(
+  webhookUrl: string,
+  getToken: GetToken,
+): Promise<SlackStatus> {
+  return jsonRequest<SlackStatus>(
+    `${API_HOST}/api/v1/integrations/slack/connect`,
+    { method: 'POST', body: JSON.stringify({ webhook_url: webhookUrl }) },
+    getToken,
+  );
+}
+
+export async function disconnectSlack(getToken: GetToken): Promise<void> {
+  const response = await fetch(`${API_HOST}/api/v1/integrations/slack`, {
+    method: 'DELETE',
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to disconnect Slack: ${response.status}`);
+  }
+}
+
+/** Re-fire the connect-time test message — used by the manage panel's
+ *  "send test" button. 204 on success, 4xx surfaces a Slack error. */
+export async function sendSlackTest(getToken: GetToken): Promise<void> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/integrations/slack/test`,
+    { method: 'POST', headers },
+  );
+  if (!response.ok && response.status !== 204) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Slack test failed: ${response.status}`);
+  }
+}
+
+/** Post a finished assistant turn to the user's Slack webhook. Backend
+ *  builds the block-kit payload from the message + its session +
+ *  campaign context — frontend only supplies the message id. */
+export async function shareMessageToSlack(
+  messageId: string,
+  getToken: GetToken,
+): Promise<void> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/messages/${encodeURIComponent(messageId)}/share-to-slack`,
+    { method: 'POST', headers, body: JSON.stringify({}) },
+  );
+  if (!response.ok && response.status !== 204) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Share to Slack failed: ${response.status}`);
+  }
 }
 

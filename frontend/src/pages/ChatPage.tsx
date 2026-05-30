@@ -19,6 +19,7 @@ import {
 import {
   useBrandProfile,
   useCacheActions,
+  useIntegrationsStatus,
   useMe,
   usePlays,
 } from '../services/queries';
@@ -75,6 +76,10 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   // Cached cross-page queries. Cache hits render synchronously on revisit.
   const { data: profile } = useBrandProfile(getToken, !!isSignedIn);
   const { data: me, mutate: mutateMe } = useMe(getToken, !!isSignedIn);
+  const { data: integrationsStatus } = useIntegrationsStatus(getToken, !!isSignedIn);
+  const slackConnected = !!integrationsStatus?.providers.find(
+    p => p.provider === 'slack' && p.connected,
+  );
   const { data: plays = [] } = usePlays();
   const { invalidateSessions } = useCacheActions();
   /** Slash-selected play queued for the run modal. */
@@ -632,6 +637,7 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                     message={message}
                     darkMode={darkMode}
                     activeModelId={me?.preferred_chat_model ?? undefined}
+                    slackConnected={slackConnected}
                     onRegenerate={
                       message.originatingQuery && message.originatingSearchResults?.length
                         ? handleRegenerate

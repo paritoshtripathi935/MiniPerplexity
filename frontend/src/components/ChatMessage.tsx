@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useUser } from '@clerk/clerk-react';
-import { Brain, Check, ChevronDown, Clock, Copy, RotateCw } from 'lucide-react';
+import { useAuth, useUser } from '@clerk/clerk-react';
+import { AlertCircle, Brain, Check, ChevronDown, Clock, Copy, Loader2, RotateCw, Send } from 'lucide-react';
+import { shareMessageToSlack } from '../services/api';
 import type { Message, MessageSearchResult } from '../types';
 import { getDomain } from '../utils/url';
 import { useCitationDrawer } from './CitationDrawer';
@@ -124,6 +125,10 @@ interface ChatMessageProps {
    *  models gets routed into the thinking disclosure from the first
    *  token, not after the closer arrives. */
   activeModelId?: string;
+  /** Drives the "share to slack" action button on finished assistant
+   *  turns. Read from /integrations/status — when false, the button
+   *  hides entirely (no nag, no upsell). */
+  slackConnected?: boolean;
 }
 
 /** Document-style chat message with inline citation pills + Copy / Regenerate. */
@@ -133,6 +138,7 @@ export function ChatMessage({
   showFollowups,
   onFollowupSubmit,
   activeModelId,
+  slackConnected,
 }: ChatMessageProps) {
   const { user } = useUser();
   if (message.type !== 'assistant') {
@@ -145,6 +151,7 @@ export function ChatMessage({
       showFollowups={!!showFollowups}
       onFollowupSubmit={onFollowupSubmit}
       activeModelId={activeModelId}
+      slackConnected={!!slackConnected}
     />
   );
 }
@@ -170,17 +177,49 @@ function AssistantTurn({
   showFollowups,
   onFollowupSubmit,
   activeModelId,
+  slackConnected,
 }: {
   message: Message;
   onRegenerate?: () => void;
   showFollowups: boolean;
   onFollowupSubmit?: (text: string) => void;
   activeModelId?: string;
+  slackConnected: boolean;
 }) {
+  const { getToken } = useAuth();
   const [copied, setCopied] = useState(false);
   const isSearching = !!message.isSearching;
   const searchingUrls = message.searchingUrls ?? [];
   const isStreaming = !!message.isStreaming;
+
+  /** "share to slack" state machine — idle → sending → (sent | error).
+   *  Reverts to idle after ~2s so the affordance is reusable. */
+  const [slackState, setSlackState] = useState<
+    'idle' | 'sending' | 'sent' | 'error'
+  >('idle');
+  const [slackError, setSlackError] = useState<string | null>(null);
+
+  async function handleShareToSlack() {
+    // Require the persisted message id — Slack share is only meaningful
+    // once the backend has stored the turn. Defensive in practice this
+    // button is only rendered on finished (`!isStreaming`) turns where
+    // dbId is always set.
+    if (!message.dbId || slackState === 'sending') return;
+    setSlackState('sending');
+    setSlackError(null);
+    try {
+      await shareMessageToSlack(message.dbId, getToken);
+      setSlackState('sent');
+      window.setTimeout(() => setSlackState('idle'), 2000);
+    } catch (e: any) {
+      setSlackError(e?.message ?? 'slack share failed');
+      setSlackState('error');
+      window.setTimeout(() => {
+        setSlackState('idle');
+        setSlackError(null);
+      }, 4000);
+    }
+  }
 
   // Pull `<think>…</think>` blocks out of the content so they render in a
   // separate disclosure instead of polluting the answer body. See
@@ -309,6 +348,27 @@ function AssistantTurn({
                 <RotateCw className="w-3 h-3" /> regenerate
               </ActionBtn>
             )}
+            {slackConnected && message.dbId && (
+              <ActionBtn onClick={handleShareToSlack} title={slackError ?? undefined}>
+                {slackState === 'sending' ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" /> sending…
+                  </>
+                ) : slackState === 'sent' ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-300" /> sent to slack
+                  </>
+                ) : slackState === 'error' ? (
+                  <>
+                    <AlertCircle className="w-3 h-3 text-rose-300" /> retry
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3 h-3" /> share to slack
+                  </>
+                )}
+              </ActionBtn>
+            )}
           </div>
         </div>
       )}
@@ -327,13 +387,16 @@ function AssistantTurn({
 function ActionBtn({
   children,
   onClick,
+  title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-body-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
     >
       {children}
