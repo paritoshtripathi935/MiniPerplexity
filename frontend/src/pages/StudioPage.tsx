@@ -502,58 +502,61 @@ function StickyComposer({
 
         {/* Row 3 — chips + toggle + generate */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-border/40">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Aspect ratios — segmented control */}
-            <div className="inline-flex items-center p-0.5 bg-surface-sunken/40 rounded-md border border-border/40">
-              {ASPECT_RATIOS.map(opt => {
-                const active = opt.id === aspectRatio;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setAspectRatio(opt.id)}
-                    disabled={generating}
-                    className={clsx(
-                      'inline-flex items-center gap-1.5 h-7 px-2 rounded text-[11px] transition-colors disabled:opacity-50',
-                      active
-                        ? 'bg-brand/15 text-brand'
-                        : 'text-fg-muted hover:text-fg',
-                    )}
-                    title={opt.hint}
-                  >
-                    <AspectGlyph ratio={opt.id} active={active} />
-                    <span className="font-mono tabular-nums">{opt.label}</span>
-                    <span className="text-[10px] text-fg-subtle hidden lg:inline">
-                      {opt.hint}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Aspect ratios — individual pill chips. Active gets a
+                solid brand-tinted fill (Stitch convention) so the
+                state reads from across the room. */}
+            {ASPECT_RATIOS.map(opt => {
+              const active = opt.id === aspectRatio;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setAspectRatio(opt.id)}
+                  disabled={generating}
+                  className={clsx(
+                    'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[11px] border transition-colors disabled:opacity-50',
+                    active
+                      ? 'border-brand/60 bg-brand/25 text-fg font-medium'
+                      : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
+                  )}
+                  title={opt.hint}
+                >
+                  <AspectGlyph ratio={opt.id} active={active} />
+                  <span className="font-mono tabular-nums">{opt.label}</span>
+                  <span className="text-[10px] text-fg-subtle hidden xl:inline">
+                    {opt.hint}
+                  </span>
+                </button>
+              );
+            })}
 
-            {/* Style chips */}
-            <div className="flex items-center gap-1">
-              {STYLES.map(opt => {
-                const active = opt.id === style;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setStyle(active ? null : opt.id)}
-                    disabled={generating}
-                    title={opt.description}
-                    className={clsx(
-                      'h-7 px-2 rounded-md text-[11px] border transition-colors disabled:opacity-50',
-                      active
-                        ? 'border-brand/40 bg-brand/10 text-brand'
-                        : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Visual divider between aspect chips and style chips —
+                without it the two chip groups blur together since they
+                now share the same pill treatment. */}
+            <span aria-hidden className="w-px h-4 bg-border/60 mx-1" />
+
+            {/* Style chips — same pill shape as aspect, no glyph. */}
+            {STYLES.map(opt => {
+              const active = opt.id === style;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setStyle(active ? null : opt.id)}
+                  disabled={generating}
+                  title={opt.description}
+                  className={clsx(
+                    'h-7 px-2 rounded-md text-[11px] border transition-colors disabled:opacity-50',
+                    active
+                      ? 'border-brand/60 bg-brand/25 text-fg font-medium'
+                      : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-3">
