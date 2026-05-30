@@ -1232,15 +1232,18 @@ async def save_studio_previews(
 ):
     """Persist one or more Studio previews as campaign_creatives rows.
     The client passes back the storage_key + metadata it received from
-    /creatives/generate — server validates the key belongs to this
-    campaign's studio prefix (so a malicious client can't smuggle in a
-    different campaign's key) and writes the rows."""
+    /creatives/generate. For server-generated keys (R2) we enforce a
+    campaign-scoped prefix to prevent cross-campaign smuggling; for
+    provider-generated opaque keys (UploadThing) the prefix is
+    unenforceable, so we lean on _require_campaign's auth gate — same
+    threat-model trade-off the user-upload path already makes (see
+    confirm_creative_upload's comment for the full rationale)."""
     storage = get_storage()
     expected_prefix = f"campaigns/{campaign.id}/studio/"
 
     saved: list[CampaignCreative] = []
     for item in payload.items:
-        if not item.storage_key.startswith(expected_prefix):
+        if storage.name == "r2" and not item.storage_key.startswith(expected_prefix):
             raise HTTPException(
                 status_code=400,
                 detail=f"storage_key {item.storage_key!r} does not belong to this campaign's studio.",
@@ -1281,14 +1284,17 @@ async def discard_studio_previews(
     payload: StudioDiscardIn,
     campaign: Campaign = Depends(_require_campaign),
 ):
-    """Best-effort delete of un-saved Studio previews. The route gates
-    on _require_campaign for auth; key-prefix check below blocks cross-
-    campaign deletion attempts. Failures are logged but don't 5xx —
-    the unsaved object becomes orphan storage that a future cron sweeps."""
+    """Best-effort delete of un-saved Studio previews. Route gates on
+    _require_campaign for auth. For R2 keys we additionally enforce a
+    campaign-scoped prefix as defense-in-depth; UploadThing keys are
+    opaque and can't be prefix-checked, so they rely on the auth gate
+    + the fact that the client only knows keys for sessions it
+    generated (the threat reduces to "user deletes their own
+    unsaved previews", which is fine)."""
     storage = get_storage()
     expected_prefix = f"campaigns/{campaign.id}/studio/"
     for key in payload.storage_keys:
-        if not key.startswith(expected_prefix):
+        if storage.name == "r2" and not key.startswith(expected_prefix):
             # Don't error — silently skip; a malicious client gets a
             # 204 either way and learns nothing about other campaigns.
             logger.warning(
