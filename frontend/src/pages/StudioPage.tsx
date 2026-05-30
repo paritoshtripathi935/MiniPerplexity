@@ -829,8 +829,16 @@ function PreviewTile({
         loading="lazy"
       />
 
-      {/* Top-right corner: circular action buttons (preview) or SAVED chip */}
-      <div className="absolute top-2 right-2 flex items-center gap-1">
+      {/* Two tile states drive two different overlays:
+          - preview (unsaved): corner save + discard buttons, NO
+            centered hover overlay (the overlay was eating clicks
+            destined for the corner buttons).
+          - saved: SAVED chip in the corner + centered hover overlay
+            with copy-prompt + download. No save/discard since
+            it's already saved.
+          z-10 on the corner block defends against any future
+          overlay re-introduction. */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
         {saved ? (
           <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-300">
             saved
@@ -869,29 +877,60 @@ function PreviewTile({
         )}
       </div>
 
-      {/* Full-tile dimmed overlay on hover — Stitch convention. Centered
-          vertical buttons stack copy + download. */}
-      <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2.5">
-        <button
-          type="button"
-          onClick={handleCopy}
-          title={copied ? 'copied' : 'copy prompt'}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
-        >
-          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? 'copied' : 'prompt'}
-        </button>
-        <a
-          href={preview.download_url}
-          download={preview.filename}
-          onClick={e => e.stopPropagation()}
-          title="download"
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
-        >
-          <Download className="w-3.5 h-3.5" />
-          download
-        </a>
-      </div>
+      {/* Bottom-strip action bar — visible on hover for UNSAVED previews
+          so the user can copy the prompt or download without committing
+          to save first. Lives in the bottom 1/3 of the tile so it
+          doesn't reach the top-right corner where save/discard live. */}
+      {!saved && (
+        <div className="absolute inset-x-0 bottom-0 p-2 flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-t from-black/70 via-black/40 to-transparent">
+          <button
+            type="button"
+            onClick={handleCopy}
+            title={copied ? 'copied' : 'copy prompt'}
+            className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[10px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
+          >
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            {copied ? 'copied' : 'prompt'}
+          </button>
+          <a
+            href={preview.download_url}
+            download={preview.filename}
+            onClick={e => e.stopPropagation()}
+            title="download"
+            className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[10px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
+          >
+            <Download className="w-3 h-3" />
+            download
+          </a>
+        </div>
+      )}
+
+      {/* Saved-state full-tile overlay — only renders when this preview
+          has been saved. Centered prompt + download buttons; the corner
+          SAVED chip stays visible above it via z-10. */}
+      {saved && (
+        <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleCopy}
+            title={copied ? 'copied' : 'copy prompt'}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'copied' : 'prompt'}
+          </button>
+          <a
+            href={preview.download_url}
+            download={preview.filename}
+            onClick={e => e.stopPropagation()}
+            title="download"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 bg-surface-raised/80 backdrop-blur font-mono text-[11px] uppercase font-bold text-fg-muted hover:text-fg hover:bg-brand/20 hover:border-brand/40 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            download
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -962,7 +1001,7 @@ function SavedTile({
         </div>
       )}
 
-      <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 h-5 rounded-full border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+      <span className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 px-2 h-5 rounded-full border border-emerald-400/30 bg-emerald-400/10 backdrop-blur font-mono text-[9px] font-bold uppercase tracking-wider text-emerald-300">
         saved
       </span>
 
