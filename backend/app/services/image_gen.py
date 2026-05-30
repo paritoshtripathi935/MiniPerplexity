@@ -1,25 +1,41 @@
 """Cloudflare Workers AI image generation.
 
-Studio surface calls this to render ad creatives via Flux. Model lives
-on the same Cloudflare account as our chat models, so no new auth, no
-new billing, no new SDK — same `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_KEY`
-env vars language_model.py already reads.
+Studio surface calls this to render ad creatives via Flux.
+
+CREDENTIAL POOL — separate from text generation
+=================================================
+Cloudflare's Workers AI free tier is 10,000 neurons/day PER ACCOUNT.
+Image generation (Flux) burns through this far faster than chat
+text generation (one Flux call ≈ 50-100 chat-token calls). To keep
+text streaming from getting starved by the Studio surface, we read
+image-gen credentials independently of the chat credentials.
+
+Env-var precedence (first hit wins per slot):
+  Slot 1 (primary image account):
+    - CLOUDFLARE_IMAGE_ACCOUNT_ID  +  CLOUDFLARE_IMAGE_API_KEY
+  Slot 2:
+    - CLOUDFLARE_IMAGE_ACCOUNT_ID_2  +  CLOUDFLARE_IMAGE_API_KEY_2
+  Slot 3:
+    - CLOUDFLARE_IMAGE_ACCOUNT_ID_3  +  CLOUDFLARE_IMAGE_API_KEY_3
+
+If slot 1 is unset, we fall back to the chat credentials
+(CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY) so single-account dev
+deploys keep working with no change.
+
+Rotation: `generate()` walks the pool in slot order. On a 429 ("daily
+free allocation exhausted") or 5xx from one account, it moves to the
+next and tries again. Logs each attempt so the operator can see
+which slots are still in budget.
 
 Pipeline per call:
-  1. Hit Cloudflare's `/ai/run/<model>` endpoint with the prompt.
-  2. Cloudflare returns either:
-       - JSON  `{ "success": true, "result": { "image": "<base64-png>" } }`
-       - raw binary PNG (some Cloudflare image models stream the bytes
-         directly with `Content-Type: image/png` and skip the JSON
-         envelope entirely)
-     We handle both shapes — the response-type check is in
-     `_decode_image_response`.
-  3. Caller persists the PNG bytes through the storage abstraction
-     and writes a `campaign_creatives` row with `prompt` + `ai_model`
-     metadata.
+  1. Hit `/ai/run/<model>` on the active slot.
+  2. Cloudflare returns either JSON-with-base64 or raw image bytes —
+     `_decode_image_response` handles both shapes.
+  3. Caller persists the PNG through the storage abstraction +
+     writes a `campaign_creatives` row with prompt + ai_model.
 
-The model id is a constructor argument (default Flux Schnell) so we can
-A/B alternatives without touching call sites.
+The model id is a constructor argument (default Flux Schnell) so we
+can A/B alternatives without touching call sites.
 """
 from __future__ import annotations
 
@@ -27,7 +43,7 @@ import base64
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import httpx
 
@@ -39,6 +55,11 @@ DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"
 DEFAULT_STEPS = 4  # Flux Schnell is a 1-4 step distillation; 4 = max quality.
 DEFAULT_TIMEOUT_S = 60.0  # Generation can take 10-30s under load.
 
+# How many image-specific credential slots we honour. Bump if more
+# accounts are added; matches the env-var convention
+# CLOUDFLARE_IMAGE_API_KEY{,_2,_3,...}.
+_MAX_IMAGE_SLOTS = 5
+
 
 class ImageGenError(RuntimeError):
     """Raised when Cloudflare returns a non-success response or the
@@ -47,7 +68,16 @@ class ImageGenError(RuntimeError):
 
 
 class ImageGenNotConfiguredError(ImageGenError):
-    """Raised when the Cloudflare env vars are missing."""
+    """Raised when no Cloudflare image-gen credentials are configured
+    (neither the image-specific slots nor the text-credential fallback).
+    Translated to a 503 by the endpoint."""
+
+
+class ImageGenQuotaExhaustedError(ImageGenError):
+    """Raised when every credential slot returned a 429 / quota error.
+    Distinguishes 'we tried everything and all accounts are tapped' from
+    'this single call had a transient issue' so the UI can show a
+    quota-specific message ('add more API keys' vs 'try again')."""
 
 
 @dataclass(frozen=True)
@@ -60,14 +90,52 @@ class GeneratedImage:
     mime_type: str = "image/png"
 
 
-def _credentials() -> tuple[str, str]:
-    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
-    api_key = os.getenv("CLOUDFLARE_API_KEY")
-    if not account_id or not api_key:
-        raise ImageGenNotConfiguredError(
-            "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_KEY not set"
-        )
-    return account_id, api_key
+def _credential_pool() -> List[Tuple[str, str]]:
+    """Resolve the (account_id, api_key) pairs to try in order.
+
+    Pool order:
+      1. CLOUDFLARE_IMAGE_ACCOUNT_ID + CLOUDFLARE_IMAGE_API_KEY
+      2. CLOUDFLARE_IMAGE_ACCOUNT_ID_2 + CLOUDFLARE_IMAGE_API_KEY_2
+      … up to _MAX_IMAGE_SLOTS
+      Final fallback: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY
+        (the same credentials chat uses — preserved so single-account
+        dev deploys keep working without env changes).
+
+    A slot only joins the pool when BOTH halves are set. Partially-
+    configured slots are silently skipped.
+    """
+    pool: List[Tuple[str, str]] = []
+    for i in range(1, _MAX_IMAGE_SLOTS + 1):
+        suffix = "" if i == 1 else f"_{i}"
+        acc = os.getenv(f"CLOUDFLARE_IMAGE_ACCOUNT_ID{suffix}")
+        key = os.getenv(f"CLOUDFLARE_IMAGE_API_KEY{suffix}")
+        if acc and key:
+            pool.append((acc, key))
+    # Fallback to shared text credentials only when no image-specific
+    # slot is configured. Once the operator adds image-specific creds,
+    # text usage stays isolated to the chat account.
+    if not pool:
+        fallback_acc = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+        fallback_key = os.getenv("CLOUDFLARE_API_KEY")
+        if fallback_acc and fallback_key:
+            pool.append((fallback_acc, fallback_key))
+    return pool
+
+
+def _is_quota_error(status: int, body: str) -> bool:
+    """Decide whether a Cloudflare response represents a 'this account
+    is tapped' error vs a 'try again later' transient. The free-tier
+    daily allocation comes back as 429 with the literal phrase
+    'daily free allocation' in the body — pattern-match on that so we
+    don't burn through every slot on a transient 429 from one call."""
+    if status == 429:
+        return True
+    if status in (401, 403):
+        # Treat auth errors as exhaustion for THIS slot — we still want
+        # to fall through to the next slot rather than crash.
+        return True
+    lowered = body.lower()
+    return "daily free allocation" in lowered or "neurons" in lowered
 
 
 def _decode_image_response(resp: httpx.Response) -> bytes:
@@ -107,7 +175,14 @@ def _decode_image_response(resp: httpx.Response) -> bytes:
 class FluxImageGenerator:
     """Default image-gen provider — Cloudflare Workers AI hosting Flux
     Schnell. Stateless; one instance per request is fine but reuse
-    works too."""
+    works too.
+
+    Walks the credential pool (see `_credential_pool`) on every
+    `generate` call. On a quota / auth error from one slot, falls
+    through to the next. Raises `ImageGenQuotaExhaustedError` when all
+    slots have been tried and all returned quota errors — distinguished
+    from a single-call transient so the UI can prompt the operator to
+    add more keys."""
 
     def __init__(self, model: str = DEFAULT_MODEL, timeout_s: float = DEFAULT_TIMEOUT_S):
         self.model = model
@@ -117,39 +192,87 @@ class FluxImageGenerator:
         if not prompt or not prompt.strip():
             raise ImageGenError("prompt cannot be empty")
 
-        account_id, api_key = _credentials()
-        endpoint = CLOUDFLARE_AI_BASE.format(account_id=account_id) + self.model
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        pool = _credential_pool()
+        if not pool:
+            raise ImageGenNotConfiguredError(
+                "no Cloudflare image-gen credentials configured. set "
+                "CLOUDFLARE_IMAGE_ACCOUNT_ID + CLOUDFLARE_IMAGE_API_KEY "
+                "(and optionally _2, _3, … for additional accounts), or "
+                "the legacy CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY."
+            )
+
         body = {"prompt": prompt.strip(), "steps": max(1, min(steps, 8))}
+        last_error: Optional[Exception] = None
+        all_quota = True  # Flips false the moment any slot returns a non-quota error
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-                resp = await client.post(endpoint, headers=headers, json=body)
-        except httpx.HTTPError as e:
-            logger.error("Cloudflare image-gen request failed: %s", e)
-            raise ImageGenError(f"Cloudflare request failed: {e}") from e
+        for slot_index, (account_id, api_key) in enumerate(pool, start=1):
+            endpoint = CLOUDFLARE_AI_BASE.format(account_id=account_id) + self.model
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                    resp = await client.post(endpoint, headers=headers, json=body)
+            except httpx.HTTPError as e:
+                logger.warning(
+                    "image-gen slot %d/%d HTTP error: %s — trying next slot",
+                    slot_index, len(pool), e,
+                )
+                last_error = ImageGenError(f"Cloudflare request failed: {e}")
+                all_quota = False
+                continue
 
-        if resp.status_code >= 400:
-            # The gotcha-doc convention: include the response body so a
-            # failed run tells us what to fix (rate limit, content-policy
-            # rejection, model unavailable, etc.).
-            body_preview = resp.text[:500]
-            logger.error(
-                "Cloudflare image-gen returned %s: %s",
-                resp.status_code,
-                body_preview,
+            if resp.status_code >= 400:
+                body_preview = resp.text[:500]
+                quota = _is_quota_error(resp.status_code, body_preview)
+                if quota:
+                    # Burn-through: this account is tapped (or unauthorised).
+                    # Walk to the next slot.
+                    logger.warning(
+                        "image-gen slot %d/%d quota / auth (%s) — trying next slot. "
+                        "body=%s",
+                        slot_index, len(pool), resp.status_code, body_preview,
+                    )
+                    last_error = ImageGenError(
+                        f"Cloudflare returned {resp.status_code}: {body_preview}"
+                    )
+                    continue
+                # Non-quota error — model unavailable, content-policy
+                # rejection, malformed prompt. Don't burn through the
+                # rest of the pool; raise immediately so the user can
+                # see the specific message.
+                logger.error(
+                    "image-gen slot %d/%d non-quota %s: %s",
+                    slot_index, len(pool), resp.status_code, body_preview,
+                )
+                all_quota = False
+                raise ImageGenError(
+                    f"Cloudflare returned {resp.status_code}: {body_preview}"
+                )
+
+            # Success.
+            if slot_index > 1:
+                logger.info(
+                    "image-gen succeeded on slot %d/%d (slots 1..%d exhausted)",
+                    slot_index, len(pool), slot_index - 1,
+                )
+            return GeneratedImage(
+                bytes_=_decode_image_response(resp),
+                model=self.model,
             )
-            raise ImageGenError(
-                f"Cloudflare returned {resp.status_code}: {body_preview}"
-            )
 
-        return GeneratedImage(
-            bytes_=_decode_image_response(resp),
-            model=self.model,
-        )
+        # Pool walked, never returned.
+        if all_quota:
+            raise ImageGenQuotaExhaustedError(
+                f"all {len(pool)} cloudflare image-gen account(s) hit "
+                "their daily free allocation. add another "
+                "CLOUDFLARE_IMAGE_API_KEY_N to env, or upgrade one of "
+                "the existing accounts to the workers paid plan."
+            )
+        # Some non-quota failure path landed us here without a return —
+        # surface the last error verbatim.
+        raise last_error or ImageGenError("image-gen failed with no slots succeeding")
 
 
 # ---------- Prompt composition ---------------------------------------------

@@ -74,6 +74,7 @@ from app.services.image_gen import (
     FluxImageGenerator,
     ImageGenError,
     ImageGenNotConfiguredError,
+    ImageGenQuotaExhaustedError,
     compose_prompt as compose_image_prompt,
     distill_brand_context,
 )
@@ -1110,6 +1111,22 @@ async def generate_campaign_creatives(
             image = await generator.generate(composed)
         except ImageGenNotConfiguredError as e:
             raise HTTPException(status_code=503, detail=str(e))
+        except ImageGenQuotaExhaustedError as e:
+            # All cloudflare image accounts are tapped for the day.
+            # Distinct from the generic 502 below — the operator needs
+            # to add capacity, not retry. 429 lets the UI show a
+            # tailored "out of image-gen budget" message.
+            if previews:
+                logger.warning(
+                    "studio partial success before quota exhaust: %d/%d (%s)",
+                    len(previews), payload.variants, e,
+                )
+                return StudioGenerateOut(
+                    previews=previews,
+                    composed_prompt=composed,
+                    context_baked=context_baked,
+                )
+            raise HTTPException(status_code=429, detail=str(e))
         except ImageGenError as e:
             # Partial-success: return whatever previews already uploaded
             # so the user sees them in the review zone, plus a soft 200
