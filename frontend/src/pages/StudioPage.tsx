@@ -445,7 +445,7 @@ function StickyComposer({
     <div className="sticky top-2 z-30">
       <form
         onSubmit={onSubmit}
-        className="rounded-xl border border-border/60 bg-surface-raised/95 backdrop-blur-xl p-4 space-y-3 shadow-2xl"
+        className="rounded-xl border border-border/60 bg-surface-raised/95 backdrop-blur-xl p-6 space-y-4 shadow-2xl"
       >
         {/* Row 1 — brief eyebrow + suggest button on the left;
             char counter + kbd hint on the right. */}
@@ -488,16 +488,18 @@ function StickyComposer({
           </div>
         </div>
 
-        {/* Row 2 — textarea */}
+        {/* Row 2 — textarea. 4 rows visible by default; the operator
+            still mostly types 1-3 lines but the larger field signals
+            "this is the primary input on this surface". */}
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="describe the creative — concept, subject, mood…"
-          rows={2}
+          rows={4}
           maxLength={1000}
           disabled={generating || suggesting}
-          className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-body-base text-fg placeholder:text-fg-subtle resize-none disabled:opacity-50"
+          className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-body-lg text-fg placeholder:text-fg-subtle resize-none disabled:opacity-50 leading-relaxed"
         />
 
         {/* Row 3 — chips + toggle + generate */}
@@ -515,7 +517,7 @@ function StickyComposer({
                   onClick={() => setAspectRatio(opt.id)}
                   disabled={generating}
                   className={clsx(
-                    'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[11px] border transition-colors disabled:opacity-50',
+                    'inline-flex items-center gap-2 h-9 px-3 rounded-md text-body-sm border transition-colors disabled:opacity-50',
                     active
                       ? 'border-brand/60 bg-brand/25 text-fg font-medium'
                       : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
@@ -524,7 +526,7 @@ function StickyComposer({
                 >
                   <AspectGlyph ratio={opt.id} active={active} />
                   <span className="font-mono tabular-nums">{opt.label}</span>
-                  <span className="text-[10px] text-fg-subtle hidden xl:inline">
+                  <span className="text-[11px] text-fg-subtle hidden xl:inline">
                     {opt.hint}
                   </span>
                 </button>
@@ -534,7 +536,7 @@ function StickyComposer({
             {/* Visual divider between aspect chips and style chips —
                 without it the two chip groups blur together since they
                 now share the same pill treatment. */}
-            <span aria-hidden className="w-px h-4 bg-border/60 mx-1" />
+            <span aria-hidden className="w-px h-5 bg-border/60 mx-1.5" />
 
             {/* Style chips — same pill shape as aspect, no glyph. */}
             {STYLES.map(opt => {
@@ -547,7 +549,7 @@ function StickyComposer({
                   disabled={generating}
                   title={opt.description}
                   className={clsx(
-                    'h-7 px-2 rounded-md text-[11px] border transition-colors disabled:opacity-50',
+                    'h-9 px-3 rounded-md text-body-sm border transition-colors disabled:opacity-50',
                     active
                       ? 'border-brand/60 bg-brand/25 text-fg font-medium'
                       : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40',
@@ -572,26 +574,26 @@ function StickyComposer({
                   : 'click to bake brand voice + campaign objective into the prompt'
               }
               className={clsx(
-                'inline-flex items-center gap-2 h-7 px-2 rounded-md transition-colors disabled:opacity-50',
+                'inline-flex items-center gap-2 h-9 px-2 rounded-md transition-colors disabled:opacity-50',
                 bakeContext ? 'text-brand' : 'text-fg-subtle hover:text-fg',
               )}
             >
               {/* Switch glyph */}
               <span
                 className={clsx(
-                  'relative w-7 h-3.5 rounded-full border transition-colors',
+                  'relative w-9 h-4 rounded-full border transition-colors',
                   bakeContext ? 'bg-brand/20 border-brand/40' : 'bg-surface-sunken/60 border-border/60',
                 )}
               >
                 <span
                   className={clsx(
-                    'absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full transition-all',
+                    'absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full transition-all',
                     bakeContext ? 'right-0.5 bg-brand' : 'left-0.5 bg-fg-subtle',
                   )}
                 />
               </span>
-              <span className="font-mono text-[10px] uppercase tracking-wider inline-flex items-center gap-1">
-                <Target className="w-3 h-3" />
+              <span className="font-mono text-[11px] uppercase tracking-wider inline-flex items-center gap-1">
+                <Target className="w-3.5 h-3.5" />
                 brand {bakeContext ? 'on' : 'off'}
               </span>
             </button>
@@ -599,17 +601,17 @@ function StickyComposer({
             <button
               type="submit"
               disabled={generating || prompt.trim().length < 4}
-              className="inline-flex items-center gap-1.5 h-8 px-4 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-sm font-medium shadow-[0_0_18px_rgba(124,92,255,0.3)] hover:shadow-[0_0_24px_rgba(124,92,255,0.45)] transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-base font-medium shadow-[0_0_18px_rgba(124,92,255,0.3)] hover:shadow-[0_0_24px_rgba(124,92,255,0.45)] transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {generating ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   rendering · {elapsed}s
                 </>
               ) : (
                 <>
                   generate
-                  <Wand2 className="w-3.5 h-3.5" />
+                  <Wand2 className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -1080,17 +1082,17 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 function AspectGlyph({ ratio, active }: { ratio: AspectRatio; active: boolean }) {
   const dims: Record<AspectRatio, { w: number; h: number }> = {
-    '1:1': { w: 9, h: 9 },
-    '9:16': { w: 6, h: 10 },
-    '1.91:1': { w: 12, h: 6 },
-    '4:5': { w: 8, h: 10 },
+    '1:1': { w: 11, h: 11 },
+    '9:16': { w: 8, h: 13 },
+    '1.91:1': { w: 14, h: 7 },
+    '4:5': { w: 10, h: 12 },
   };
   const { w, h } = dims[ratio];
   return (
     <span
       aria-hidden
       className={clsx(
-        'inline-block rounded-[2px] border',
+        'inline-block rounded-[3px] border',
         active ? 'border-brand/60 bg-brand/20' : 'border-fg-subtle/40',
       )}
       style={{ width: `${w}px`, height: `${h}px` }}
