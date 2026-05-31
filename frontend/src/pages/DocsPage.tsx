@@ -107,6 +107,8 @@ function buildSections(): Section[] {
       icon: <BookOpen className="w-4 h-4" />,
       group: 'start',
       placeholder: 'dashboard onboarding screenshot',
+      imageSrc: '/docs/getting-started.jpg',
+      imageAlt: 'paidpilot operational hub with active campaign scope and recent investigations',
       body: (
         <>
           <P>
@@ -145,6 +147,8 @@ function buildSections(): Section[] {
       icon: <FolderKanban className="w-4 h-4" />,
       group: 'building-blocks',
       placeholder: 'project + campaign hierarchy view',
+      imageSrc: '/docs/projects-campaigns.jpg',
+      imageAlt: 'projects + campaigns list with status filter and metrics columns',
       body: (
         <>
           <P>
@@ -228,6 +232,8 @@ function buildSections(): Section[] {
       icon: <Search className="w-4 h-4" />,
       group: 'conversations',
       placeholder: 'investigation chat surface',
+      imageSrc: '/docs/investigations.jpg',
+      imageAlt: 'investigation empty state with four brand-aware starter prompts (benchmark, creative, plan, audit)',
       body: (
         <>
           <P>
@@ -580,6 +586,8 @@ function buildSections(): Section[] {
       icon: <Wand2 className="w-4 h-4" />,
       group: 'tools',
       placeholder: 'studio composer + timeline',
+      imageSrc: '/docs/studio.jpg',
+      imageAlt: 'studio composer with brand-context toggle on and two saved generated creatives',
       body: (
         <>
           <P>
