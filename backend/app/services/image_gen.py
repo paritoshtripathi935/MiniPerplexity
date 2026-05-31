@@ -90,8 +90,23 @@ class GeneratedImage:
     mime_type: str = "image/png"
 
 
+def _image_slots() -> List[Tuple[str, str]]:
+    """Just the CLOUDFLARE_IMAGE_* slots in order. No fallback. Shared
+    by both the image pool (which appends a text-cred fallback only
+    when no image slots exist) and the text pool (which appends these
+    AFTER the primary text creds for spillover capacity)."""
+    slots: List[Tuple[str, str]] = []
+    for i in range(1, _MAX_IMAGE_SLOTS + 1):
+        suffix = "" if i == 1 else f"_{i}"
+        acc = os.getenv(f"CLOUDFLARE_IMAGE_ACCOUNT_ID{suffix}")
+        key = os.getenv(f"CLOUDFLARE_IMAGE_API_KEY{suffix}")
+        if acc and key:
+            slots.append((acc, key))
+    return slots
+
+
 def _credential_pool() -> List[Tuple[str, str]]:
-    """Resolve the (account_id, api_key) pairs to try in order.
+    """Image-gen credential pool (try in order).
 
     Pool order:
       1. CLOUDFLARE_IMAGE_ACCOUNT_ID + CLOUDFLARE_IMAGE_API_KEY
@@ -104,13 +119,7 @@ def _credential_pool() -> List[Tuple[str, str]]:
     A slot only joins the pool when BOTH halves are set. Partially-
     configured slots are silently skipped.
     """
-    pool: List[Tuple[str, str]] = []
-    for i in range(1, _MAX_IMAGE_SLOTS + 1):
-        suffix = "" if i == 1 else f"_{i}"
-        acc = os.getenv(f"CLOUDFLARE_IMAGE_ACCOUNT_ID{suffix}")
-        key = os.getenv(f"CLOUDFLARE_IMAGE_API_KEY{suffix}")
-        if acc and key:
-            pool.append((acc, key))
+    pool = _image_slots()
     # Fallback to shared text credentials only when no image-specific
     # slot is configured. Once the operator adds image-specific creds,
     # text usage stays isolated to the chat account.
@@ -122,12 +131,43 @@ def _credential_pool() -> List[Tuple[str, str]]:
     return pool
 
 
-def _is_quota_error(status: int, body: str) -> bool:
+def text_credential_pool(
+    primary_account: str, primary_key: str
+) -> List[Tuple[str, str]]:
+    """Text-gen credential pool — the chat path's equivalent of
+    `_credential_pool()` for the image path. Builds:
+
+      1. The primary text creds (CLOUDFLARE_ACCOUNT_ID +
+         CLOUDFLARE_API_KEY — passed in by the caller, which is
+         CloudflareChat).
+      2. Each CLOUDFLARE_IMAGE_* slot in order, deduped against the
+         primary.
+
+    The idea: text burns way fewer neurons per call than image, so
+    once the primary text account hits its daily quota, the operator
+    has reserved image accounts sitting there that can absorb the
+    overflow. The image pool itself does NOT fall through to text
+    (asymmetric on purpose — image gen would burn the text budget in
+    minutes).
+    """
+    pool: List[Tuple[str, str]] = []
+    if primary_account and primary_key:
+        pool.append((primary_account, primary_key))
+    for acc, key in _image_slots():
+        if (acc, key) not in pool:
+            pool.append((acc, key))
+    return pool
+
+
+def is_quota_error(status: int, body: str) -> bool:
     """Decide whether a Cloudflare response represents a 'this account
     is tapped' error vs a 'try again later' transient. The free-tier
     daily allocation comes back as 429 with the literal phrase
     'daily free allocation' in the body — pattern-match on that so we
-    don't burn through every slot on a transient 429 from one call."""
+    don't burn through every slot on a transient 429 from one call.
+
+    Public-safe (renamed from `_is_quota_error`) so language_model.py
+    can import it for the chat-path rotation."""
     if status == 429:
         return True
     if status in (401, 403):
@@ -136,6 +176,11 @@ def _is_quota_error(status: int, body: str) -> bool:
         return True
     lowered = body.lower()
     return "daily free allocation" in lowered or "neurons" in lowered
+
+
+# Backward-compatible alias for the old underscore name (kept in case
+# anything still imports it).
+_is_quota_error = is_quota_error
 
 
 def _decode_image_response(resp: httpx.Response) -> bytes:
