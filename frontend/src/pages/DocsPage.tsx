@@ -84,6 +84,14 @@ interface Section {
    *  marquee sections that benefit visually carry one; everything else
    *  goes straight from step label → h2 → body. */
   placeholder?: string;
+  /** Path to a real screenshot for this section. When set, the
+   *  aspect-video block renders the image instead of the placeholder
+   *  text. Path is relative to the public/ directory — drop files in
+   *  `frontend/public/docs/` and reference them as `/docs/<file>.png`. */
+  imageSrc?: string;
+  /** Alt text for the screenshot when imageSrc is set. Falls back to
+   *  the section title if omitted. */
+  imageAlt?: string;
   /** Which group the floating TOC slots this section under. */
   group: SectionGroup;
 }
@@ -946,17 +954,30 @@ function SectionBlock({
         </h2>
       </div>
 
-      {section.placeholder && (
-        <div
-          className="w-full aspect-video rounded-xl border border-border/40 bg-surface-sunken/40 mb-8 grid place-items-center relative overflow-hidden"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(45deg, transparent, transparent 12px, rgba(255,255,255,0.012) 12px, rgba(255,255,255,0.012) 13px)',
-          }}
-        >
-          <span className="font-mono text-[11px] text-fg-subtle uppercase tracking-widest">
-            {section.placeholder}
-          </span>
+      {(section.placeholder || section.imageSrc) && (
+        <div className="w-full aspect-video rounded-xl border border-border/40 bg-surface-sunken/40 mb-8 grid place-items-center relative overflow-hidden">
+          {section.imageSrc ? (
+            <img
+              src={section.imageSrc}
+              alt={section.imageAlt ?? section.title}
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <>
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(45deg, transparent, transparent 12px, rgba(255,255,255,0.012) 12px, rgba(255,255,255,0.012) 13px)',
+                }}
+              />
+              <span className="font-mono text-[11px] text-fg-subtle uppercase tracking-widest relative">
+                {section.placeholder}
+              </span>
+            </>
+          )}
         </div>
       )}
 
