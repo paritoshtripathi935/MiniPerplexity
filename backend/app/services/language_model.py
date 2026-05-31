@@ -2,10 +2,13 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Optional, List, Dict
 from enum import Enum
 import json
+import logging
 import re
 import httpx
 import requests
 from pydantic import Field
+
+logger = logging.getLogger(__name__)
 
 # Custom exceptions
 class CloudflareAPIError(Exception):
