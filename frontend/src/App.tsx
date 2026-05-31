@@ -1,9 +1,10 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Link as RouterLink, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { SignedIn, SignedOut, useAuth, useClerk } from '@clerk/clerk-react';
 import LoginPage from './components/LoginPage';
 import { AppLayout } from './components/AppLayout';
 import { useActiveCampaign } from './components/ActiveCampaign';
+import { Logo } from './components/Logo';
 import { Onboarding } from './components/Onboarding';
 import { HomePage } from './pages/HomePage';
 import { LandingPage } from './pages/LandingPage';
@@ -359,6 +360,57 @@ function LegacyProjectRedirect() {
   );
 }
 
+/** Thin public-access shell for routes that need to render without
+ *  authentication. Renders a fixed top nav (logo + Docs label + Sign
+ *  in CTA) so signed-out visitors don't land on a chrome-less page
+ *  but also don't see the full SignedIn sidebar pointing at surfaces
+ *  they can't access. Currently used for /docs only.
+ */
+function PublicDocsShell({ children }: { children: React.ReactNode }) {
+  // Ensure dark theme on the public shell — signed-out users haven't
+  // had a chance to set a preference, so we lean into the operator-
+  // tool aesthetic by default.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('dark');
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-surface text-fg">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-surface/80 backdrop-blur-xl">
+        <div className="max-w-[1200px] mx-auto px-5 sm:px-6 h-14 flex items-center justify-between">
+          <RouterLink to="/" className="flex items-center gap-2.5 group">
+            <span className="grid place-items-center w-7 h-7 rounded-md bg-brand text-brand-fg">
+              <Logo className="w-3.5 h-3.5" />
+            </span>
+            <span className="font-display text-[15px] font-semibold tracking-tight text-fg group-hover:text-brand transition-colors">
+              PaidPilot
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-fg-subtle ml-1.5">
+              docs
+            </span>
+          </RouterLink>
+          <div className="flex items-center gap-2">
+            <RouterLink
+              to="/"
+              className="hidden sm:inline-block text-[13px] text-fg-muted hover:text-fg transition-colors"
+            >
+              back to home
+            </RouterLink>
+            <RouterLink
+              to="/sign-in"
+              className="inline-flex items-center rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] px-3 h-8 text-[13px] font-medium text-white shadow-[0_0_16px_rgba(124,92,255,0.25)] hover:shadow-[0_0_22px_rgba(124,92,255,0.4)] transition-shadow"
+            >
+              sign in
+            </RouterLink>
+          </div>
+        </div>
+      </header>
+      <main className="pt-6">{children}</main>
+    </div>
+  );
+}
+
 function App() {
   useEffect(() => {
     wakeupBackend();
@@ -370,6 +422,20 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/sign-in/*" element={<LoginPage />} />
+          {/* /docs is public — accessible without an account. Renders
+              inside a thin public shell instead of the full AppLayout
+              so signed-out visitors don't see the sidebar/topnav for
+              surfaces they can't access. */}
+          <Route
+            path="/docs"
+            element={
+              <PublicDocsShell>
+                <Suspense fallback={null}>
+                  <DocsPage darkMode={true} />
+                </Suspense>
+              </PublicDocsShell>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </SignedOut>

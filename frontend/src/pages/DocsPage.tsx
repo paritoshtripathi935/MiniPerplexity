@@ -14,6 +14,7 @@
  */
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import {
   ArrowUp,
   BookOpen,
@@ -1118,6 +1119,11 @@ function ModelShowcase() {
 /* -------------------------------------------------------------------- */
 
 function FinalCTA() {
+  // Auth-aware routing: signed-in visitors jump straight to /projects;
+  // signed-out visitors (the docs page is public) get bounced through
+  // /sign-in first. Copy adapts too — "create a project" for authed
+  // users, "sign up to get started" for anonymous.
+  const { isSignedIn } = useAuth();
   return (
     <section className="w-full text-center">
       <div className="rounded-2xl border border-brand/30 bg-brand/5 px-6 py-10 sm:px-12 sm:py-12">
@@ -1125,18 +1131,21 @@ function FinalCTA() {
           ready to start?
         </p>
         <h3 className="font-display text-3xl text-fg mb-3 lowercase">
-          build your first campaign.
+          {isSignedIn
+            ? 'build your first campaign.'
+            : 'try paidpilot — free in beta.'}
         </h3>
         <p className="text-body-base text-fg-muted mb-6 max-w-md mx-auto">
-          you've completed the conceptual walkthrough. open a project,
-          set up a campaign, and run your first investigation.
+          {isSignedIn
+            ? "you've completed the conceptual walkthrough. open a project, set up a campaign, and run your first investigation."
+            : "you've read the guide. sign in to set up your brand profile and run your first investigation in under a minute."}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
           <Link
-            to="/projects"
+            to={isSignedIn ? '/projects' : '/sign-in'}
             className="inline-flex items-center h-10 px-5 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-base font-medium shadow-[0_0_18px_rgba(124,92,255,0.3)] hover:shadow-[0_0_24px_rgba(124,92,255,0.45)] transition-shadow"
           >
-            create a project
+            {isSignedIn ? 'create a project' : 'sign in to start'}
           </Link>
           <a
             href="mailto:hello@paidpilot.app?subject=Hello%20from%20the%20guide"
