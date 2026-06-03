@@ -1,0 +1,22 @@
+# Starter query set for the search-provider eval harness.
+# 8 queries spanning the operator-question taxonomy that drives PaidPilot
+# investigations. Adjust freely — the harness reads one query per line.
+# Lines starting with `#` are skipped.
+
+# Conceptual / strategy — where neural search should outperform keyword
+how to ramp meta ABO budgets in Q4 holiday push
+lifecycle email cadence for warm leads in B2C DTC
+what changes when iOS 14 ATT prompt opt-in rate falls below 30 percent
+
+# Tactical / playbook
+creative refresh cadence for a meta ABO campaign with rising CPM
+post-purchase upsell sequence for skincare brands
+
+# Freshness-sensitive — Google CSE's home turf
+meta ads manager attribution window changes 2026
+
+# Niche operator essays / agency blogs
+saas paid acquisition payback period benchmarks 2026
+
+# Direct primary-source — both providers should ace this
+google ads search campaign quality score documentation

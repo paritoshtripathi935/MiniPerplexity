@@ -1480,10 +1480,15 @@ async def insert_campaign_creative(
     mime_type: str,
     size_bytes: int,
     provider: str,
+    prompt: Optional[str] = None,
+    ai_model: Optional[str] = None,
 ) -> CampaignCreative:
     """Persist a creative's metadata after the browser-side upload
     completes. ON CONFLICT on (campaign_id, storage_key) keeps confirm-
-    upload idempotent if the client retries."""
+    upload idempotent if the client retries.
+
+    `prompt` + `ai_model` are populated by the studio path (server-side
+    generation + server-side upload) and stay NULL for user uploads."""
     stmt = (
         pg_insert(CampaignCreative)
         .values(
@@ -1494,6 +1499,8 @@ async def insert_campaign_creative(
             mime_type=mime_type,
             size_bytes=size_bytes,
             provider=provider,
+            prompt=prompt,
+            ai_model=ai_model,
         )
         .on_conflict_do_update(
             index_elements=[
@@ -1508,6 +1515,8 @@ async def insert_campaign_creative(
                 "size_bytes": size_bytes,
                 "uploaded_by": uploaded_by,
                 "archived_at": None,
+                "prompt": prompt,
+                "ai_model": ai_model,
             },
         )
         .returning(CampaignCreative)

@@ -106,10 +106,37 @@ class GZipExceptStreaming:
 # gzip overhead would dominate. SSE is bypassed via the wrapper above.
 app.add_middleware(GZipExceptStreaming, minimum_size=1024)
 
-# Set up CORS middleware
+# Set up CORS middleware.
+#
+# Origins come from CORS_ORIGINS (comma-separated) in env when set,
+# otherwise a sane built-in default list covering local dev + the two
+# Netlify production sites (mini-perplexity = legacy, paidpilot = new
+# spike deploy). Override in env to add per-PR previews or future
+# domains without redeploying the code.
+#
+# `allow_origin_regex` covers Netlify's per-deploy unique URLs (e.g.
+# `https://6a19d1b39a0e6cf683582599--paidpilot.netlify.app`) which
+# can't be enumerated up front. Pattern matches:
+#   - https://<hex>--paidpilot.netlify.app           (deploy preview)
+#   - https://<branch>--paidpilot.netlify.app        (branch deploy)
+#   - https://deploy-preview-<n>--paidpilot.netlify.app  (PR preview)
+# Same for mini-perplexity for legacy continuity.
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://mini-perplexity.netlify.app",
+    "https://paidpilot.netlify.app",
+]
+_env_origins = os.getenv("CORS_ORIGINS", "").strip()
+_allowed_origins = (
+    [o.strip() for o in _env_origins.split(",") if o.strip()]
+    if _env_origins
+    else _default_origins
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://mini-perplexity.netlify.app"],
+    allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://[^/]+--(paidpilot|mini-perplexity)\.netlify\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

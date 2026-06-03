@@ -301,8 +301,45 @@ def search_youtube(query: str) -> List[SearchResult]:
     except Exception as e:
         raise YouTubeAPIError(f"YouTube search failed: {str(e)}")
 
+def _run_web_search(query: str) -> List[SearchResult]:
+    """Run web search through the pluggable provider layer.
+
+    Today's default (no env config) is GoogleCSEProvider — preserving the
+    existing prod behaviour byte-for-byte. When `ANAKIN_API_KEY` is set,
+    or `WEB_SEARCH_PROVIDER=anakin_then_google`, the chain returns
+    Anakin's single-call search+extraction results, falling back to the
+    Google path on any failure or empty result set.
+
+    Errors are swallowed (logged) so the caller's degrade-to-YouTube-only
+    flow stays intact."""
+    # Imported here to avoid a circular import: the GoogleCSEProvider
+    # adapter delegates back to `search_google` in this module.
+    from app.services.search_providers import (
+        SearchProviderError,
+        get_provider,
+    )
+
+    try:
+        provider = get_provider()
+    except SearchProviderError as e:
+        logger.error(f"web search provider misconfigured: {e}")
+        return []
+    try:
+        return provider.search(query)
+    except Exception as e:
+        logger.error(f"web search provider {provider.name!r} raised: {e}")
+        return []
+
+
 def perform_search(query: str) -> List[SearchResult]:
-    """Perform parallel searches on Google + YouTube and merge results.
+    """Perform parallel searches on the active web provider + YouTube and
+    merge results.
+
+    Web provider selection lives in `app.services.search_providers`:
+      - Default (no env): Google CSE only — current production behaviour.
+      - `WEB_SEARCH_PROVIDER=anakin_then_google` (or just setting
+        `ANAKIN_API_KEY`): Anakin first, then Google CSE on failure /
+        empty results. Configured for the eval + gradual rollout.
 
     Bing was removed in 2026-05 — Microsoft permanently retired the Bing
     Search API on 2025-08-11; every call returned `410 Gone`. Keeping the
@@ -313,17 +350,17 @@ def perform_search(query: str) -> List[SearchResult]:
     """
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            google_future = executor.submit(search_google, query)
+            web_future = executor.submit(_run_web_search, query)
             youtube_future = executor.submit(search_youtube, query)
 
             results = []
-            for future in [google_future, youtube_future]:
+            for future in [web_future, youtube_future]:
                 try:
                     results.extend(future.result())
                 except (SearchAPIError, YouTubeAPIError) as e:
                     logger.error(f"Search engine error: {str(e)}")
                     continue
-            
+
             # Remove duplicates while preserving order
             seen_urls = set()
             unique_results = []
@@ -331,9 +368,9 @@ def perform_search(query: str) -> List[SearchResult]:
                 if result.url not in seen_urls:
                     seen_urls.add(result.url)
                     unique_results.append(result)
-            
+
             return unique_results
-            
+
     except Exception as e:
         logger.error(f"Error in perform_search: {str(e)}")
         return []

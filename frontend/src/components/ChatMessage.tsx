@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useUser } from '@clerk/clerk-react';
-import { Brain, Check, ChevronDown, Clock, Copy, RotateCw } from 'lucide-react';
+import { useAuth, useUser } from '@clerk/clerk-react';
+import { AlertCircle, Brain, Check, ChevronDown, Clock, Copy, Loader2, RotateCw, Send } from 'lucide-react';
+import { shareMessageToSlack } from '../services/api';
 import type { Message, MessageSearchResult } from '../types';
 import { getDomain } from '../utils/url';
 import { useCitationDrawer } from './CitationDrawer';
@@ -30,18 +31,71 @@ import { useCitationDrawer } from './CitationDrawer';
  */
 const THINK_RE = /<think\b[^>]*>([\s\S]*?)(?:<\/think>|$)/gi;
 
-function splitThinking(content: string): { body: string; thinking: string } {
-  // qwq-32b (and possibly other Qwen reasoning models) on Cloudflare emits
-  // `</think>` at the end of the reasoning chain but no opening `<think>`
-  // (Cloudflare's wrapper strips the chat-template prefix). Detect that
-  // case — `</think>` present without a preceding `<think>` — and synthesize
-  // an opener at the start so the regex below can extract cleanly.
+/** Private-Use-Area sentinel for "the model emitted a <br>". Survives
+ *  markdown parsing as a plain character (no parser claims PUA) and is
+ *  exchanged for an actual <br/> element inside walkCitations. Picked
+ *  arbitrarily from the BMP PUA block — never appears in real content. */
+const BR_SENTINEL = '';
+const BR_TAG_RE = /<br\s*\/?>/gi;
+
+/** Convert literal `<br>` / `<br/>` / `<br />` tags (case-insensitive)
+ *  in model output into our sentinel so we can render them as real line
+ *  breaks downstream. */
+function normalizeBrTags(content: string): string {
+  if (!content) return content;
+  return content.replace(BR_TAG_RE, BR_SENTINEL);
+}
+
+/** Models whose chain-of-thought streams *before* any opening `<think>`
+ *  tag arrives. qwq-32b on Cloudflare strips the chat-template's opener
+ *  and only emits `</think>` at the end. Without help, the very first
+ *  tokens flow into the answer body, then jump into the thinking
+ *  disclosure the instant the closer arrives — exactly the "ends, then
+ *  shows thinking" flicker the user reported.
+ *
+ *  Models in this set get a synthetic `<think>` prepended *while
+ *  streaming* whenever neither a real opener nor a closer has appeared
+ *  yet. Once `</think>` lands, the normal extraction path takes over
+ *  with no special case needed. Stream finished without ever emitting
+ *  `</think>` → no synthetic prepend (the guard checks `isStreaming`),
+ *  so we never wrongly hide a final answer that just happened to look
+ *  like reasoning.
+ *
+ *  Matching is by substring so future revisions (`@cf/qwen/qwq-32b-v2`)
+ *  keep working without a code edit. */
+const REASONING_TAG_MODEL_HINTS = ['qwq'];
+
+function modelEmitsThinkingMidStream(modelId: string | undefined): boolean {
+  if (!modelId) return false;
+  const lower = modelId.toLowerCase();
+  return REASONING_TAG_MODEL_HINTS.some(hint => lower.includes(hint));
+}
+
+function splitThinking(
+  content: string,
+  opts: { isStreaming?: boolean; modelId?: string } = {},
+): { body: string; thinking: string } {
   const firstClose = content.search(/<\/think>/i);
   const firstOpen = content.search(/<think\b/i);
-  const normalized =
-    firstClose >= 0 && (firstOpen < 0 || firstOpen > firstClose)
-      ? '<think>' + content
-      : content;
+
+  // Case 1 — qwq pattern, closer present but no opener: synthesise an
+  // opener at the start so the regex extracts cleanly. (Always safe;
+  // unchanged from prior behaviour.)
+  // Case 2 — qwq pattern, *streaming*, neither tag present yet: treat
+  // the in-flight content as in-progress reasoning instead of letting
+  // it bleed into the answer body. This is what fixes the flicker.
+  let normalized = content;
+  if (firstClose >= 0 && (firstOpen < 0 || firstOpen > firstClose)) {
+    normalized = '<think>' + content;
+  } else if (
+    opts.isStreaming &&
+    firstOpen < 0 &&
+    firstClose < 0 &&
+    content.trim().length > 0 &&
+    modelEmitsThinkingMidStream(opts.modelId)
+  ) {
+    normalized = '<think>' + content;
+  }
 
   const thinkParts: string[] = [];
   const body = normalized.replace(THINK_RE, (_, inner: string) => {
@@ -66,6 +120,15 @@ interface ChatMessageProps {
   /** Fired when a suggestion chip is clicked. The host submits the question
    * directly (no prefill-and-edit step) so the user can keep moving. */
   onFollowupSubmit?: (text: string) => void;
+  /** The chat model currently in use (e.g. `@cf/qwen/qwq-32b`). Threaded
+   *  through to splitThinking so mid-stream content from `</think>`-only
+   *  models gets routed into the thinking disclosure from the first
+   *  token, not after the closer arrives. */
+  activeModelId?: string;
+  /** Drives the "share to slack" action button on finished assistant
+   *  turns. Read from /integrations/status — when false, the button
+   *  hides entirely (no nag, no upsell). */
+  slackConnected?: boolean;
 }
 
 /** Document-style chat message with inline citation pills + Copy / Regenerate. */
@@ -74,6 +137,8 @@ export function ChatMessage({
   onRegenerate,
   showFollowups,
   onFollowupSubmit,
+  activeModelId,
+  slackConnected,
 }: ChatMessageProps) {
   const { user } = useUser();
   if (message.type !== 'assistant') {
@@ -85,6 +150,8 @@ export function ChatMessage({
       onRegenerate={onRegenerate ? () => onRegenerate(message) : undefined}
       showFollowups={!!showFollowups}
       onFollowupSubmit={onFollowupSubmit}
+      activeModelId={activeModelId}
+      slackConnected={!!slackConnected}
     />
   );
 }
@@ -109,25 +176,76 @@ function AssistantTurn({
   onRegenerate,
   showFollowups,
   onFollowupSubmit,
+  activeModelId,
+  slackConnected,
 }: {
   message: Message;
   onRegenerate?: () => void;
   showFollowups: boolean;
   onFollowupSubmit?: (text: string) => void;
+  activeModelId?: string;
+  slackConnected: boolean;
 }) {
+  const { getToken } = useAuth();
   const [copied, setCopied] = useState(false);
   const isSearching = !!message.isSearching;
   const searchingUrls = message.searchingUrls ?? [];
+  const isStreaming = !!message.isStreaming;
+
+  /** "share to slack" state machine — idle → sending → (sent | error).
+   *  Reverts to idle after ~2s so the affordance is reusable. */
+  const [slackState, setSlackState] = useState<
+    'idle' | 'sending' | 'sent' | 'error'
+  >('idle');
+  const [slackError, setSlackError] = useState<string | null>(null);
+
+  async function handleShareToSlack() {
+    // Require the persisted message id — Slack share is only meaningful
+    // once the backend has stored the turn. Defensive in practice this
+    // button is only rendered on finished (`!isStreaming`) turns where
+    // dbId is always set.
+    if (!message.dbId || slackState === 'sending') return;
+    setSlackState('sending');
+    setSlackError(null);
+    try {
+      await shareMessageToSlack(message.dbId, getToken);
+      setSlackState('sent');
+      window.setTimeout(() => setSlackState('idle'), 2000);
+    } catch (e: any) {
+      setSlackError(e?.message ?? 'slack share failed');
+      setSlackState('error');
+      window.setTimeout(() => {
+        setSlackState('idle');
+        setSlackError(null);
+      }, 4000);
+    }
+  }
 
   // Pull `<think>…</think>` blocks out of the content so they render in a
   // separate disclosure instead of polluting the answer body. See
   // splitThinking() — also defends react-markdown against malformed inline
-  // HTML for models that emit raw <think> tags.
-  const { body: visibleContent, thinking } = useMemo(
-    () => splitThinking(message.content),
-    [message.content],
+  // HTML for models that emit raw <think> tags. Pass `isStreaming` +
+  // `activeModelId` so reasoning models that emit `</think>` without a
+  // matching opener (qwq-32b) get an early synthetic `<think>` instead
+  // of showing the chain-of-thought as answer text until the closer
+  // arrives.
+  const { body, thinking } = useMemo(
+    () => splitThinking(message.content, { isStreaming, modelId: activeModelId }),
+    [message.content, isStreaming, activeModelId],
   );
-  const isStreaming = !!message.isStreaming;
+  // Normalise literal <br> tags in the prose-rendered body. react-
+  // markdown@9 strips raw HTML by default, so models that emit `<br>`
+  // inside table cells (a common pattern because markdown tables don't
+  // support newlines in cells) end up rendering the literal text `<br>`
+  // in the output. We replace those occurrences with a Private-Use-
+  // Area sentinel that survives markdown parsing untouched; the
+  // citation walker (walkCitations) splits text nodes on the sentinel
+  // and emits real <br/> elements — covering tables, lists, paragraphs
+  // uniformly without enabling raw-HTML passthrough (and its XSS
+  // surface). Not applied to `thinking` because that renders in a
+  // <pre> with whitespace-pre-wrap, where the PUA char would surface
+  // as a tofu glyph and real newlines work natively.
+  const visibleContent = useMemo(() => normalizeBrTags(body), [body]);
 
   const handleCopy = async () => {
     try {
@@ -230,6 +348,27 @@ function AssistantTurn({
                 <RotateCw className="w-3 h-3" /> regenerate
               </ActionBtn>
             )}
+            {slackConnected && message.dbId && (
+              <ActionBtn onClick={handleShareToSlack} title={slackError ?? undefined}>
+                {slackState === 'sending' ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" /> sending…
+                  </>
+                ) : slackState === 'sent' ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-300" /> sent to slack
+                  </>
+                ) : slackState === 'error' ? (
+                  <>
+                    <AlertCircle className="w-3 h-3 text-rose-300" /> retry
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3 h-3" /> share to slack
+                  </>
+                )}
+              </ActionBtn>
+            )}
           </div>
         </div>
       )}
@@ -248,13 +387,16 @@ function AssistantTurn({
 function ActionBtn({
   children,
   onClick,
+  title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-body-md text-fg-subtle hover:text-fg hover:bg-surface-sunken transition-colors"
     >
       {children}
@@ -425,6 +567,21 @@ function walkCitations(
   keyBase: string,
 ): React.ReactNode {
   if (typeof node === 'string') {
+    // Step 1 — line-break sentinels. The content normalizer at the top
+    // of the pipeline converted every `<br>` variant the model emitted
+    // into a single PUA character (see BR_SENTINEL). Split here and
+    // emit real `<br/>` elements between the surviving text fragments,
+    // then recurse on each fragment so citation markers inside the
+    // segmented text still resolve.
+    if (node.includes(BR_SENTINEL)) {
+      const segs = node.split(BR_SENTINEL);
+      const out: React.ReactNode[] = [];
+      segs.forEach((seg, i) => {
+        if (i > 0) out.push(<br key={`${keyBase}-br-${i}`} />);
+        if (seg) out.push(walkCitations(seg, results, `${keyBase}-s${i}`));
+      });
+      return out;
+    }
     if (!node.includes('[')) return node;
     const out: React.ReactNode[] = [];
     let last = 0;

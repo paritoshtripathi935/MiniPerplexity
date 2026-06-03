@@ -18,7 +18,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,6 +69,18 @@ from app.services.storage import (
     get_storage,
     is_storage_configured,
 )
+from app.constants.constants import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_KEY
+from app.services.image_gen import (
+    FluxImageGenerator,
+    ImageGenError,
+    ImageGenNotConfiguredError,
+    ImageGenQuotaExhaustedError,
+    compose_prompt as compose_image_prompt,
+    distill_brand_context,
+)
+from app.services.language_model import CloudflareAPIError, CloudflareChat
+from app.services.system_prompt import render_brand_block, render_campaign_block
+import httpx
 
 router = APIRouter()
 
@@ -657,8 +669,19 @@ class CreativeOut(BaseModel):
     mime_type: str
     size_bytes: int
     provider: str
+    # The storage backend's key for this asset. Exposed so the studio
+    # timeline can de-dupe between the active-batch row (which renders
+    # from preview metadata) and historic batches (which render from
+    # persisted Creative rows). Not a sensitive value — it's an opaque
+    # pointer; presigning rules are enforced server-side.
+    storage_key: str
     uploaded_at: str
     uploaded_by: Optional[str] = None
+    # Studio metadata — populated when the row was AI-generated, NULL on
+    # user uploads. Lets the library UI render a "generated" badge and
+    # the studio surface re-show the prompt that produced an asset.
+    prompt: Optional[str] = None
+    ai_model: Optional[str] = None
 
 
 class CreativeDownloadOut(BaseModel):
@@ -675,8 +698,11 @@ def _serialize_creative(c: CampaignCreative) -> CreativeOut:
         mime_type=c.mime_type,
         size_bytes=c.size_bytes,
         provider=c.provider,
+        storage_key=c.storage_key,
         uploaded_at=c.uploaded_at.isoformat(),
         uploaded_by=str(c.uploaded_by) if c.uploaded_by else None,
+        prompt=c.prompt,
+        ai_model=c.ai_model,
     )
 
 
@@ -909,3 +935,523 @@ async def delete_campaign_creative_endpoint(
                 "Storage delete failed for creative key=%s; row removed.",
                 removed.storage_key,
             )
+
+
+# ===========================================================================
+# /studio — AI image generation
+# ===========================================================================
+#
+# Renders ad creatives via Cloudflare Workers AI (Flux) and persists each
+# to the campaign's creatives library, side-by-side with user uploads.
+# Server-side flow: generate → grab a presigned URL through the existing
+# storage abstraction → PUT bytes from the backend → insert row with
+# prompt+ai_model metadata. The library then renders the new tiles via
+# the same GET endpoint the uploaded library uses.
+#
+# Defaults match the product decisions:
+#   - 3 variants per click (covers the "pick the best of three" workflow)
+#   - aspect-ratio is a prompt-level hint (Cloudflare's hosted Flux
+#     renders at the model's native ~1024×1024 — actual cropping for
+#     platform specs happens downstream in the user's design tool)
+#   - 4 styles (photo / illustration / minimal / 3d)
+
+
+# Hard cap on variants per request — generous but bounded so a runaway
+# client can't fan out into a 50-image generation.
+_STUDIO_MAX_VARIANTS = 4
+_STUDIO_DEFAULT_VARIANTS = 3
+
+_STUDIO_ALLOWED_ASPECT_RATIOS = {"1:1", "9:16", "1.91:1", "4:5"}
+_STUDIO_ALLOWED_STYLES = {"photo", "illustration", "minimal", "3d"}
+
+
+class StudioGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=4, max_length=1000)
+    aspect_ratio: Optional[str] = None
+    style: Optional[str] = None
+    variants: int = Field(default=_STUDIO_DEFAULT_VARIANTS, ge=1, le=_STUDIO_MAX_VARIANTS)
+    # When true: server loads brand profile + campaign and appends a
+    # distilled one-line context phrase to the Flux prompt. Default
+    # true — generations look more on-brand and the user can opt out
+    # via the toggle when they want a "bare" prompt.
+    bake_context: bool = True
+
+    @model_validator(mode="after")
+    def _validate_enums(self) -> "StudioGenerateRequest":
+        if self.aspect_ratio and self.aspect_ratio not in _STUDIO_ALLOWED_ASPECT_RATIOS:
+            raise ValueError(
+                f"aspect_ratio must be one of {sorted(_STUDIO_ALLOWED_ASPECT_RATIOS)}"
+            )
+        if self.style and self.style not in _STUDIO_ALLOWED_STYLES:
+            raise ValueError(
+                f"style must be one of {sorted(_STUDIO_ALLOWED_STYLES)}"
+            )
+        return self
+
+
+class StudioPreview(BaseModel):
+    """An ephemeral generated image — uploaded to storage but NOT yet
+    persisted to campaign_creatives. The UI shows previews in a review
+    zone; the user picks the ones worth keeping (save endpoint) and the
+    rest get deleted (discard endpoint). Avoids the "library fills with
+    rejects" problem from auto-persisting every variant."""
+    storage_key: str
+    download_url: str
+    mime_type: str
+    size_bytes: int
+    filename: str
+    # Echoed for the save flow — the client passes these back so the
+    # backend doesn't have to re-derive what model / prompt / batch
+    # produced this preview.
+    prompt: str
+    ai_model: str
+
+
+class StudioGenerateOut(BaseModel):
+    # Renamed from `creatives` — these aren't persisted creatives yet.
+    # Frontend renders them in a "review previews" zone; save / discard
+    # is the next user action.
+    previews: list[StudioPreview]
+    # The fully-composed prompt that was sent to Flux for this batch.
+    # Returned so the UI can show "what we sent" and the user can
+    # debug surprises ("why does this look like the wrong product?").
+    composed_prompt: str
+    # True when bake_context was honored for this batch (some calls
+    # request it but skip when no brand profile exists for the campaign).
+    context_baked: bool
+
+
+async def _upload_bytes_to_storage(
+    *,
+    storage_key: str,
+    body_bytes: bytes,
+    content_type: str,
+    presigned_url: str,
+    method: str,
+    body_field: Optional[str],
+    fields: dict[str, str],
+) -> None:
+    """Server-side mirror of what the browser does on the upload flow.
+    Handles both the raw-PUT (R2) and multipart-PUT (UploadThing) shapes
+    via the same `PresignedUpload`-shaped inputs."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        if body_field:
+            # multipart/form-data — UploadThing path. httpx builds the
+            # boundary; do NOT set Content-Type manually.
+            files = {body_field: (storage_key.rsplit("/", 1)[-1], body_bytes, content_type)}
+            data = dict(fields or {})
+            resp = await client.request(method, presigned_url, files=files, data=data)
+        else:
+            # raw body — R2 path. Content-Type must match what was signed.
+            resp = await client.request(
+                method,
+                presigned_url,
+                content=body_bytes,
+                headers={"Content-Type": content_type},
+            )
+    if resp.status_code >= 400:
+        raise ImageGenError(
+            f"storage upload failed ({resp.status_code}): {resp.text[:300]}"
+        )
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/generate",
+    response_model=StudioGenerateOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_campaign_creatives(
+    payload: StudioGenerateRequest,
+    campaign: Campaign = Depends(_require_campaign),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Render N image variants for the active campaign and write each
+    to the creatives library.
+
+    Errors:
+      - 503 if Cloudflare env or storage env is missing on this deploy
+      - 502 if Cloudflare returns an error (rate limit, content policy)
+      - 400 on validation failures (prompt empty, bad enum)
+    """
+    if not is_storage_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="object storage not configured on this deploy.",
+        )
+
+    # Load + distil brand context only when the user opted to bake it
+    # in. Skipping the brand-profile query when bake_context=False saves
+    # a round-trip on every generate.
+    brand_context_phrase: Optional[str] = None
+    if payload.bake_context:
+        brand = await get_brand_profile(db, campaign.project_id)
+        brand_context_phrase = distill_brand_context(brand, campaign) or None
+
+    composed = compose_image_prompt(
+        user_prompt=payload.prompt,
+        aspect_ratio=payload.aspect_ratio,
+        style=payload.style,
+        brand_context=brand_context_phrase,
+    )
+    context_baked = bool(brand_context_phrase)
+    logger.info(
+        "studio generate: campaign=%s variants=%d aspect=%s style=%s "
+        "context_baked=%s prompt_len=%d",
+        campaign.id, payload.variants, payload.aspect_ratio, payload.style,
+        context_baked, len(composed),
+    )
+
+    generator = FluxImageGenerator()
+    storage = get_storage()
+    previews: list[StudioPreview] = []
+
+    for i in range(payload.variants):
+        try:
+            image = await generator.generate(composed)
+        except ImageGenNotConfiguredError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        except ImageGenQuotaExhaustedError as e:
+            # All cloudflare image accounts are tapped for the day.
+            # Distinct from the generic 502 below — the operator needs
+            # to add capacity, not retry. 429 lets the UI show a
+            # tailored "out of image-gen budget" message.
+            if previews:
+                logger.warning(
+                    "studio partial success before quota exhaust: %d/%d (%s)",
+                    len(previews), payload.variants, e,
+                )
+                return StudioGenerateOut(
+                    previews=previews,
+                    composed_prompt=composed,
+                    context_baked=context_baked,
+                )
+            raise HTTPException(status_code=429, detail=str(e))
+        except ImageGenError as e:
+            # Partial-success: return whatever previews already uploaded
+            # so the user sees them in the review zone, plus a soft 200
+            # with the error attached. Frontend handles partial state.
+            if previews:
+                logger.warning(
+                    "studio partial success: %d/%d variants uploaded before error: %s",
+                    len(previews), payload.variants, e,
+                )
+                return StudioGenerateOut(
+                    previews=previews,
+                    composed_prompt=composed,
+                    context_baked=context_baked,
+                )
+            raise HTTPException(status_code=502, detail=str(e))
+
+        # Upload through the same storage abstraction the browser flow uses.
+        try:
+            presigned = storage.presigned_upload(
+                key=f"campaigns/{campaign.id}/studio/{uuid.uuid4()}.png",
+                content_type=image.mime_type,
+                max_size_bytes=_CREATIVE_MAX_BYTES,
+                expires_in=300,
+            )
+        except StorageNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+        try:
+            await _upload_bytes_to_storage(
+                storage_key=presigned.storage_key,
+                body_bytes=image.bytes_,
+                content_type=image.mime_type,
+                presigned_url=presigned.upload_url,
+                method=presigned.method,
+                body_field=presigned.body_field,
+                fields=dict(presigned.fields or {}),
+            )
+        except ImageGenError as e:
+            if previews:
+                logger.warning(
+                    "studio partial success after storage error: %d/%d (%s)",
+                    len(previews), payload.variants, e,
+                )
+                return StudioGenerateOut(
+                    previews=previews,
+                    composed_prompt=composed,
+                    context_baked=context_baked,
+                )
+            raise HTTPException(status_code=502, detail=str(e))
+
+        # Display filename — used as a fallback in the library tile when
+        # the user doesn't supply one on save. Truncate the prompt +
+        # suffix the variant index so a 3-variant batch reads as e.g.
+        # "holiday hero · 1.png".
+        prompt_slug = payload.prompt.strip()[:60].rstrip()
+        display_filename = (
+            f"{prompt_slug} · {i + 1}.png" if prompt_slug else f"generated-{i + 1}.png"
+        )
+
+        # Eagerly mint a download URL so the UI can show the preview
+        # without a second round-trip. 1 hour TTL is plenty for a
+        # review-then-save flow.
+        download_url = storage.presigned_download(
+            key=presigned.storage_key,
+            filename=display_filename,
+            expires_in=3600,
+        )
+
+        previews.append(
+            StudioPreview(
+                storage_key=presigned.storage_key,
+                download_url=download_url,
+                mime_type=image.mime_type,
+                size_bytes=len(image.bytes_),
+                filename=display_filename,
+                prompt=payload.prompt.strip(),
+                ai_model=image.model,
+            )
+        )
+
+    # IMPORTANT: no db.commit() — generate intentionally does not
+    # persist. Unsaved previews stay in storage until the user clicks
+    # save (DB row gets written) or discard (storage object gets
+    # deleted). Orphan sweep is a future cron — for now we accept
+    # ephemeral storage costs on rejected variants.
+    return StudioGenerateOut(
+        previews=previews,
+        composed_prompt=composed,
+        context_baked=context_baked,
+    )
+
+
+# -------- Save / discard previews --------------------------------------
+
+
+class StudioSaveItem(BaseModel):
+    """One preview the user wants to keep. The client echoes back the
+    storage_key + metadata from the original generate response — the
+    backend verifies the key belongs to this campaign before writing
+    the DB row."""
+    storage_key: str
+    filename: str = Field(..., min_length=1, max_length=255)
+    mime_type: str = Field(..., min_length=1, max_length=128)
+    size_bytes: int = Field(..., ge=0, le=_CREATIVE_MAX_BYTES)
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    ai_model: str = Field(..., min_length=1, max_length=128)
+
+
+class StudioSaveIn(BaseModel):
+    items: list[StudioSaveItem] = Field(..., min_length=1, max_length=4)
+
+
+class StudioSaveOut(BaseModel):
+    creatives: list[CreativeOut]
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/save-from-studio",
+    response_model=StudioSaveOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def save_studio_previews(
+    payload: StudioSaveIn,
+    campaign: Campaign = Depends(_require_campaign),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persist one or more Studio previews as campaign_creatives rows.
+    The client passes back the storage_key + metadata it received from
+    /creatives/generate. For server-generated keys (R2) we enforce a
+    campaign-scoped prefix to prevent cross-campaign smuggling; for
+    provider-generated opaque keys (UploadThing) the prefix is
+    unenforceable, so we lean on _require_campaign's auth gate — same
+    threat-model trade-off the user-upload path already makes (see
+    confirm_creative_upload's comment for the full rationale)."""
+    storage = get_storage()
+    expected_prefix = f"campaigns/{campaign.id}/studio/"
+
+    saved: list[CampaignCreative] = []
+    for item in payload.items:
+        if storage.name == "r2" and not item.storage_key.startswith(expected_prefix):
+            raise HTTPException(
+                status_code=400,
+                detail=f"storage_key {item.storage_key!r} does not belong to this campaign's studio.",
+            )
+        if item.mime_type not in _CREATIVE_ALLOWED_MIME:
+            raise HTTPException(
+                status_code=415, detail=f"mime '{item.mime_type}' not allowed."
+            )
+        row = await insert_campaign_creative(
+            db,
+            campaign_id=campaign.id,
+            uploaded_by=user.id,
+            storage_key=item.storage_key,
+            filename=item.filename,
+            mime_type=item.mime_type,
+            size_bytes=item.size_bytes,
+            provider=storage.name,
+            prompt=item.prompt,
+            ai_model=item.ai_model,
+        )
+        saved.append(row)
+
+    await db.commit()
+    return StudioSaveOut(creatives=[_serialize_creative(c) for c in saved])
+
+
+class StudioDiscardIn(BaseModel):
+    """Storage keys to delete (best-effort) without persisting a DB
+    row. Used when the user rejects preview tiles."""
+    storage_keys: list[str] = Field(..., min_length=1, max_length=8)
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/discard-studio",
+    status_code=204,
+)
+async def discard_studio_previews(
+    payload: StudioDiscardIn,
+    campaign: Campaign = Depends(_require_campaign),
+):
+    """Best-effort delete of un-saved Studio previews. Route gates on
+    _require_campaign for auth. For R2 keys we additionally enforce a
+    campaign-scoped prefix as defense-in-depth; UploadThing keys are
+    opaque and can't be prefix-checked, so they rely on the auth gate
+    + the fact that the client only knows keys for sessions it
+    generated (the threat reduces to "user deletes their own
+    unsaved previews", which is fine)."""
+    storage = get_storage()
+    expected_prefix = f"campaigns/{campaign.id}/studio/"
+    for key in payload.storage_keys:
+        if storage.name == "r2" and not key.startswith(expected_prefix):
+            # Don't error — silently skip; a malicious client gets a
+            # 204 either way and learns nothing about other campaigns.
+            logger.warning(
+                "discard skipped: key %r outside campaign %s studio prefix",
+                key, campaign.id,
+            )
+            continue
+        try:
+            storage.delete(key=key)
+        except Exception:
+            logger.exception("storage delete failed for studio preview key=%s", key)
+    return Response(status_code=204)
+
+
+class StudioPromptSuggestIn(BaseModel):
+    """`hint` is the text the user has already typed in the Studio
+    composer when they click "suggest from campaign". When empty, the
+    LLM drafts from brand+campaign context alone; when present, it
+    refines toward the user's intent."""
+    hint: Optional[str] = Field(default=None, max_length=600)
+
+
+class StudioPromptSuggestOut(BaseModel):
+    prompt: str
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/creatives/suggest-prompt",
+    response_model=StudioPromptSuggestOut,
+)
+async def suggest_studio_prompt(
+    payload: StudioPromptSuggestIn,
+    project_id: str,
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compose an image-gen prompt from the campaign's brand profile +
+    objective + date window.
+
+    Same fast model that powers next-step chips (llama-3.2-3b) — short
+    output, low latency. Falls back to a generic prompt if Cloudflare
+    is unreachable so the UI never lands on a hard error for a
+    nice-to-have feature.
+    """
+    # Pull the brand profile (per-project, keyed via Campaign's project).
+    try:
+        proj_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="project not found")
+    brand = await get_brand_profile(db, proj_uuid)
+
+    brand_block = render_brand_block(brand) if brand else ""
+    campaign_block = render_campaign_block(campaign) or f"Active campaign: {campaign.name}"
+
+    chat = CloudflareChat(
+        api_key=CLOUDFLARE_API_KEY,
+        account_id=CLOUDFLARE_ACCOUNT_ID,
+    )
+    try:
+        prompt = chat.suggest_image_prompt(
+            brand_block=brand_block,
+            campaign_block=campaign_block,
+            hint=payload.hint,
+        )
+    except CloudflareAPIError as e:
+        # Non-fatal: surface the message but the frontend treats this
+        # as "try again" rather than blocking the user from typing
+        # their own prompt.
+        raise HTTPException(status_code=502, detail=f"prompt suggestion failed: {e}")
+
+    if not prompt or len(prompt) < 8:
+        raise HTTPException(
+            status_code=502,
+            detail="empty suggestion — retry or write your own prompt",
+        )
+    return StudioPromptSuggestOut(prompt=prompt)
+
+
+# =========================================================================
+# Question improver — sharpen an investigation prompt
+# =========================================================================
+
+class QuestionImproveIn(BaseModel):
+    """The user's draft chat-composer text. Must be non-empty; output
+    is a refined one-or-two-sentence version grounded in the active
+    campaign's brand + campaign context."""
+    draft: str = Field(..., min_length=1, max_length=2000)
+
+
+class QuestionImproveOut(BaseModel):
+    question: str
+
+
+@router.post(
+    "/projects/{project_id}/campaigns/{campaign_id}/questions/improve",
+    response_model=QuestionImproveOut,
+)
+async def improve_investigation_question(
+    payload: QuestionImproveIn,
+    project_id: str,
+    campaign: Campaign = Depends(_require_campaign),
+    db: AsyncSession = Depends(get_db),
+):
+    """Refine the user's draft chat question using the campaign's brand
+    profile + objective. Same fast/cheap model that powers next-step
+    chips and the Studio prompt suggester. Non-blocking failure mode —
+    a 502 surfaces in the UI but never locks the user out of just
+    sending their draft as-is."""
+    try:
+        proj_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="project not found")
+    brand = await get_brand_profile(db, proj_uuid)
+
+    brand_block = render_brand_block(brand) if brand else ""
+    campaign_block = render_campaign_block(campaign) or f"Active campaign: {campaign.name}"
+
+    chat = CloudflareChat(
+        api_key=CLOUDFLARE_API_KEY,
+        account_id=CLOUDFLARE_ACCOUNT_ID,
+    )
+    try:
+        improved = chat.improve_question(
+            brand_block=brand_block,
+            campaign_block=campaign_block,
+            draft=payload.draft,
+        )
+    except CloudflareAPIError as e:
+        raise HTTPException(status_code=502, detail=f"could not improve: {e}")
+
+    if not improved or len(improved) < 6:
+        raise HTTPException(
+            status_code=502,
+            detail="empty refinement — retry or send your draft as-is",
+        )
+    return QuestionImproveOut(question=improved)

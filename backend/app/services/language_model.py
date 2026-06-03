@@ -2,10 +2,13 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Optional, List, Dict
 from enum import Enum
 import json
+import logging
 import re
 import httpx
 import requests
 from pydantic import Field
+
+logger = logging.getLogger(__name__)
 
 # Custom exceptions
 class CloudflareAPIError(Exception):
@@ -302,20 +305,76 @@ class CloudflareChat:
         when the user has selected a specific chat model in the UI, or when
         an auxiliary call wants a smaller/faster model than the chat default.
 
-        Raises:
-            CloudflareAPIError: If the API call fails
+        Rotation: walks `text_credential_pool()` (primary text creds +
+        image-account fallback slots). On a 429 / auth quota error from
+        one account, logs and tries the next. Raises CloudflareAPIError
+        only when every slot returned a quota error or a non-quota
+        failure short-circuits the loop.
         """
-        url = self._url_for(model) if model is not None else self.full_url
-        try:
-            response = requests.post(
-                url,
-                headers=self._get_headers(),
-                json={"messages": messages, "max_tokens": max_tokens},
+        # Local import to avoid a startup-time circular: image_gen
+        # imports nothing from this module, but keeping the import
+        # local keeps the dependency direction obvious.
+        from app.services.image_gen import is_quota_error, text_credential_pool
+
+        chosen_model = model if model is not None else self.model
+        pool = text_credential_pool(self.account_id, self.api_key)
+        if not pool:
+            raise CloudflareAPIError(
+                "no cloudflare credentials configured for text generation"
             )
-            response.raise_for_status()
+
+        body = {"messages": messages, "max_tokens": max_tokens}
+        last_error: Optional[Exception] = None
+
+        for slot_index, (account_id, api_key) in enumerate(pool, start=1):
+            url = (
+                BASE_URL.format(account_id=account_id) + chosen_model.value
+            )
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            try:
+                response = requests.post(url, headers=headers, json=body)
+            except requests.exceptions.RequestException as e:
+                logger.warning(
+                    "chat slot %d/%d transport error: %s — trying next slot",
+                    slot_index, len(pool), e,
+                )
+                last_error = CloudflareAPIError(f"API call failed: {e}")
+                continue
+
+            if response.status_code >= 400:
+                body_text = response.text or ""
+                if is_quota_error(response.status_code, body_text):
+                    logger.warning(
+                        "chat slot %d/%d quota / auth (%s) — trying next "
+                        "slot. body=%s",
+                        slot_index, len(pool), response.status_code,
+                        body_text[:300],
+                    )
+                    last_error = CloudflareAPIError(
+                        f"Cloudflare returned {response.status_code}: "
+                        f"{body_text[:300]}"
+                    )
+                    continue
+                # Non-quota error — model unavailable, malformed prompt,
+                # etc. Short-circuit so the user gets the real message.
+                raise CloudflareAPIError(
+                    f"API call failed ({response.status_code}): "
+                    f"{body_text[:500]}"
+                )
+
+            if slot_index > 1:
+                logger.info(
+                    "chat call succeeded on slot %d/%d (1..%d exhausted)",
+                    slot_index, len(pool), slot_index - 1,
+                )
             return response.json()
-        except requests.exceptions.RequestException as e:
-            raise CloudflareAPIError(f"API call failed: {str(e)}")
+
+        raise last_error or CloudflareAPIError(
+            "all cloudflare text-credential slots exhausted"
+        )
 
     def generate_answer(
         self,
@@ -437,49 +496,109 @@ class CloudflareChat:
         than `requests`) so the FastAPI event loop isn't blocked while the
         model is generating — important when several users are streaming
         simultaneously on a single worker.
+
+        Rotation: same pool as `_call_for_prompt` (primary text creds +
+        image-account fallback slots). Quota errors are detected on the
+        INITIAL response status before any tokens stream — we can't
+        recover mid-stream once tokens are flowing. Once a 200 is
+        returned and the SSE body starts, errors mid-stream abort the
+        turn the same way they did pre-rotation.
         """
+        from app.services.image_gen import is_quota_error, text_credential_pool
+
         formatted = self._build_answer_messages(
             search_results, chat_history, query, previous_queries, system_override
         )
-        url = self._url_for(model) if model is not None else self.full_url
-        payload = {"messages": formatted, "max_tokens": max_tokens, "stream": True}
+        chosen_model = model if model is not None else self.model
+        pool = text_credential_pool(self.account_id, self.api_key)
+        if not pool:
+            raise CloudflareAPIError(
+                "no cloudflare credentials configured for text streaming"
+            )
 
+        payload = {"messages": formatted, "max_tokens": max_tokens, "stream": True}
         # No artificial overall timeout — long answers can legitimately take
         # >60s. The read timeout guards against a stalled connection between
         # chunks instead.
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "POST", url, headers=self._get_headers(), json=payload
-            ) as response:
-                if response.status_code >= 400:
-                    body = await response.aread()
-                    raise CloudflareAPIError(
-                        f"Streaming call failed ({response.status_code}): {body.decode('utf-8', errors='replace')[:500]}"
-                    )
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    # Cloudflare always prefixes payload lines with `data: `.
-                    # Other SSE fields (event:, id:) are not emitted by their
-                    # current implementation but skip them defensively.
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if not data:
-                        continue
-                    if data == "[DONE]":
+
+        last_error: Optional[Exception] = None
+        for slot_index, (account_id, api_key) in enumerate(pool, start=1):
+            url = BASE_URL.format(account_id=account_id) + chosen_model.value
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    async with client.stream(
+                        "POST", url, headers=headers, json=payload
+                    ) as response:
+                        if response.status_code >= 400:
+                            body = await response.aread()
+                            body_text = body.decode("utf-8", errors="replace")[:500]
+                            if is_quota_error(response.status_code, body_text):
+                                logger.warning(
+                                    "stream slot %d/%d quota / auth (%s) — "
+                                    "trying next slot. body=%s",
+                                    slot_index, len(pool),
+                                    response.status_code, body_text[:300],
+                                )
+                                last_error = CloudflareAPIError(
+                                    f"Streaming call failed "
+                                    f"({response.status_code}): {body_text}"
+                                )
+                                continue
+                            raise CloudflareAPIError(
+                                f"Streaming call failed "
+                                f"({response.status_code}): {body_text}"
+                            )
+
+                        if slot_index > 1:
+                            logger.info(
+                                "stream succeeded on slot %d/%d "
+                                "(1..%d exhausted)",
+                                slot_index, len(pool), slot_index - 1,
+                            )
+
+                        async for line in response.aiter_lines():
+                            if not line:
+                                continue
+                            # Cloudflare always prefixes payload lines with
+                            # `data: `. Other SSE fields (event:, id:) are
+                            # not emitted by their current implementation
+                            # but skip them defensively.
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if not data:
+                                continue
+                            if data == "[DONE]":
+                                return
+                            try:
+                                chunk = json.loads(data)
+                            except json.JSONDecodeError:
+                                # Malformed line — skip rather than abort
+                                # the whole turn. The model will still
+                                # produce subsequent well-formed chunks.
+                                continue
+                            delta = _extract_stream_delta(chunk)
+                            if delta:
+                                yield delta
+                        # Stream consumed cleanly without [DONE] — return
+                        # rather than fall through to the next slot.
                         return
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        # Malformed line — skip rather than abort the whole
-                        # turn. The model will still produce subsequent
-                        # well-formed chunks.
-                        continue
-                    delta = _extract_stream_delta(chunk)
-                    if delta:
-                        yield delta
+            except httpx.HTTPError as e:
+                logger.warning(
+                    "stream slot %d/%d transport error: %s — trying next",
+                    slot_index, len(pool), e,
+                )
+                last_error = CloudflareAPIError(f"Streaming transport error: {e}")
+                continue
+
+        raise last_error or CloudflareAPIError(
+            "all cloudflare text-credential slots exhausted"
+        )
 
     def score_search_results(self, query: str, results: List[Dict]) -> Dict[int, int]:
         """Score search results 0–100 for relevance to the user's query.
@@ -597,4 +716,165 @@ class CloudflareChat:
                 cleaned.append(stripped)
             if len(cleaned) == 3:
                 break
+        return cleaned
+
+    def suggest_image_prompt(
+        self,
+        *,
+        brand_block: str,
+        campaign_block: str,
+        hint: Optional[str] = None,
+    ) -> str:
+        """Compose a creative-brief prompt for the studio image generator
+        from brand + campaign context.
+
+        Single-shot LLM call on the fast/cheap model — output is one
+        line of free-text that drops straight into the Studio prompt
+        textarea. The user can then edit it or hit generate as-is.
+
+        `brand_block` is the system-prompt brand snippet (company name,
+        ICP, channels, voice). `campaign_block` is the campaign objective
+        + date window. `hint` is whatever the user has already typed in
+        the Studio textarea — if present, the LLM refines toward it
+        instead of generating from scratch.
+        """
+        directive = (
+            "You are a senior performance-marketing creative director. Your job "
+            "is to write a single, vivid image-generation prompt that an AI "
+            "image model (Flux) can render straight into an ad creative.\n\n"
+            "Rules:\n"
+            "- Output ONLY the prompt text. No preamble, no headers, no "
+            "options A/B/C, no quotes around it.\n"
+            "- Under 60 words, single paragraph.\n"
+            "- Concrete visual nouns + scene + mood. Mention subject, "
+            "setting, lighting, framing. Avoid copywriting / headlines / "
+            "logos / text-on-image (image models render text poorly).\n"
+            "- Match the brand voice. Reference the campaign objective "
+            "if it's specific enough to influence the image.\n"
+            "- Photorealistic by default unless the brand voice implies "
+            "otherwise."
+        )
+        context_parts = [brand_block.strip(), campaign_block.strip()]
+        context_parts = [p for p in context_parts if p]
+        context = "\n\n".join(context_parts) or "no brand or campaign context available"
+
+        user_msg = f"BRAND + CAMPAIGN CONTEXT:\n{context}\n\n"
+        if hint and hint.strip():
+            user_msg += (
+                f"USER'S DRAFT (refine into a stronger image-gen prompt — "
+                f"keep the user's intent):\n{hint.strip()[:600]}\n\n"
+                "Write the refined prompt now."
+            )
+        else:
+            user_msg += (
+                "Write a single image-gen prompt for an ad creative aligned "
+                "with this brand + campaign. Output the prompt only."
+            )
+
+        formatted = [
+            {"role": "system", "content": directive},
+            {"role": "user", "content": user_msg},
+        ]
+        try:
+            response = self._call_for_prompt(
+                formatted,
+                max_tokens=SHORT_CALL_MAX_TOKENS,
+                model=DEFAULT_NEXT_STEPS_MODEL,
+            )
+            raw = _extract_response_text(response)
+        except CloudflareAPIError as e:
+            raise
+
+        # Clean up: strip leading/trailing whitespace + accidental
+        # markdown emphasis + surrounding quotes the model sometimes
+        # adds despite the explicit instruction.
+        cleaned = (raw or "").strip()
+        # Strip a leading "Prompt:" preamble if it slips through.
+        for prefix in ("Prompt:", "prompt:", "Image prompt:", "Image:"):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+        cleaned = cleaned.strip('"').strip("'").strip("*").strip("`").strip()
+        # Collapse newlines — image-gen prompts are one paragraph.
+        cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
+        return cleaned
+
+    def improve_question(
+        self,
+        *,
+        brand_block: str,
+        campaign_block: str,
+        draft: str,
+    ) -> str:
+        """Refine a user's investigation prompt using brand + campaign
+        context.
+
+        Differs from suggest_image_prompt (which writes a Flux-shaped
+        image-gen prompt) — this returns a *better question* for the
+        chat surface. Same fast/cheap model. Output is a single short
+        question the user can edit-and-send.
+
+        Rules baked into the directive:
+          - Stays a question, not an instruction or essay.
+          - Stays one or two sentences max; long prompts hurt LLM focus
+            on the answer side.
+          - Inherits the user's intent — we sharpen, not replace.
+          - Mentions specific channels / metrics / time horizons when
+            the draft implies them but doesn't name them, since those
+            anchor better answers (e.g. "Q4 ROAS" beats "performance").
+        """
+        if not draft or not draft.strip():
+            raise CloudflareAPIError("draft cannot be empty")
+
+        directive = (
+            "You are a senior performance-marketing copilot helping a "
+            "marketer write a sharper investigation question for an AI "
+            "assistant. The assistant will answer THEIR question — your "
+            "job is to refine THEIR question.\n\n"
+            "Rules:\n"
+            "- Output ONLY the refined question. No preamble, no header, "
+            "no quotes around it, no options A/B/C.\n"
+            "- Keep it ONE OR TWO sentences. Strict.\n"
+            "- It must remain a question (or a request) — not an "
+            "instruction list, not an essay, not a brief.\n"
+            "- Keep the user's intent. Don't replace their topic; "
+            "sharpen the framing.\n"
+            "- When the draft implies metrics (CAC, ROAS, CPP, CTR), "
+            "channels (Meta, Google, TikTok, Klaviyo), or a time horizon, "
+            "name them explicitly — concrete questions get better "
+            "answers than abstract ones.\n"
+            "- Match the brand voice if relevant; otherwise keep the "
+            "register operator-direct."
+        )
+        context_parts = [brand_block.strip(), campaign_block.strip()]
+        context_parts = [p for p in context_parts if p]
+        context = "\n\n".join(context_parts) or "no brand or campaign context available"
+
+        user_msg = (
+            f"BRAND + CAMPAIGN CONTEXT:\n{context}\n\n"
+            f"USER'S DRAFT QUESTION:\n{draft.strip()[:600]}\n\n"
+            "Write the refined question now. One or two sentences. "
+            "Output the question only."
+        )
+
+        formatted = [
+            {"role": "system", "content": directive},
+            {"role": "user", "content": user_msg},
+        ]
+        response = self._call_for_prompt(
+            formatted,
+            max_tokens=SHORT_CALL_MAX_TOKENS,
+            model=DEFAULT_NEXT_STEPS_MODEL,
+        )
+        raw = _extract_response_text(response)
+
+        cleaned = (raw or "").strip()
+        for prefix in (
+            "Refined question:", "refined question:",
+            "Question:", "question:",
+        ):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+        cleaned = cleaned.strip('"').strip("'").strip("*").strip("`").strip()
+        # Collapse newlines — single-line questions only.
+        cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
         return cleaned

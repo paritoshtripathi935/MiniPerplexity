@@ -25,23 +25,29 @@ import {
   Link as LinkIcon,
   Loader2,
   Plus,
+  Send,
   Unlink,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../components/AppLayout';
 import { BRAND_LOGOS } from '../components/BrandLogos';
 import {
+  connectSlack,
   disconnectMeta,
+  disconnectSlack,
   getIntegrationsStatus,
   getMetaAuthorizeUrl,
+  getSlackStatus,
   linkProjectAdAccount,
   listMetaAdAccounts,
   listProjectAdAccounts,
+  sendSlackTest,
   unlinkProjectAdAccount,
   type AdAccountLink,
   type IntegrationsStatus,
   type MetaAdAccount,
   type ProjectSummary,
+  type SlackStatus,
 } from '../services/api';
 import { useProjects } from '../services/queries';
 
@@ -140,9 +146,75 @@ export function IntegrationsPage(_props: Props) {
     () => status?.providers.find(p => p.provider === 'meta') ?? null,
     [status],
   );
+  const slackStatusFlag = useMemo(
+    () => status?.providers.find(p => p.provider === 'slack') ?? null,
+    [status],
+  );
 
-  const activeCount = metaStatus?.connected ? 1 : 0;
-  const totalCount = PROVIDERS.length;
+  // Detail fetch for Slack — pulls the masked URL + connected_at when
+  // there's an active connection. Used by the manage panel; we only
+  // fetch when status.connected flips to true so disconnected cards
+  // don't trigger a useless round-trip.
+  const [slackDetail, setSlackDetail] = useState<SlackStatus | null>(null);
+  useEffect(() => {
+    if (!isSignedIn || !slackStatusFlag?.connected) {
+      setSlackDetail(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await getSlackStatus(getToken);
+        if (!cancelled) setSlackDetail(d);
+      } catch {
+        // non-fatal — manage panel falls back to "details unavailable"
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, slackStatusFlag?.connected, getToken]);
+
+  // Tag-count buckets for the summary strip. Mirrors `statusState()` so
+  // the totals stay in sync with what each card renders. The numbers
+  // sum to PROVIDERS.length.
+  const counts = useMemo(() => {
+    let active = 0;
+    let live = 0;
+    let comingSoon = 0;
+    for (const p of PROVIDERS) {
+      const state = statusState({
+        isMeta: p.id === 'meta',
+        metaConnected: !!metaStatus?.connected,
+        metaAvailable: !!metaStatus?.available,
+        isSlack: p.id === 'slack',
+        slackConnected: !!slackStatusFlag?.connected,
+      });
+      if (state === 'active') active += 1;
+      else if (state === 'live') live += 1;
+      else comingSoon += 1;
+    }
+    return { active, live, comingSoon };
+  }, [metaStatus?.connected, metaStatus?.available, slackStatusFlag?.connected]);
+
+  async function handleSlackDisconnect() {
+    if (!window.confirm('disconnect slack? you can re-paste the webhook url later to reconnect.')) return;
+    setErr(null);
+    try {
+      await disconnectSlack(getToken);
+      setSlackDetail(null);
+      await refreshStatus();
+      setBanner({ kind: 'success', text: 'slack disconnected.' });
+    } catch (e: any) {
+      setErr(e?.message ?? 'failed to disconnect');
+    }
+  }
+
+  async function handleSlackConnected(detail: SlackStatus) {
+    setSlackDetail(detail);
+    await refreshStatus();
+    setBanner({ kind: 'success', text: 'slack connected. test message sent to the channel.' });
+  }
 
   async function handleMetaConnect() {
     setErr(null);
@@ -188,7 +260,7 @@ export function IntegrationsPage(_props: Props) {
           a separate "active" section. */}
       <div className="mb-5 flex flex-wrap items-center gap-2 text-body-sm text-fg-muted">
         <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
-          {activeCount} active · {totalCount - activeCount} coming soon
+          {counts.active} active · {counts.live} live · {counts.comingSoon} coming soon
         </span>
         <span className="text-fg-subtle">·</span>
         <span>vote with a click — we ship the next integration based on demand</span>
@@ -256,6 +328,10 @@ export function IntegrationsPage(_props: Props) {
                       metaAvailable={!!metaStatus?.available}
                       onMetaConnect={handleMetaConnect}
                       onMetaDisconnect={handleMetaDisconnect}
+                      slackConnected={!!slackStatusFlag?.connected}
+                      slackDetail={slackDetail}
+                      onSlackConnected={handleSlackConnected}
+                      onSlackDisconnect={handleSlackDisconnect}
                     />
                   ))}
                 </div>
@@ -276,19 +352,30 @@ function ProviderCard({
   metaAvailable,
   onMetaConnect,
   onMetaDisconnect,
+  slackConnected,
+  slackDetail,
+  onSlackConnected,
+  onSlackDisconnect,
 }: {
   provider: ProviderDef;
   metaConnected: boolean;
   metaAvailable: boolean;
   onMetaConnect: () => void;
   onMetaDisconnect: () => void;
+  slackConnected: boolean;
+  slackDetail: SlackStatus | null;
+  onSlackConnected: (detail: SlackStatus) => void | Promise<void>;
+  onSlackDisconnect: () => void;
 }) {
   const isMeta = provider.id === 'meta';
-  const isActive = isMeta && metaConnected;
+  const isSlack = provider.id === 'slack';
+  const isActive =
+    (isMeta && metaConnected) || (isSlack && slackConnected);
   const Logo = BRAND_LOGOS[provider.id];
 
-  // Connected Meta is expandable to surface the per-project ad-account
-  // linker. Other cards never expand.
+  // Connected Meta + both Slack states (connect form when not connected,
+  // manage panel when connected) use the expansion. Other cards never
+  // expand.
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -316,7 +403,7 @@ function ProviderCard({
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/30">
-          <StatusTag active={isActive} />
+          <StatusTag state={statusState({ isMeta, metaConnected, metaAvailable, isSlack, slackConnected })} />
           <CardAction
             provider={provider}
             isMeta={isMeta}
@@ -325,6 +412,8 @@ function ProviderCard({
             expanded={expanded}
             onToggleExpand={() => setExpanded(v => !v)}
             onMetaConnect={onMetaConnect}
+            isSlack={isSlack}
+            slackConnected={slackConnected}
           />
         </div>
       </div>
@@ -335,16 +424,74 @@ function ProviderCard({
           <ConnectedMetaBody onDisconnect={onMetaDisconnect} />
         </div>
       )}
+
+      {/* Slack — same expansion pattern but two flavours of body */}
+      {isSlack && expanded && (
+        <div
+          className={clsx(
+            'px-4 pb-4 pt-1 border-t',
+            slackConnected ? 'border-emerald-400/15' : 'border-border/40',
+          )}
+        >
+          {slackConnected ? (
+            <ConnectedSlackBody
+              detail={slackDetail}
+              onDisconnect={onSlackDisconnect}
+            />
+          ) : (
+            <SlackConnectForm onConnected={onSlackConnected} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function StatusTag({ active }: { active: boolean }) {
-  if (active) {
+/** Status tag state machine — three values:
+ *
+ *   - "active"      — this user has the integration connected. Emerald
+ *                     pill with a blinking dot.
+ *   - "live"        — the integration is shipped + reachable but this
+ *                     user hasn't connected it yet. Brand-tinted pill,
+ *                     no dot.
+ *   - "coming-soon" — not yet built. Neutral grey pill.
+ *
+ *   The previous binary (active / coming-soon) was misleading once
+ *   Slack went live — disconnected users saw "coming soon" on a card
+ *   they could literally click connect on. "live" closes that gap.
+ */
+type StatusTagState = 'active' | 'live' | 'coming-soon';
+
+function statusState(args: {
+  isMeta: boolean;
+  metaConnected: boolean;
+  metaAvailable: boolean;
+  isSlack: boolean;
+  slackConnected: boolean;
+}): StatusTagState {
+  if (args.isSlack) {
+    return args.slackConnected ? 'active' : 'live';
+  }
+  if (args.isMeta) {
+    if (args.metaConnected) return 'active';
+    return args.metaAvailable ? 'live' : 'coming-soon';
+  }
+  return 'coming-soon';
+}
+
+function StatusTag({ state }: { state: StatusTagState }) {
+  if (state === 'active') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 h-6 rounded-md border border-emerald-400/30 bg-emerald-400/10 font-mono text-[10px] uppercase tracking-wider text-emerald-400">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-status-blink" aria-hidden />
         active
+      </span>
+    );
+  }
+  if (state === 'live') {
+    return (
+      <span className="inline-flex items-center px-2 h-6 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] uppercase tracking-wider text-brand">
+        live
       </span>
     );
   }
@@ -363,6 +510,8 @@ function CardAction({
   expanded,
   onToggleExpand,
   onMetaConnect,
+  isSlack,
+  slackConnected,
 }: {
   provider: ProviderDef;
   isMeta: boolean;
@@ -371,6 +520,8 @@ function CardAction({
   expanded: boolean;
   onToggleExpand: () => void;
   onMetaConnect: () => void;
+  isSlack: boolean;
+  slackConnected: boolean;
 }) {
   // Meta: three sub-states drive three different actions.
   if (isMeta) {
@@ -405,6 +556,37 @@ function CardAction({
       <span className="font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
         config needed
       </span>
+    );
+  }
+
+  // Slack: two states. Connected → manage toggle. Not connected →
+  // "connect" button that opens the paste-URL form below the card.
+  if (isSlack) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        className={clsx(
+          'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-body-sm font-medium transition-shadow',
+          slackConnected
+            ? 'text-fg-muted hover:text-fg'
+            : 'bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white shadow-[0_0_14px_rgba(124,92,255,0.3)] hover:shadow-[0_0_20px_rgba(124,92,255,0.45)]',
+        )}
+      >
+        {slackConnected ? (
+          <>
+            {expanded ? 'hide' : 'manage'}
+            <ChevronDown
+              className={clsx('w-3 h-3 transition-transform', expanded && 'rotate-180')}
+            />
+          </>
+        ) : (
+          <>
+            <LinkIcon className="w-3 h-3" />
+            connect
+          </>
+        )}
+      </button>
     );
   }
 
@@ -625,6 +807,159 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* -------- Slack — connect form (not yet connected) ---------------------- */
+
+function SlackConnectForm({
+  onConnected,
+}: {
+  onConnected: (detail: SlackStatus) => void | Promise<void>;
+}) {
+  const { getToken } = useAuth();
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleConnect(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const detail = await connectSlack(url.trim(), getToken);
+      await onConnected(detail);
+      setUrl('');
+    } catch (e: any) {
+      setErr(e?.message ?? 'failed to connect slack');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleConnect} className="space-y-3 pt-3">
+      <p className="text-body-sm text-fg-muted leading-relaxed">
+        paste an <strong className="text-fg">incoming webhook URL</strong> from
+        your slack workspace. we'll send a test message to confirm the channel
+        is wired before saving.
+      </p>
+      <div className="text-body-sm text-fg-subtle">
+        in slack:{' '}
+        <a
+          href="https://api.slack.com/messaging/webhooks"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-brand hover:underline"
+        >
+          create an incoming webhook →
+        </a>
+      </div>
+      <input
+        type="url"
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        placeholder="https://hooks.slack.com/services/T.../B.../..."
+        autoFocus
+        required
+        className="w-full h-9 px-3 rounded-md border border-border/60 bg-surface-sunken/40 text-body-sm text-fg placeholder:text-fg-subtle focus:border-brand/60 focus:outline-none transition-colors"
+      />
+      {err && (
+        <p className="text-body-sm text-rose-300 flex items-start gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          {err}
+        </p>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="submit"
+          disabled={busy || !url.trim()}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white text-body-sm font-medium shadow-[0_0_14px_rgba(124,92,255,0.3)] hover:shadow-[0_0_20px_rgba(124,92,255,0.45)] transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <LinkIcon className="w-3 h-3" />}
+          {busy ? 'testing…' : 'test & save'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* -------- Slack — connected body (manage / test / disconnect) ----------- */
+
+function ConnectedSlackBody({
+  detail,
+  onDisconnect,
+}: {
+  detail: SlackStatus | null;
+  onDisconnect: () => void;
+}) {
+  const { getToken } = useAuth();
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<
+    { kind: 'success' | 'error'; text: string } | null
+  >(null);
+
+  async function handleTest() {
+    if (testing) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      await sendSlackTest(getToken);
+      setTestResult({ kind: 'success', text: 'test message sent.' });
+    } catch (e: any) {
+      setTestResult({ kind: 'error', text: e?.message ?? 'test failed' });
+    } finally {
+      setTesting(false);
+      window.setTimeout(() => setTestResult(null), 3000);
+    }
+  }
+
+  return (
+    <div className="space-y-3 pt-3">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle mb-1">
+          webhook url
+        </p>
+        <p className="font-mono text-body-sm text-fg break-all">
+          {detail?.masked_url ?? '••• loading •••'}
+        </p>
+      </div>
+      <p className="text-body-sm text-fg-muted leading-relaxed">
+        use the <strong className="text-fg">share to slack</strong> button on
+        any finished investigation turn to post the answer + citations to your
+        channel.
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={testing}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40 text-body-sm transition-colors disabled:opacity-50"
+        >
+          {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+          {testing ? 'sending…' : 'send test'}
+        </button>
+        <button
+          type="button"
+          onClick={onDisconnect}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border/60 text-fg-muted hover:text-rose-300 hover:border-rose-400/30 text-body-sm transition-colors"
+        >
+          <Unlink className="w-3 h-3" />
+          disconnect
+        </button>
+        {testResult && (
+          <span
+            className={clsx(
+              'text-body-sm',
+              testResult.kind === 'success' ? 'text-emerald-300' : 'text-rose-300',
+            )}
+          >
+            {testResult.text}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
