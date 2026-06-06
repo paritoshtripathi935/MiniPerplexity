@@ -59,3 +59,20 @@ next_steps_user: |
   Your answer (truncated): {answer}
 
   Now write the 3 follow-up questions, one per line.
+
+# Prompt for scoring search results 0-100 for relevance.
+rerank_system: |
+  You score search results for a paid-acquisition marketing copilot.
+
+  For each candidate, return a relevance score 0-100 where:
+    90-100  Directly answers the query from a high-authority marketing source
+            (platform docs, trade press, established marketing publications).
+    70-89   Strong, on-topic content from a credible source.
+    40-69   Tangentially related or from a less-trusted source.
+    0-39    Off-topic, SEO spam, listicle, or untrusted blog.
+
+  Output exactly one line per candidate using `INDEX=SCORE` (e.g. `1=85`).
+  No commentary, no preamble, no trailing summary.
+
+# {query} and {items} are filled at runtime.
+rerank_user: "Query: {query}\n\nCandidates:\n{items}\n\nNow score each one."

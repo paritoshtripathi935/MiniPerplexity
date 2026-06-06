@@ -45,6 +45,7 @@ from app.services import CloudflareChat, fetch_content_from_custom_url, perform_
 from app.services.language_model import (
     CHAT_MODEL_CATALOG,
     DEFAULT_CHAT_MODEL,
+    CloudflareModel,
     is_valid_chat_model,
     resolve_chat_model,
 )
@@ -57,6 +58,58 @@ router = APIRouter()
 MAX_PREVIOUS_QUERIES = 3
 
 
+def _make_cf_chat() -> CloudflareChat:
+    return CloudflareChat(api_key=CLOUDFLARE_API_KEY, account_id=CLOUDFLARE_ACCOUNT_ID)
+
+
+async def _build_context(
+    db: AsyncSession,
+    session_id: str,
+    user: User,
+    search_results: list[dict],
+    campaign_id: Optional[uuid.UUID],
+    play_id: Optional[str],
+) -> tuple[list[dict], list[str], str, CloudflareModel]:
+    await get_or_create_session(db, session_id, user_id=user.id, campaign_id=campaign_id)
+    tag_authority_in_place(search_results)
+    chat_history = await get_chat_history(db, session_id)
+    previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
+    profile = await get_brand_profile_for_user(db, user.id)
+    campaign = await get_session_campaign(db, session_id)
+    play = get_play(play_id) if play_id else None
+    system_override = compose_system_prompt(profile=profile, campaign=campaign, play=play)
+    chosen_model = resolve_chat_model(user.preferred_chat_model)
+    return chat_history, previous_queries, system_override, chosen_model
+
+
+async def _persist_answer(
+    db: AsyncSession,
+    session_id: str,
+    query_text: str,
+    search_results: list[dict],
+    answer: str,
+    play_id: Optional[str],
+    latency_ms: int,
+    chosen_model: CloudflareModel,
+):
+    query_row = await find_or_create_query(db, session_id=session_id, query_text=query_text)
+    sr_rows = await upsert_search_results(db, query_row.id, search_results)
+    await append_message(
+        db, session_id=session_id, role=MessageRole.user,
+        content=query_text, query_id=query_row.id,
+    )
+    assistant_msg = await append_message(
+        db, session_id=session_id, role=MessageRole.assistant,
+        content=answer, query_id=query_row.id,
+        play_id=play_id, latency_ms=latency_ms, model_name=chosen_model,
+    )
+    citations_text = track_citations(search_results)
+    cited_urls = [r.get("url") for r in search_results if r.get("url")]
+    url_to_id = {row.url: row.id for row in sr_rows}
+    await add_citations(db, assistant_msg.id, [url_to_id[u] for u in cited_urls if u in url_to_id])
+    return assistant_msg, citations_text
+
+
 @router.post("/search/{session_id}")
 async def search(
     session_id: str,
@@ -66,20 +119,8 @@ async def search(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Run a search (or fetch a custom URL) and persist the query + results.
-
-    Auth required. Anonymous sessions were removed by migration 007 — every
-    session must anchor to a (project, campaign) pair owned by a user.
-
-    `campaign_id` anchors a brand-new session to the active campaign in the
-    URL (post-#79 follow-up: tool routes live under
-    /projects/:p/c/:c/...). Ignored when the session already exists —
-    project + campaign are snapshotted at create-time.
-    """
     try:
-        await get_or_create_session(
-            db, session_id, user_id=user.id, campaign_id=campaign_id
-        )
+        await get_or_create_session(db, session_id, user_id=user.id, campaign_id=campaign_id)
         query_row = await add_query(
             db,
             session_id=session_id,
@@ -89,37 +130,25 @@ async def search(
 
         if custom_url and custom_url.strip():
             try:
-                custom_result = fetch_content_from_custom_url(custom_url.strip())
+                results = [fetch_content_from_custom_url(custom_url.strip())]
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
-            results = [custom_result]
         else:
             results = perform_search(search_request.query)
 
-        # Persist results so /answer can resolve citation_number → search_result_id.
         normalised = [r if isinstance(r, dict) else r.model_dump() for r in results]
 
-        # LLM-driven relevance scoring layered on top of the static domain
-        # authority. Skipped for custom-URL fetches (single result) and when
-        # there are no results — both are no-op cases for ranking.
         llm_scores: dict[int, int] = {}
         if not (custom_url and custom_url.strip()) and len(normalised) > 1:
             try:
-                cf_chat = CloudflareChat(
-                    api_key=CLOUDFLARE_API_KEY,
-                    account_id=CLOUDFLARE_ACCOUNT_ID,
-                )
-                llm_scores = cf_chat.score_search_results(
+                llm_scores = _make_cf_chat().score_search_results(
                     query=search_request.query, results=normalised
                 )
             except Exception:
-                # Reranking is a quality boost, not a correctness requirement.
-                # Static authority alone is fine when the LLM call fails.
                 logger.warning("LLM rerank failed; falling back to static authority", exc_info=True)
 
         ranked = rerank(normalised, llm_scores=llm_scores or None)
         await upsert_search_results(db, query_row.id, ranked)
-
         return ranked
 
     except HTTPException:
@@ -138,47 +167,14 @@ async def get_answer(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate an answer grounded in the supplied search results, with citations.
-
-    `play_id`, when supplied, layers a Play's instructions + output schema
-    onto the system prompt. The user's active-project brand profile is always
-    composed in. `campaign_id` anchors a brand-new session to the URL's
-    campaign scope (see /search for the rationale).
-    """
     try:
-        await get_or_create_session(
-            db, session_id, user_id=user.id, campaign_id=campaign_id
-        )
-
         search_results = [r.model_dump() for r in query_request.search_results]
-        # Belt-and-suspenders: re-attach authority tags so the chat UI's
-        # "authoritative" badge renders even if the client dropped them.
-        tag_authority_in_place(search_results)
-
-        chat_history = await get_chat_history(db, session_id)
-        previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
-
-        # Compose marketing-tuned system prompt. Brand profile resolves via
-        # the user's default project (one PK lookup off the upserted user).
-        # Campaign comes from the session's snapshotted campaign_id — gives
-        # the LLM the active campaign's objective + date window.
-        profile = await get_brand_profile_for_user(db, user.id)
-        campaign = await get_session_campaign(db, session_id)
-        play = get_play(play_id) if play_id else None
-        system_override = compose_system_prompt(
-            profile=profile, campaign=campaign, play=play
+        chat_history, previous_queries, system_override, chosen_model = await _build_context(
+            db, session_id, user, search_results, campaign_id, play_id
         )
 
-        cf_chat = CloudflareChat(
-            api_key=CLOUDFLARE_API_KEY,
-            account_id=CLOUDFLARE_ACCOUNT_ID,
-        )
-        chosen_model = resolve_chat_model(user.preferred_chat_model)
-        # Time only the LLM call: it's the dominant + most variable cost and
-        # the number is directly attributable to the chosen model. DB writes
-        # below are excluded so the surfaced metric stays a clean signal.
         t0 = time.perf_counter()
-        answer = cf_chat.generate_answer(
+        answer = _make_cf_chat().generate_answer(
             search_results=search_results,
             chat_history=chat_history,
             query=query_request.query,
@@ -188,38 +184,10 @@ async def get_answer(
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        # Track this turn: reuse the query row from /search if it's still the
-        # latest, otherwise create one. Search results upsert is idempotent.
-        query_row = await find_or_create_query(
-            db, session_id=session_id, query_text=query_request.query
+        assistant_msg, citations_text = await _persist_answer(
+            db, session_id, query_request.query, search_results,
+            answer, play_id, latency_ms, chosen_model,
         )
-        sr_rows = await upsert_search_results(db, query_row.id, search_results)
-
-        await append_message(
-            db,
-            session_id=session_id,
-            role=MessageRole.user,
-            content=query_request.query,
-            query_id=query_row.id,
-        )
-        assistant_msg = await append_message(
-            db,
-            session_id=session_id,
-            role=MessageRole.assistant,
-            content=answer,
-            query_id=query_row.id,
-            play_id=play_id,
-            latency_ms=latency_ms,
-            model_name=chosen_model,
-        )
-
-        # Build citation rows mapping cited URLs back to the search_result UUIDs.
-        citations_text = track_citations(search_results)
-        cited_urls_in_order = [r.get("url") for r in search_results if r.get("url")]
-        url_to_id = {row.url: row.id for row in sr_rows}
-        cited_ids = [url_to_id[u] for u in cited_urls_in_order if u in url_to_id]
-        await add_citations(db, assistant_msg.id, cited_ids)
-
         return QueryResponse(
             answer=answer,
             citations=citations_text,
@@ -236,7 +204,6 @@ async def get_answer(
 
 
 def _sse(event: str, data: dict) -> bytes:
-    """Encode a single SSE frame. Two-newline terminator per spec."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
@@ -249,44 +216,11 @@ async def stream_answer(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Streaming counterpart to /answer.
-
-    Emits one `event: token` per Cloudflare delta as the model generates,
-    followed by exactly one `event: done` carrying the persisted message
-    id, total latency, citation list and ranked search results — so the
-    client can stop showing the "thinking" indicator, attach next-step
-    fetches to the right db id, and rehydrate the right rail. On any
-    failure mid-stream we emit `event: error` instead of `done` and stop.
-
-    The DB writes happen *after* the stream finishes so a network hiccup
-    mid-generation doesn't leave a half-persisted assistant turn. The
-    tradeoff: if the client disconnects after seeing tokens but before
-    `done`, nothing gets persisted — the user can re-ask.
-    """
-    # Resolve everything that requires the DB session *before* we hand control
-    # to the streaming generator: FastAPI closes `db` once the route function
-    # returns, and yielding from inside the generator returns immediately.
-    await get_or_create_session(
-        db, session_id, user_id=user.id, campaign_id=campaign_id
-    )
     search_results = [r.model_dump() for r in query_request.search_results]
-    tag_authority_in_place(search_results)
-
-    chat_history = await get_chat_history(db, session_id)
-    previous_queries = await get_recent_queries(db, session_id, limit=MAX_PREVIOUS_QUERIES)
-
-    profile = await get_brand_profile_for_user(db, user.id)
-    campaign = await get_session_campaign(db, session_id)
-    play = get_play(play_id) if play_id else None
-    system_override = compose_system_prompt(
-        profile=profile, campaign=campaign, play=play
+    chat_history, previous_queries, system_override, chosen_model = await _build_context(
+        db, session_id, user, search_results, campaign_id, play_id
     )
-
-    cf_chat = CloudflareChat(
-        api_key=CLOUDFLARE_API_KEY,
-        account_id=CLOUDFLARE_ACCOUNT_ID,
-    )
-    chosen_model = resolve_chat_model(user.preferred_chat_model)
+    cf_chat = _make_cf_chat()
 
     async def event_stream():
         t0 = time.perf_counter()
@@ -310,38 +244,12 @@ async def stream_answer(
         answer = "".join(collected)
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        # Persist on completion. Mirrors the JSON /answer path exactly.
         try:
-            query_row = await find_or_create_query(
-                db, session_id=session_id, query_text=query_request.query
+            assistant_msg, citations_text = await _persist_answer(
+                db, session_id, query_request.query, search_results,
+                answer, play_id, latency_ms, chosen_model,
             )
-            sr_rows = await upsert_search_results(db, query_row.id, search_results)
-            await append_message(
-                db,
-                session_id=session_id,
-                role=MessageRole.user,
-                content=query_request.query,
-                query_id=query_row.id,
-            )
-            assistant_msg = await append_message(
-                db,
-                session_id=session_id,
-                role=MessageRole.assistant,
-                content=answer,
-                query_id=query_row.id,
-                play_id=play_id,
-                latency_ms=latency_ms,
-                model_name=chosen_model,
-            )
-            citations_text = track_citations(search_results)
-            cited_urls_in_order = [r.get("url") for r in search_results if r.get("url")]
-            url_to_id = {row.url: row.id for row in sr_rows}
-            cited_ids = [url_to_id[u] for u in cited_urls_in_order if u in url_to_id]
-            await add_citations(db, assistant_msg.id, cited_ids)
         except Exception as e:
-            # The user already saw the full answer in the stream — surface a
-            # soft error rather than tearing it down. They can refresh to
-            # see a fresh history fetch if persistence actually failed.
             logger.exception("Post-stream persistence failed")
             yield _sse("error", {"detail": f"Persisted partial: {e}"})
             return
@@ -357,8 +265,6 @@ async def stream_answer(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            # Disable proxy buffering so chunks reach the client promptly
-            # (relevant under nginx/render's reverse proxy).
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
@@ -381,21 +287,11 @@ async def list_my_sessions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Sidebar feed of the authenticated user's sessions.
-
-    Pass `campaign_id` to narrow to the active campaign (the common case
-    once the frontend's active-campaign store is wired up). `project_id`
-    is the broader filter when callers want all of a project's work
-    across campaigns. Omit both for the user-wide feed (legacy behaviour).
-    """
     rows = await list_sessions_for_user(
-        db,
-        user.id,
+        db, user.id,
         include_archived=include_archived,
-        limit=limit,
-        offset=offset,
-        campaign_id=campaign_id,
-        project_id=project_id,
+        limit=limit, offset=offset,
+        campaign_id=campaign_id, project_id=project_id,
     )
     return {"sessions": rows}
 
@@ -407,44 +303,25 @@ async def patch_session(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Rename or archive a session. Only the owner can patch."""
     updated = await update_session(
-        db,
-        session_id,
-        user_id=user.id,
-        title=payload.title,
-        is_archived=payload.is_archived,
+        db, session_id, user_id=user.id,
+        title=payload.title, is_archived=payload.is_archived,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {
-        "id": str(updated.id),
-        "title": updated.title,
-        "is_archived": updated.is_archived,
-    }
+    return {"id": str(updated.id), "title": updated.title, "is_archived": updated.is_archived}
 
 
 @router.get("/session/{session_id}/export")
-async def export_session(
-    session_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """Download a session's chat transcript as Markdown.
-
-    No auth required — anyone with the session_id can export, mirroring the
-    `/history` endpoint's access model.
-    """
+async def export_session(session_id: str, db: AsyncSession = Depends(get_db)):
     md = await export_session_markdown(db, session_id)
     if md is None:
         raise HTTPException(status_code=404, detail="Session not found")
-
     safe_name = session_id.replace("/", "_")[:64]
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={
-            "Content-Disposition": f'attachment; filename="miniperplexity-{safe_name}.md"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="miniperplexity-{safe_name}.md"'},
     )
 
 
@@ -455,22 +332,18 @@ async def search_history(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Full-text search across the user's past messages."""
     results = await search_user_messages(db, user.id, q, limit=limit)
     return {"query": q, "results": results}
 
 
 @router.get("/me")
 async def me(user: User = Depends(get_current_user)):
-    """Return the authenticated user's profile (creates the row on first call)."""
     return {
         "id": str(user.id),
         "clerk_user_id": user.clerk_user_id,
         "email": user.email,
         "display_name": user.display_name,
         "image_url": user.image_url,
-        # Materialise the preference so the UI dropdown can preselect even when
-        # the user hasn't chosen one (NULL → backend default).
         "preferred_chat_model": user.preferred_chat_model or DEFAULT_CHAT_MODEL.value,
     }
 
@@ -485,8 +358,6 @@ async def set_preferred_model(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Persist the user's chat-model preference. Whitelist-validated against
-    the curated catalog so we never write an arbitrary slug to the DB."""
     if not is_valid_chat_model(payload.model_id):
         raise HTTPException(status_code=400, detail="Unknown model")
     await update_user_preferred_model(db, user.id, payload.model_id)
@@ -495,19 +366,10 @@ async def set_preferred_model(
 
 @router.get("/models")
 async def list_chat_models(response: Response):
-    """Catalog of models the chat surface can choose from. Public — the UI
-    fetches this to populate the model selector. Stable IDs match what
-    `/me/preferred-model` accepts."""
-    # Static catalog, deploy-bound. 1h browser cache matches /plays.
     response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
     return {
         "models": [
-            {
-                "id": m.id,
-                "label": m.label,
-                "description": m.description,
-                "recommended": m.recommended,
-            }
+            {"id": m.id, "label": m.label, "description": m.description, "recommended": m.recommended}
             for m in CHAT_MODEL_CATALOG
         ],
         "default": DEFAULT_CHAT_MODEL.value,
@@ -520,7 +382,6 @@ async def clear_session(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a session and everything underneath it (cascades). Owner only."""
     deleted = await delete_session(db, session_id, user_id=user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -529,7 +390,6 @@ async def clear_session(
 
 @router.get("/session/{session_id}/history")
 async def get_history(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Return chat history + query list for a session."""
     history = await get_session_history(db, session_id)
     if history is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -538,16 +398,7 @@ async def get_history(session_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/messages/{message_id}/next-steps")
-async def post_message_next_steps(
-    message_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """Generate (or return cached) follow-up suggestions for an assistant turn.
-
-    Cheap single-shot LLM call. Persisted on the message's `next_steps`
-    JSONB so subsequent loads of the same conversation are free.
-    Returns `{items: string[]}` (possibly empty if generation failed).
-    """
+async def post_message_next_steps(message_id: str, db: AsyncSession = Depends(get_db)):
     msg = await get_message(db, message_id)
     if msg is None or msg.role != MessageRole.assistant:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -560,14 +411,7 @@ async def post_message_next_steps(
         await get_query_text(db, msg.query_id) if msg.query_id is not None else None
     ) or ""
 
-    cf_chat = CloudflareChat(
-        api_key=CLOUDFLARE_API_KEY,
-        account_id=CLOUDFLARE_ACCOUNT_ID,
-    )
-    items = cf_chat.generate_next_steps(user_query=user_query, assistant_answer=msg.content)
-
-    # Persist even when empty so we don't re-roll an LLM call that produced
-    # garbage on every page revisit. Subsequent loads will short-circuit.
+    items = _make_cf_chat().generate_next_steps(user_query=user_query, assistant_answer=msg.content)
     await set_message_next_steps(db, msg.id, items)
     return {"items": items}
 
@@ -578,9 +422,5 @@ async def get_plays_history(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Recently used plays for the authenticated user — feeds the Plays page's
-    "Recently used" section. Aggregated from assistant messages with non-null
-    play_id. When `campaign_id` is supplied, narrows to plays run within
-    that campaign so the section reflects the active scope."""
     items = await list_recent_plays_for_user(db, user.id, campaign_id=campaign_id)
     return {"items": items}

@@ -100,6 +100,7 @@ class AppSettings(BaseModel):
     rate_limits: RateLimitsConfig
     http: HttpConfig
     cleanup: CleanupConfig
+    channels: dict[str, str] = {}
 
 
 # ---------- Prompts ---------------------------------------------------------
@@ -110,6 +111,8 @@ class PromptsConfig(BaseModel):
     search_context: str
     next_steps: str
     next_steps_user: str
+    rerank_system: str
+    rerank_user: str
 
 
 # ---------- Plays -----------------------------------------------------------

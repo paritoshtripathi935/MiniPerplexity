@@ -7,9 +7,24 @@ rate_limits:
   search_calls_per_minute: 30
 
 http:
-  request_timeout: 5       # seconds; applies to all outbound search/scrape calls
-  max_content_length: 5000 # chars; scraped page content is truncated to this
-  max_paragraphs: 5        # only the first N <p> tags are extracted per page
+  request_timeout: 5
+  max_content_length: 5000
+  max_paragraphs: 5
 
 cleanup:
-  interval_seconds: 300    # how often the background task sweeps expired sessions
+  interval_seconds: 300
+
+# Display names for paid channels — used in system prompt and for input validation.
+channels:
+  meta: "Meta"
+  google: "Google Ads"
+  tiktok: "TikTok"
+  linkedin: "LinkedIn"
+  programmatic: "programmatic"
+  youtube: "YouTube"
+  reddit: "Reddit"
+  snap: "Snap"
+  pinterest: "Pinterest"
+  email: "email/lifecycle"
+  seo: "SEO"
+  other: "other"
