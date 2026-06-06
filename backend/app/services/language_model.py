@@ -19,7 +19,7 @@ class ConfigurationError(Exception):
 
 # Constants
 BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
-SYSTEM_PROMPT = "You are a helpful AI assistant. Use the following context to answer questions:\n\n{context}"
+SYSTEM_PROMPT: str = _cfg.prompts.search_context
 
 # Cloudflare Workers AI defaults `max_tokens` to 256 for chat models, which
 # truncates real marketing answers (a channel plan or weekly review easily
@@ -296,7 +296,7 @@ class CloudflareChat:
         elif search_results:
             system_content = SYSTEM_PROMPT.format(context=self._format_context(search_results))
         else:
-            system_content = "You are a helpful AI assistant."
+            system_content = _cfg.prompts.generic_assistant
 
         messages: List[Dict[str, str]] = [{"role": "system", "content": system_content}]
         if chat_history:
@@ -456,22 +456,8 @@ class CloudflareChat:
         ans = (assistant_answer or "").strip()[:1500]
         q = (user_query or "").strip()[:400]
 
-        system_prompt = (
-            "You are a paid-acquisition marketing copilot. Given a user's "
-            "question and your previous answer, suggest 3 short follow-up "
-            "questions the user is most likely to ask next.\n\n"
-            "Rules:\n"
-            "- Each question stands on its own (a stranger could read it cold).\n"
-            "- Each is under 90 characters.\n"
-            "- No preamble, no numbering, no quotes — return ONE question per line.\n"
-            "- Skip generic 'tell me more' filler; favour concrete next moves "
-            "(channels, KPIs, benchmarks, creative angles, time horizons)."
-        )
-        user_msg = (
-            f"User asked: {q}\n\n"
-            f"Your answer (truncated): {ans}\n\n"
-            "Now write the 3 follow-up questions, one per line."
-        )
+        system_prompt = _cfg.prompts.next_steps
+        user_msg = _cfg.prompts.next_steps_user.format(query=q, answer=ans)
         formatted = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg},

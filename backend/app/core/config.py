@@ -102,6 +102,16 @@ class AppSettings(BaseModel):
     cleanup: CleanupConfig
 
 
+# ---------- Prompts ---------------------------------------------------------
+
+class PromptsConfig(BaseModel):
+    persona: str
+    generic_assistant: str
+    search_context: str
+    next_steps: str
+    next_steps_user: str
+
+
 # ---------- Plays -----------------------------------------------------------
 
 class PlayInput(BaseModel):
@@ -145,6 +155,7 @@ class AppConfig(BaseModel):
     domain_authority: DomainAuthorityConfig
     search: SearchConfig
     settings: AppSettings
+    prompts: PromptsConfig
     plays: list[PlayConfig]
 
     def get_play(self, play_id: str) -> Optional[PlayConfig]:
@@ -170,6 +181,7 @@ def load_config() -> AppConfig:
         domain_authority=DomainAuthorityConfig(**_load_yaml(CONFIG_DIR / "domain_authority.yaml")),
         search=SearchConfig(**_load_yaml(CONFIG_DIR / "search_engines.yaml")),
         settings=AppSettings(**_load_yaml(CONFIG_DIR / "settings.yaml")),
+        prompts=PromptsConfig(**_load_yaml(CONFIG_DIR / "prompts.yaml")),
         plays=_load_plays(PLAYS_DIR),
     )
 
