@@ -194,9 +194,14 @@ async def touch_session(db: AsyncSession, session_id: str) -> None:
     )
 
 
-async def delete_session(db: AsyncSession, session_id: str) -> bool:
+async def delete_session(
+    db: AsyncSession, session_id: str, *, user_id: Optional[uuid.UUID] = None
+) -> bool:
     sid = _to_uuid(session_id)
-    result = await db.execute(delete(DBSession).where(DBSession.id == sid))
+    stmt = delete(DBSession).where(DBSession.id == sid)
+    if user_id is not None:
+        stmt = stmt.where(DBSession.user_id == user_id)
+    result = await db.execute(stmt)
     return (result.rowcount or 0) > 0
 
 

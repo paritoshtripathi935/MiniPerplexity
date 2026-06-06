@@ -1,7 +1,6 @@
 import json
 import logging
 import time
-import traceback
 import uuid
 from typing import Optional
 
@@ -232,7 +231,7 @@ async def get_answer(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(traceback.format_exc())
+        logger.exception("Error generating answer")
         raise HTTPException(status_code=500, detail=f"Error generating answer: {e}")
 
 
@@ -516,9 +515,13 @@ async def list_chat_models(response: Response):
 
 
 @router.delete("/session/{session_id}")
-async def clear_session(session_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete a session and everything underneath it (cascades)."""
-    deleted = await delete_session(db, session_id)
+async def clear_session(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a session and everything underneath it (cascades). Owner only."""
+    deleted = await delete_session(db, session_id, user_id=user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"message": f"Session {session_id} cleared"}

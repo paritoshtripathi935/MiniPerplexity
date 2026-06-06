@@ -47,7 +47,7 @@ class CloudflareModel(str, Enum):
 
     @classmethod
     def list_models(cls) -> List[str]:
-        return [model.name for model in cls]
+        return [model.value for model in cls]
 
 
 # Default model when a user has no preference saved. Tuned for marketing
@@ -333,49 +333,10 @@ class CloudflareChat:
         falls back to the instance's configured model (DEFAULT_CHAT_MODEL by
         default).
         """
-
-        # Build message list
-        messages = []
-
-        if system_override:
-            content = system_override
-            if search_results:
-                content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
-            messages.append(Message(role="system", content=content))
-        elif search_results:
-            # Use context-aware system prompt if search results exist
-            messages.append(Message(
-                role="system",
-                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
-            ))
-        else:
-            # Use a basic system prompt for direct questions
-            messages.append(Message(
-                role="system",
-                content="You are a helpful AI assistant."
-            ))
-
-        if chat_history:
-            messages.extend([Message(**msg) for msg in chat_history])
-
-        # Format query with previous context if available
-        query_context = query
-        if previous_queries:
-            query_context = (
-                f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
-                f"Current question: {query}"
-            )
-
-        if query_context:
-            messages.append(Message(role="user", content=query_context))
-
-        # Convert messages to dict format for API
-        formatted_messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
-
-        response = self._call_for_prompt(formatted_messages, model=model)
+        formatted = self._build_answer_messages(
+            search_results, chat_history, query, previous_queries, system_override
+        )
+        response = self._call_for_prompt(formatted, model=model)
         return _extract_response_text(response)
 
     def _build_answer_messages(
