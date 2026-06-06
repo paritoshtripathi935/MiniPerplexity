@@ -1,0 +1,15 @@
+cors:
+  origins:
+    - "http://localhost:5173"
+    - "https://mini-perplexity.netlify.app"
+
+rate_limits:
+  search_calls_per_minute: 30
+
+http:
+  request_timeout: 5       # seconds; applies to all outbound search/scrape calls
+  max_content_length: 5000 # chars; scraped page content is truncated to this
+  max_paragraphs: 5        # only the first N <p> tags are extracted per page
+
+cleanup:
+  interval_seconds: 300    # how often the background task sweeps expired sessions

@@ -9,17 +9,24 @@ from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 from app.models.search_model import SearchResult
 from app.utils.rate_limter import rate_limit
+from app.core.config import config as _cfg
 
-# Constants
 GOOGLE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
-MAX_CONTENT_LENGTH = 5000
-MAX_PARAGRAPHS = 5
-# Per-engine web result count. We deliberately overfetch (vs. previous 2)
-# so the LLM reranker has a real candidate set to choose from. The chat UI
-# still trims to a sane number after ranking — this just gives us bench.
-RESULTS_PER_ENGINE = 10
-REQUEST_TIMEOUT = 5
-CALLS_PER_MINUTE = 30
+
+# Read from config/settings.yaml — change there, no code deploy needed.
+_http = _cfg.settings.http
+MAX_CONTENT_LENGTH = _http.max_content_length
+MAX_PARAGRAPHS = _http.max_paragraphs
+REQUEST_TIMEOUT = _http.request_timeout
+CALLS_PER_MINUTE = _cfg.settings.rate_limits.search_calls_per_minute
+
+# Read per-engine knobs from config/search_engines.yaml.
+_google_cfg = _cfg.search.get("google")
+_yt_cfg = _cfg.search.get("youtube")
+RESULTS_PER_ENGINE = _google_cfg.max_results if _google_cfg else 10
+_YT_SEARCH_FETCH = _yt_cfg.overfetch if _yt_cfg else 15
+_YT_RESULT_CAP = _yt_cfg.max_results if _yt_cfg else 10
+_SHORTS_THRESHOLD_SECONDS = _yt_cfg.shorts_min_seconds if _yt_cfg else 70
 
 # User agent rotation
 USER_AGENTS = [
@@ -43,42 +50,34 @@ class YouTubeAPIError(Exception):
 
 logger = logging.getLogger(__name__)
 
+
+def _get_soup(url: str) -> BeautifulSoup:
+    """Fetch a URL and return parsed HTML. Raises ContentFetchError on failure."""
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": random.choice(USER_AGENTS)},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return BeautifulSoup(response.content, "html.parser")
+    except Exception as e:
+        raise ContentFetchError(f"Failed to fetch content from {url}: {e}") from e
+
+
 @rate_limit(calls=CALLS_PER_MINUTE, period=60)
 def fetch_content_from_url(url: str) -> str:
-    """Fetch and extract main text content from a URL.
-    
-    Args:
-        url: The URL to fetch content from
-    
-    Returns:
-        Extracted text content from the URL
-        
-    Raises:
-        ContentFetchError: If content cannot be fetched or parsed
-    """
-    headers = {"User-Agent": random.choice(USER_AGENTS)}
-
+    """Fetch and extract the first two sentences of each leading paragraph."""
     try:
-        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        paragraphs = [
-            p.get_text() for p in soup.find_all('p')[:MAX_PARAGRAPHS]
-            if p.get_text()
-        ]
-        
-        content = ' '.join(
-            '. '.join(p.split('. ')[:2]) + '.'
-            for p in paragraphs
-        )
-        
+        soup = _get_soup(url)
+        paragraphs = [p.get_text() for p in soup.find_all("p")[:MAX_PARAGRAPHS] if p.get_text()]
+        content = " ".join(". ".join(p.split(". ")[:2]) + "." for p in paragraphs)
         return content[:MAX_CONTENT_LENGTH]
-    
+    except ContentFetchError:
+        raise
     except Exception as e:
-        logger.error(f"Error extracting content from {url}: {str(e)}")
-        raise ContentFetchError(f"Failed to fetch content from {url}: {str(e)}")
+        logger.error(f"Error extracting content from {url}: {e}")
+        raise ContentFetchError(f"Failed to fetch content from {url}: {e}") from e
 
 @rate_limit(calls=CALLS_PER_MINUTE, period=60)
 def search_google(query: str) -> List[SearchResult]:
@@ -137,16 +136,6 @@ def search_google(query: str) -> List[SearchResult]:
     except Exception as e:
         logger.error(f"Google search error: {str(e)}")
         raise SearchAPIError(f"Google search failed: {str(e)}")
-
-# YouTube-side knobs. Overfetch in search.list so post-hoc shorts filtering
-# still leaves a healthy bench. The chat right rail caps at 6, so 10 long-
-# form returns gives us a comfortable buffer.
-_YT_SEARCH_FETCH = 15
-_YT_RESULT_CAP = 10
-# Shorts are by definition ≤60s. A small buffer lets through edge-case
-# 61-65s "soft shorts" that some marketing channels publish, which are
-# usually fine for our context. Tune via env if needed.
-_SHORTS_THRESHOLD_SECONDS = int(os.getenv("YOUTUBE_SHORTS_MIN_SECONDS", "70"))
 
 _ISO_DURATION_RE = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")
 
@@ -249,76 +238,55 @@ def search_youtube(query: str) -> List[SearchResult]:
     except Exception as e:
         raise YouTubeAPIError(f"YouTube search failed: {str(e)}")
 
-def perform_search(query: str) -> List[SearchResult]:
-    """Perform parallel searches on Google + YouTube and merge results."""
-    try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            google_future = executor.submit(search_google, query)
-            youtube_future = executor.submit(search_youtube, query)
+# Registry maps engine id → callable. Add a new engine here after wiring it in
+# config/search_engines.yaml with enabled: true.
+_ENGINE_REGISTRY: Dict[str, callable] = {
+    "google": search_google,
+    "youtube": search_youtube,
+}
 
+
+def perform_search(query: str) -> List[SearchResult]:
+    """Run all enabled engines in parallel and merge deduplicated results.
+
+    Which engines run is controlled by config/search_engines.yaml — flip
+    `enabled: true/false` there and restart; no code change needed.
+    """
+    engines = [e for e in _cfg.search.enabled if e.id in _ENGINE_REGISTRY]
+    try:
+        with ThreadPoolExecutor(max_workers=len(engines)) as executor:
+            futures = {executor.submit(_ENGINE_REGISTRY[e.id], query): e.id for e in engines}
             results = []
-            for future in [google_future, youtube_future]:
+            for future, engine_id in futures.items():
                 try:
                     results.extend(future.result())
                 except (SearchAPIError, YouTubeAPIError) as e:
-                    logger.error(f"Search engine error: {str(e)}")
-                    continue
-            
-            # Remove duplicates while preserving order
-            seen_urls = set()
-            unique_results = []
-            for result in results:
-                if result.url not in seen_urls:
-                    seen_urls.add(result.url)
-                    unique_results.append(result)
-            
-            return unique_results
-            
+                    logger.error(f"{engine_id} search error: {e}")
+
+        seen_urls: set[str] = set()
+        unique: List[SearchResult] = []
+        for result in results:
+            if result.url not in seen_urls:
+                seen_urls.add(result.url)
+                unique.append(result)
+        return unique
+
     except Exception as e:
-        logger.error(f"Error in perform_search: {str(e)}")
+        logger.error(f"Error in perform_search: {e}")
         return []
 
 @rate_limit(calls=CALLS_PER_MINUTE, period=60)
 def fetch_content_from_custom_url(url: str) -> SearchResult:
-    """Fetch and extract content from a custom URL.
-    
-    Args:
-        url: The URL to fetch content from
-    
-    Returns:
-        SearchResult object containing the extracted content
-        
-    Raises:
-        ContentFetchError: If content cannot be fetched or parsed
-    """
-    headers = {"User-Agent": random.choice(USER_AGENTS)}
-
-    try:
-        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Extract title
-        title = soup.title.string if soup.title else url
-        
-        # Extract main content
-        paragraphs = [
-            p.get_text() for p in soup.find_all('p')[:MAX_PARAGRAPHS]
-            if p.get_text()
-        ]
-        
-        content = ' '.join(paragraphs)
-        
-        return SearchResult(
-            question="",  # Not needed for custom URL
-            title=title,
-            url=url,
-            snippet=content[:200] + "...",
-            search_content=content[:MAX_CONTENT_LENGTH],
-            source="custom_url"
-        )
-    
-    except Exception as e:
-        logger.error(f"Error extracting content from {url}: {str(e)}")
-        raise ContentFetchError(f"Failed to fetch content from {url}: {str(e)}")
+    """Fetch a URL and return a SearchResult with full paragraph text."""
+    soup = _get_soup(url)
+    title = soup.title.string if soup.title else url
+    paragraphs = [p.get_text() for p in soup.find_all("p")[:MAX_PARAGRAPHS] if p.get_text()]
+    content = " ".join(paragraphs)
+    return SearchResult(
+        question="",
+        title=title,
+        url=url,
+        snippet=content[:200] + "...",
+        search_content=content[:MAX_CONTENT_LENGTH],
+        source="custom_url",
+    )

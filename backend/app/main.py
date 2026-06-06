@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -16,13 +15,14 @@ from app.api.v1.integrations import router as integrations_router
 from app.api.v1.plays import router as plays_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.query_handler import router
+from app.core.config import config
 from app.core.settings import BackendBaseSettings
 from app.db.engine import async_session_factory, dispose_engine, engine
 from app.db.repository import cleanup_expired_sessions
 
 logger = logging.getLogger(__name__)
 
-CLEANUP_INTERVAL_SECONDS = int(os.getenv("DB_CLEANUP_INTERVAL_SECONDS", "300"))
+CLEANUP_INTERVAL_SECONDS = config.settings.cleanup.interval_seconds
 
 
 async def _periodic_cleanup() -> None:
@@ -109,7 +109,7 @@ app.add_middleware(GZipExceptStreaming, minimum_size=1024)
 # Set up CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://mini-perplexity.netlify.app"],
+    allow_origins=config.settings.cors.origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

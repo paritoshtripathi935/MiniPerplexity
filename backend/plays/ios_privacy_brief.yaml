@@ -1,0 +1,25 @@
+id: ios_privacy_brief
+title: "iOS / privacy update brief"
+category: Research
+description: "What's the latest on signal loss, and what should we do?"
+icon: Shield
+
+inputs:
+  - key: topic
+    label: "Topic / specific update"
+    type: text
+    required: true
+    placeholder: "e.g. Meta CAPI changes 2026, Google enhanced conversions, EU DMA"
+
+instructions: |
+  Produce a marketer-grade brief on the privacy/measurement topic. Cite sources with
+  dates. End with concrete actions for an in-house team.
+
+output_format: |
+  ## {topic}
+
+  **What changed:** 2–3 bullets with dates and citations.
+  **Who's affected:** specific channels and account types.
+  **Direct impact on us:** in plain English, what breaks or what we lose.
+  **This-week actions:** 3 specific implementation tasks, ranked.
+  **Watch for:** what to monitor over the next 30/60/90 days.

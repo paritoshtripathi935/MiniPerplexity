@@ -1,11 +1,7 @@
 """Re-rank search results by domain authority for performance marketers.
 
-The default web-search ranking surfaces too many SEO-farm blogs. We push
-authoritative marketing sources to the top so the assistant's citations
-look credible to a senior marketer.
-
-Algorithm: each source domain gets an authority score; results are sorted by
-(authority desc, original position asc). No domain is hidden — just reordered.
+Scores and thresholds come from config/domain_authority.yaml — edit there
+to tune rankings without touching code.
 """
 from __future__ import annotations
 
@@ -13,92 +9,14 @@ import logging
 from typing import Iterable, Optional
 from urllib.parse import urlparse
 
+from app.core.config import config as _cfg
+
 logger = logging.getLogger(__name__)
 
-
-# Hand-curated. Higher = more authoritative for marketing topics.
-# 100 = official platform docs (canonical truth)
-#  90 = trade press with editorial standards
-#  80 = analyst / research houses
-#  70 = respected practitioner blogs / agencies
-#  60 = communities w/ uneven quality (Reddit, Quora)
-#  default = 50
-DOMAIN_AUTHORITY: dict[str, int] = {
-    # ----- Platform docs (canonical) -----
-    "business.facebook.com":              100,
-    "developers.facebook.com":            100,
-    "transparency.meta.com":              100,
-    "facebook.com":                        90,
-    "ads.google.com":                     100,
-    "support.google.com":                 100,
-    "google.com":                          85,
-    "developers.google.com":              100,
-    "transparencyreport.google.com":      100,
-    "ads.tiktok.com":                     100,
-    "tiktok.com":                          85,
-    "business.tiktok.com":                100,
-    "business.linkedin.com":              100,
-    "linkedin.com":                        80,
-    "ads.x.com":                          100,
-    "advertising.amazon.com":             100,
-    "marketing.snapchat.com":             100,
-    "business.pinterest.com":             100,
-    "ads.reddit.com":                     100,
-    "developers.reddit.com":              100,
-
-    # ----- Analyst & research -----
-    "emarketer.com":                       95,
-    "insiderintelligence.com":             95,
-    "statista.com":                        90,
-    "forrester.com":                       90,
-    "gartner.com":                         90,
-    "pewresearch.org":                     90,
-    "thinkwithgoogle.com":                 95,
-    "comscore.com":                        85,
-
-    # ----- Trade press -----
-    "adweek.com":                          90,
-    "adage.com":                           90,
-    "marketingweek.com":                   88,
-    "campaignlive.com":                    88,
-    "searchengineland.com":                90,
-    "searchenginejournal.com":             85,
-    "marketingland.com":                   85,
-    "marketingdive.com":                   88,
-    "digiday.com":                         90,
-    "modernretail.co":                     85,
-    "retaildive.com":                      82,
-    "businessinsider.com":                 80,
-    "techcrunch.com":                      80,
-
-    # ----- Practitioner blogs / agencies -----
-    "wordstream.com":                      80,
-    "adespresso.com":                      80,
-    "neilpatel.com":                       70,
-    "smartblogger.com":                    65,
-    "clickz.com":                          75,
-    "moz.com":                             80,
-    "ahrefs.com":                          80,
-    "semrush.com":                         80,
-    "hubspot.com":                         78,
-    "shopify.com":                         78,
-    "klaviyo.com":                         78,
-    "common-thread.com":                   78,  # Common Thread Collective
-    "triplewhale.com":                     75,
-
-    # ----- Communities (lower confidence) -----
-    "reddit.com":                          60,
-    "quora.com":                           55,
-    "stackexchange.com":                   60,
-
-    # ----- Avoid down-ranking — leave default -----
-}
-
-DEFAULT_AUTHORITY = 50
-
-# We never push results below this, even if they look low-quality. We just
-# don't boost them. Hard de-ranking is a footgun.
-FLOOR = 30
+_SCORES: dict[str, int] = _cfg.domain_authority.scores
+_DEFAULT = _cfg.domain_authority.defaults.authority
+_FLOOR = _cfg.domain_authority.defaults.floor
+_AUTHORITATIVE_THRESHOLD = _cfg.domain_authority.defaults.authoritative_threshold
 
 
 def _domain(url: str) -> str:
@@ -112,33 +30,30 @@ def _domain(url: str) -> str:
 def authority_for(url: str) -> int:
     host = _domain(url)
     if not host:
-        return DEFAULT_AUTHORITY
-    # Exact match first.
-    if host in DOMAIN_AUTHORITY:
-        return DOMAIN_AUTHORITY[host]
-    # Suffix match — `help.shopify.com` should pick up `shopify.com`.
+        return _DEFAULT
+    if host in _SCORES:
+        return _SCORES[host]
+    # Suffix match — `help.shopify.com` picks up `shopify.com`.
     parts = host.split(".")
     for i in range(1, len(parts)):
         suffix = ".".join(parts[i:])
-        if suffix in DOMAIN_AUTHORITY:
-            return DOMAIN_AUTHORITY[suffix]
-    return DEFAULT_AUTHORITY
+        if suffix in _SCORES:
+            return _SCORES[suffix]
+    return _DEFAULT
 
 
 def tag_authority_in_place(results: Iterable[dict]) -> None:
     """Stamp each result with `_authority` (raw score) and `_authoritative`.
 
-    Used to re-attach badges on flows that don't go through `rerank` — e.g.
-    rehydrating saved chats, or /answer when the client dropped the tags
-    on the round-trip. Existing `_authority` values are preserved so we
-    don't accidentally downgrade a result that was already scored upstream.
+    Existing `_authority` values are preserved so we don't downgrade a result
+    already scored upstream.
     """
     for r in results:
         score = r.get("_authority")
         if score is None:
             score = authority_for(r.get("url", ""))
             r["_authority"] = score
-        r["_authoritative"] = score >= 80
+        r["_authoritative"] = score >= _AUTHORITATIVE_THRESHOLD
 
 
 def rerank(
@@ -148,25 +63,18 @@ def rerank(
 ) -> list[dict]:
     """Sort by (authority desc, original_index asc), preserving ties.
 
-    Tags each result with `_authority` and `_authoritative` (bool, ≥80) so
-    the frontend can render an "Authoritative source" badge.
-
-    When `llm_scores` is supplied (mapping the result's original index to a
-    relevance score 0–100), it overrides static domain authority. Static
-    authority is still used as a fallback for results the LLM didn't score,
-    and as the source of truth for the badge threshold.
+    Tags each result with `_authority` and `_authoritative`. When `llm_scores`
+    is supplied it overrides static authority; static is still used for the
+    badge threshold and as a fallback for unscored results.
     """
     enumerated = list(enumerate(results))
     scored = []
     for idx, r in enumerated:
         url = r.get("url", "")
-        if llm_scores is not None and idx in llm_scores:
-            score = llm_scores[idx]
-        else:
-            score = max(authority_for(url), FLOOR)
+        score = llm_scores[idx] if (llm_scores is not None and idx in llm_scores) else max(authority_for(url), _FLOOR)
         tagged = dict(r)
         tagged["_authority"] = score
-        tagged["_authoritative"] = score >= 80
+        tagged["_authoritative"] = score >= _AUTHORITATIVE_THRESHOLD
         scored.append((idx, score, tagged))
 
     scored.sort(key=lambda t: (-t[1], t[0]))

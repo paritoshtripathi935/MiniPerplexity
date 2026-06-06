@@ -1,0 +1,32 @@
+id: competitor_teardown
+title: "Competitor teardown"
+category: Research
+description: "Reverse-engineer a competitor's paid strategy from public signals."
+icon: Search
+
+inputs:
+  - key: competitor
+    label: "Competitor name or domain"
+    type: text
+    required: true
+    placeholder: "e.g. competitor.com"
+  - key: channels
+    label: "Channels to analyse"
+    type: text
+    required: false
+    placeholder: "e.g. Meta, Google, TikTok"
+
+instructions: |
+  Synthesise everything findable about the competitor's paid strategy — Meta Ad Library
+  creatives if mentioned in sources, Google Ads Transparency, public job postings,
+  press, recent product launches. Don't invent specifics.
+
+output_format: |
+  ## {competitor} — paid teardown
+
+  **Channels active on:** list with evidence.
+  **Creative themes:** 3–5 with examples.
+  **Audience signals:** what their targeting suggests.
+  **What's working:** 3 bullets.
+  **Where they're soft:** 3 bullets we could exploit.
+  **Steal-worthy ideas:** 3 specific things to test on our own account.

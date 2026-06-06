@@ -5,7 +5,8 @@ import json
 import re
 import httpx
 import requests
-from pydantic import Field
+
+from app.core.config import config as _cfg
 
 # Custom exceptions
 class CloudflareAPIError(Exception):
@@ -28,77 +29,34 @@ DEFAULT_MAX_TOKENS = 4096
 SHORT_CALL_MAX_TOKENS = 512
 
 
-class CloudflareModel(str, Enum):
-    """Cloudflare Workers AI models we use.
+# Build the enum dynamically from config so adding a model is a YAML-only change.
+# All selectable slugs + legacy slugs (for back-compat) are included.
+_all_slugs = (
+    [m.id for m in _cfg.models.models] + _cfg.models.legacy_slugs
+)
+CloudflareModel = Enum(  # type: ignore[misc]
+    "CloudflareModel",
+    {slug.split("/")[-1].upper().replace("-", "_"): slug for slug in _all_slugs},
+    type=str,
+)
 
-    All values are smoke-tested against the Cloudflare endpoint to confirm
-    the slug actually resolves before being added here. Llama 3.1 70B is on
-    Cloudflare's deprecation list — newer requests should not select it.
-    """
-    GPT_OSS_120B = "@cf/openai/gpt-oss-120b"
-    GPT_OSS_20B = "@cf/openai/gpt-oss-20b"
-    MISTRAL_SMALL_3_1_24B = "@cf/mistralai/mistral-small-3.1-24b-instruct"
-    QWEN3_30B = "@cf/qwen/qwen3-30b-a3b-fp8"
-    QWQ_32B = "@cf/qwen/qwq-32b"
-    LLAMA_3_2_3B = "@cf/meta/llama-3.2-3b-instruct"
-    # Kept for back-compat with messages persisted before the migration.
-    # Do not select for new turns — Cloudflare has deprecated it.
-    LLAMA_3_1_70B_LEGACY = "@cf/meta/llama-3.1-70b-instruct"
-
-    @classmethod
-    def list_models(cls) -> List[str]:
-        return [model.value for model in cls]
-
-
-# Default model when a user has no preference saved. Tuned for marketing
-# long-form answers — quality > speed. Users can pick alternatives in the UI.
-DEFAULT_CHAT_MODEL = CloudflareModel.GPT_OSS_120B
-# Auxiliary calls don't expose a UI — pick fast, structured-output friendly
-# models so re-ranking and follow-up generation don't dominate latency.
-DEFAULT_RERANK_MODEL = CloudflareModel.QWEN3_30B
-DEFAULT_NEXT_STEPS_MODEL = CloudflareModel.LLAMA_3_2_3B
+DEFAULT_CHAT_MODEL = CloudflareModel(_cfg.models.defaults.chat)
+DEFAULT_RERANK_MODEL = CloudflareModel(_cfg.models.defaults.rerank)
+DEFAULT_NEXT_STEPS_MODEL = CloudflareModel(_cfg.models.defaults.next_steps)
 
 
 @dataclass(frozen=True)
 class ChatModelOption:
-    """A model exposed in the UI selector. The slug is what gets persisted on
-    `users.preferred_chat_model` and sent to Cloudflare."""
-    id: str             # the @cf/... slug
-    label: str          # human-readable name shown in the dropdown
-    description: str    # one-line tradeoff hint
+    id: str
+    label: str
+    description: str
     recommended: bool = False
 
 
-# Curated set of models the UI is allowed to pick. Any slug not in this list
-# is rejected at the API layer — keeps users from sending arbitrary strings
-# to Cloudflare and surprises us with an unbounded model surface.
+# Built from config — add/remove models in config/models.yaml.
 CHAT_MODEL_CATALOG: List[ChatModelOption] = [
-    ChatModelOption(
-        id=CloudflareModel.GPT_OSS_120B.value,
-        label="GPT-OSS 120B",
-        description="Best quality. Reasoning + agentic. Recommended default.",
-        recommended=True,
-    ),
-    ChatModelOption(
-        id=CloudflareModel.GPT_OSS_20B.value,
-        label="GPT-OSS 20B",
-        description="Faster GPT-OSS. Good middle ground for quick answers.",
-    ),
-    ChatModelOption(
-        id=CloudflareModel.MISTRAL_SMALL_3_1_24B.value,
-        label="Mistral Small 3.1 24B",
-        description="Fast, no chain-of-thought overhead. Vision-capable.",
-    ),
-    ChatModelOption(
-        id=CloudflareModel.QWEN3_30B.value,
-        label="Qwen3 30B",
-        description="Multilingual; strong on instruction-following.",
-    ),
-    ChatModelOption(
-        id=CloudflareModel.QWQ_32B.value,
-        label="QwQ 32B (thinking)",
-        description="Reasoning specialist. Slower; use for hard problems.",
-    ),
+    ChatModelOption(id=m.id, label=m.label, description=m.description, recommended=m.recommended)
+    for m in _cfg.models.models
 ]
 
 _CHAT_MODEL_IDS = {opt.id for opt in CHAT_MODEL_CATALOG}
@@ -207,13 +165,6 @@ def _extract_response_text(payload: Dict) -> str:
     return ""
 
 
-@dataclass
-class Message:
-    """Represents a chat message"""
-    role: str
-    content: str
-
-
 class CloudflareChat:
     """CloudflareChat class to interact with Cloudflare's AI workers."""
 
@@ -223,16 +174,6 @@ class CloudflareChat:
         account_id: str,
         model: CloudflareModel = DEFAULT_CHAT_MODEL,
     ) -> None:
-        """Initialize the CloudflareChat instance.
-        
-        Args:
-            api_key: Cloudflare API key
-            account_id: Cloudflare account ID
-            model: The model to use for generating answers
-
-        Raises:
-            ConfigurationError: If required parameters are missing or invalid
-        """
         if not api_key or not account_id:
             raise ConfigurationError("api_key and account_id must be specified")
 
@@ -348,33 +289,28 @@ class CloudflareChat:
         system_override: Optional[str],
     ) -> List[Dict[str, str]]:
         """Shared message-list builder for both the JSON and streaming paths."""
-        messages: List[Message] = []
         if system_override:
-            content = system_override
+            system_content = system_override
             if search_results:
-                content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
-            messages.append(Message(role="system", content=content))
+                system_content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
         elif search_results:
-            messages.append(Message(
-                role="system",
-                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
-            ))
+            system_content = SYSTEM_PROMPT.format(context=self._format_context(search_results))
         else:
-            messages.append(Message(role="system", content="You are a helpful AI assistant."))
+            system_content = "You are a helpful AI assistant."
 
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_content}]
         if chat_history:
-            messages.extend([Message(**msg) for msg in chat_history])
+            messages.extend(chat_history)
 
-        query_context = query
         if previous_queries:
-            query_context = (
+            query = (
                 f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
                 f"Current question: {query}"
             )
-        if query_context:
-            messages.append(Message(role="user", content=query_context))
+        if query:
+            messages.append({"role": "user", "content": query})
 
-        return [{"role": m.role, "content": m.content} for m in messages]
+        return messages
 
     async def stream_answer(
         self,

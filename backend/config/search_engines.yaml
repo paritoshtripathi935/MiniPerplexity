@@ -1,0 +1,18 @@
+engines:
+  - id: google
+    enabled: true
+    max_results: 10
+    timeout: 5
+
+  - id: youtube
+    enabled: true
+    max_results: 10       # cap returned after filtering
+    timeout: 5
+    overfetch: 15         # candidates fetched from search.list before Shorts filter
+    shorts_min_seconds: 70  # videos shorter than this are dropped as Shorts
+
+  # Future providers — flip enabled: true and add to REGISTRY in search/__init__.py
+  # - id: tavily
+  #   enabled: false
+  #   max_results: 10
+  #   timeout: 5

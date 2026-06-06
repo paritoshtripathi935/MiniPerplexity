@@ -772,15 +772,20 @@ class InvariantError(Exception):
 
 
 def _is_unique_violation(exc: BaseException) -> bool:
-    """Detect Postgres unique-constraint failures inside async wrappers.
-
-    SQLAlchemy wraps the asyncpg error; we look for the SQLSTATE on the
-    innermost cause. Used by the project / campaign mutators so the API
-    can map cleanly to 409 Conflict.
-    """
     inner = getattr(exc, "orig", exc)
     pgcode = getattr(inner, "sqlstate", None) or getattr(inner, "pgcode", None)
-    return pgcode == "23505"  # unique_violation
+    return pgcode == "23505"
+
+
+async def _flush_or_conflict(db: AsyncSession, conflict_msg: str) -> None:
+    """Flush and raise ConflictError if a unique-constraint violation fires."""
+    try:
+        await db.flush()
+    except Exception as exc:
+        if _is_unique_violation(exc):
+            await db.rollback()
+            raise ConflictError(conflict_msg) from exc
+        raise
 
 
 async def create_project(
@@ -790,13 +795,7 @@ async def create_project(
     case-insensitive name among the user's live projects."""
     project = Project(user_id=user_id, name=name.strip())
     db.add(project)
-    try:
-        await db.flush()
-    except Exception as exc:
-        if _is_unique_violation(exc):
-            await db.rollback()
-            raise ConflictError(f"project name '{name}' already in use") from exc
-        raise
+    await _flush_or_conflict(db, f"project name '{name}' already in use")
     return project
 
 
@@ -808,13 +807,7 @@ async def rename_project(
         raise LookupError("project not found")
     project.name = name.strip()
     project.updated_at = _now()
-    try:
-        await db.flush()
-    except Exception as exc:
-        if _is_unique_violation(exc):
-            await db.rollback()
-            raise ConflictError(f"project name '{name}' already in use") from exc
-        raise
+    await _flush_or_conflict(db, f"project name '{name}' already in use")
     return project
 
 
@@ -852,15 +845,7 @@ async def unarchive_project(db: AsyncSession, project: Project) -> Project:
         return project
     project.archived_at = None
     project.updated_at = _now()
-    try:
-        await db.flush()
-    except Exception as exc:
-        if _is_unique_violation(exc):
-            await db.rollback()
-            raise ConflictError(
-                f"project name '{project.name}' already taken by a live project"
-            ) from exc
-        raise
+    await _flush_or_conflict(db, f"project name '{project.name}' already taken by a live project")
     return project
 
 
@@ -881,13 +866,7 @@ async def create_campaign(
         ends_on=ends_on,
     )
     db.add(campaign)
-    try:
-        await db.flush()
-    except Exception as exc:
-        if _is_unique_violation(exc):
-            await db.rollback()
-            raise ConflictError(f"campaign name '{name}' already in use") from exc
-        raise
+    await _flush_or_conflict(db, f"campaign name '{name}' already in use")
     return campaign
 
 
@@ -918,13 +897,7 @@ async def update_campaign(
     elif clear_ends_on:
         campaign.ends_on = None
     campaign.updated_at = _now()
-    try:
-        await db.flush()
-    except Exception as exc:
-        if _is_unique_violation(exc):
-            await db.rollback()
-            raise ConflictError(f"campaign name '{name}' already in use") from exc
-        raise
+    await _flush_or_conflict(db, f"campaign name '{name}' already in use")
     return campaign
 
 
@@ -961,15 +934,7 @@ async def unarchive_campaign(db: AsyncSession, campaign: Campaign) -> Campaign:
         return campaign
     campaign.archived_at = None
     campaign.updated_at = _now()
-    try:
-        await db.flush()
-    except Exception as exc:
-        if _is_unique_violation(exc):
-            await db.rollback()
-            raise ConflictError(
-                f"campaign name '{campaign.name}' already taken by a live campaign"
-            ) from exc
-        raise
+    await _flush_or_conflict(db, f"campaign name '{campaign.name}' already taken by a live campaign")
     return campaign
 
 
