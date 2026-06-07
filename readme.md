@@ -1,35 +1,86 @@
 # PaidPilot
 
 **An AI co-pilot for in-house performance marketers.**
-Benchmarks, briefs, and channel plans grounded in citations from sources you actually trust — Meta &amp; Google docs, eMarketer, Adweek — with your brand context baked into every answer. Free while in beta.
+Benchmarks, briefs, and channel plans grounded in citations from sources you actually trust — Meta & Google docs, eMarketer, Adweek — with your brand context baked into every answer.
 
-> Originally built as Mini Perplexity (a generic Perplexity-style search engine) and pivoted to a marketing-focused product. The core RAG plumbing — dual-provider web search, live URL reading, citation tracking — is reused; the V1 layer adds per-user brand profiles, source-authority re-ranking, a curated "Plays" library (creative briefs, channel plans, A/B specs), and built-in calculators (CAC payback, ROAS-to-margin, sample size, blended efficiency). See [docs/product/V1_PLAN.md](docs/product/V1_PLAN.md) for the rationale.
+### [**Try it live →**](https://paidpilot.netlify.app/)
 
-### 🔗 [**Try the live demo →**](https://mini-perplexity.netlify.app/)
-
-[![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=flat-square)](https://mini-perplexity.netlify.app/)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=flat-square)](https://paidpilot.netlify.app/)
 [![Netlify Status](https://api.netlify.com/api/v1/badges/48d8733e-bef8-4967-a416-73c53bdb1ecf/deploy-status?style=flat-square)](https://app.netlify.com/sites/mini-perplexity/deploys)
 [![GitHub stars](https://img.shields.io/github/stars/paritoshtripathi935/MiniPerplexity?style=flat-square)](https://github.com/paritoshtripathi935/MiniPerplexity/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg?style=flat-square)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white&style=flat-square)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=black&style=flat-square)](https://react.dev/)
-[![Cloudflare AI](https://img.shields.io/badge/Cloudflare-LLaMA%203.1%2070B-f38020?logo=cloudflare&logoColor=white&style=flat-square)](https://developers.cloudflare.com/workers-ai/)
+[![Cloudflare AI](https://img.shields.io/badge/Cloudflare-AI%20Workers-f38020?logo=cloudflare&logoColor=white&style=flat-square)](https://developers.cloudflare.com/workers-ai/)
 
 ---
 
 ## What it does
 
-Mini Perplexity turns a plain-English question ("*what changed in Python 3.13?*") into a grounded, cited answer with:
+PaidPilot is a research-and-brief tool built for senior performance marketers. Ask a question; get a grounded, cited answer scoped to your brand.
 
-- **Dual-provider web search** — Google CSE and Bing Web Search are queried in parallel; results are deduplicated and extracted into clean text before the model sees them.
-- **Live URL reading** — paste a URL and the model answers about that specific page, not from its training data.
-- **Conversational context** — the last three queries per session are threaded back into the prompt for follow-up questions.
-- **Per-session rate limiting** — sliding-window limiter (30 req/min) on every content fetch, plus user-agent rotation to play nicely with upstream providers.
-- **Multi-model support** — LLaMA 3.1 70B Instruct for depth, LLaMA 3 8B Instruct for latency-sensitive queries.
-- **Citation tracking** — every answer keeps the list of source URLs it was grounded in, surfaced in the UI.
-- **Clerk auth** — Google/GitHub sign-in out of the box; guest access gated behind an env flag.
-- **Dark / light themes** with animated typing and responsive layout.
+- **Grounded answers with inline citations** — searches via Anakin Search (with Google CSE as automatic fallback), plus YouTube, re-ranks results by domain authority (hand-curated scores for 100+ marketing sources: Meta docs, Google Ads help, eMarketer, Wordstream, etc.), then runs an LLM re-ranker to pick the most relevant snippets before the answer model ever sees them.
+- **SSE streaming** — answers stream token-by-token; first word in under a second.
+- **Brand profiles** — ICP, primary channels, target CAC/ROAS, and voice guidelines are injected into the system prompt for every chat scoped to a project.
+- **Projects & Campaigns** — work is organized into Projects (one brand profile each) and time-bounded Campaigns that anchor chat sessions.
+- **Plays** — a curated library of 10 structured-prompt templates for common marketing workflows (see below). Each play pre-loads the model with domain instructions and a defined output schema.
+- **Studio** — AI creative generation surface. Enter a brief, generate a batch of tile previews, save or discard each one individually, and browse the full chronological generation history per campaign.
+- **Creatives library** — per-campaign asset library for PDFs and images. Upload via presigned URL directly to Cloudflare R2 (backend signs, never sees bytes), then preview, download, or delete from a thumbnail grid.
+- **Calculators** — CAC payback, ROAS-to-margin, sample size, and blended efficiency, with scenario saving and side-by-side comparison.
+- **Integrations** — Meta OAuth (ad account linking), Slack incoming webhook (share answers directly to a Slack channel), Google Ads (coming soon).
+- **Multi-model** — five Cloudflare AI models selectable per user; preference stored in the DB and respected on every request.
+- **Next-steps** — after each answer the model suggests three follow-up questions, lazily generated and cached per message.
+- **Session export** — export any investigation as JSON.
+- **Clerk auth** — Google / GitHub sign-in with server-side JWT verification on every protected route.
+
+---
+
+## Models
+
+All models run on Cloudflare AI Workers. Users pick their preferred model in the chat header; the choice is stored per-user in the DB.
+
+| Model | Cloudflare slug | Notes |
+| --- | --- | --- |
+| **GPT-OSS 120B** *(default)* | `@cf/openai/gpt-oss-120b` | Best quality — reasoning + agentic |
+| GPT-OSS 20B | `@cf/openai/gpt-oss-20b` | Faster; good for quick lookups |
+| Mistral Small 3.1 24B | `@cf/mistralai/mistral-small-3.1-24b-instruct` | Vision-capable, no chain-of-thought overhead |
+| Qwen3 30B | `@cf/qwen/qwen3-30b-a3b-fp8` | Multilingual; strong on instruction-following |
+| QwQ 32B *(thinking)* | `@cf/qwen/qwq-32b` | Reasoning specialist — slower, use for hard problems |
+
+Internal auxiliary calls (re-ranking, next-steps) use lighter models configured separately in `config/models.yaml` so they can be swapped without a code change.
+
+---
+
+## Plays library
+
+Plays are templated prompts that run as structured LLM sessions. The catalog is YAML-driven — add a file to `backend/plays/` and restart to publish a new play.
+
+| Play | Category | What it does |
+| --- | --- | --- |
+| Weekly performance review | Audit | Narrative review from pasted KPIs — what happened, why, what's next |
+| A/B test design | Testing | Writes a test hypothesis, success metric, and sample size plan |
+| Audience research | Research | Maps ICP segments, psychographics, and channel fit |
+| Channel plan | Strategy | Recommends channel mix + budget allocation for a given goal |
+| Competitor teardown | Research | Analyses a competitor's ad creative, positioning, and spend signals |
+| Creative brief | Creative | Structured brief: hook, format, CTA, and copy direction |
+| Hook ideation | Creative | Generates hook variations for a given angle and audience |
+| iOS privacy brief | Strategy | Privacy-era measurement plan: MER, MMM, incrementality |
+| Landing page critique | Audit | CRO review of a landing page URL |
+| Saturation diagnosis | Audit | Identifies creative or audience fatigue and recommends a refresh |
+
+---
+
+## Integrations
+
+### Meta
+OAuth 2.0 flow: user authorizes, we exchange for a long-lived token (Fernet-encrypted at rest), and link their ad accounts to projects. Ad account list is fetched live from the Meta Graph API on each request — no stale cache.
+
+### Slack
+Incoming webhook — no app review or OAuth needed. Paste a webhook URL, we fire a test message to verify it's live, then store it encrypted. From any chat turn, one click shares the answer (title, excerpt, citation count, deep link) as a formatted Slack block. A "send test message" button in settings re-fires the handshake at any time.
+
+### Google Ads
+Stubbed — same provider shape as Meta, ships in a later phase.
 
 ---
 
@@ -38,75 +89,67 @@ Mini Perplexity turns a plain-English question ("*what changed in Python 3.13?*"
 ```mermaid
 flowchart LR
     subgraph Client["Browser"]
-        UI["React 18 · Tailwind<br/>Clerk auth · Markdown render<br/>Dark / light · typing animation"]
+        UI["React 18 · Tailwind\nClerk auth · React Query\nSSE streaming\nPlays · Studio · Calculators\nCommand palette"]
     end
 
     subgraph Backend["FastAPI · Render"]
         direction TB
-        RL["⚡ Rate limiter<br/>@rate_limit(30/60s) token bucket<br/>per function: bing · google · yt · fetch"]
-        H["Query handler<br/>/search/{sid} · /chat/{sid}<br/>/session · /health"]
-        SM["💬 Session memory<br/>chat_sessions dict<br/>10-min TTL · lazy cleanup<br/>MAX_PREVIOUS_QUERIES = 3"]
-        PM["📝 Prompt manager<br/>SYSTEM_PROMPT template<br/>context-injection<br/>(only answer from snippets)"]
-        FS["🧹 Filter & extractor<br/>• BS4 p-tags · max 5 paras<br/>• 5000-char cap per page<br/>• URL dedup · UA rotation<br/>• per-result try/except"]
-        CT["🔖 Citation tracker<br/>records source URLs<br/>per session"]
+        MW["GZip middleware\n(SSE bypass for /stream)"]
+        AUTH["Clerk JWT\nget_current_user dep"]
+        H["Query handler\n/search /answer /answer/stream\n/sessions /plays /me /models"]
+        BP["Brand profile · Projects\nCampaigns · Integrations routers"]
+        SEARCH["Search pipeline\nAnakin Search → Google CSE fallback\n+ YouTube parallel\nDomain authority re-rank\nLLM re-rank · content_cache"]
+        PM["Prompt builder\nYAML system prompts\n+ brand profile injection"]
+        LM["Language model service\nStreaming + sync\nUser preferred model"]
+        DB["PostgreSQL · async SQLAlchemy\nUsers · Projects · Campaigns\nBrandProfiles · Sessions\nMessages · Queries · Citations\nSearchResults · ContentCache\nRateLimits · ApiUsageLogs\nProviderConnections · AdAccountLinks\nCampaignCreatives"]
     end
 
     subgraph External["External services"]
-        LLM["Cloudflare AI Workers<br/>LLaMA 3.1 70B (depth)<br/>LLaMA 3 8B (speed)"]
-        G["Google CSE<br/>safeSearch: strict"]
-        B["Bing Web Search v7<br/>safeSearch: Strict"]
-        YT["YouTube Data v3<br/>safeSearch: strict"]
-        URL["Arbitrary URL<br/>(user-provided)"]
+        LLM["Cloudflare AI Workers\n5 models"]
+        G["Google CSE"]
+        YT["YouTube Data v3"]
+        META["Meta Graph API"]
+        SLACK["Slack Webhooks"]
+        R2["Cloudflare R2\ncreative assets"]
     end
 
-    UI -- "HTTPS" --> RL
-    RL -- "back-pressure<br/>sleep on saturation" --> RL
-    RL --> H
-    H --> SM
-    H --> G
-    H --> B
-    H --> YT
-    H --> URL
-    G --> FS
-    B --> FS
-    URL --> FS
-    YT -- "video cards" --> UI
-    FS --> PM
-    SM --> PM
-    PM <-. "chat completion" .-> LLM
-    LLM --> CT
-    CT --> UI
-
-    classDef ours fill:#1e3a5f,stroke:#61dafb,color:#fff
-    classDef ext fill:#f5f5f5,stroke:#1e3a5f,color:#1e3a5f
-    class UI,RL,H,SM,PM,FS,CT ours
-    class LLM,G,B,YT,URL ext
+    UI -- "HTTPS + SSE" --> MW
+    MW --> AUTH --> H
+    AUTH --> BP
+    H --> SEARCH --> G & YT
+    SEARCH --> DB
+    SEARCH --> PM
+    DB --> PM
+    PM --> LM <-.-> LLM
+    BP --> META & SLACK & R2
+    H & BP --> DB
 ```
 
-### Request pipeline
+### Search & answer pipeline
 
 ```mermaid
 flowchart TD
-    Q["User query<br/>(+ optional custom URL)"] --> RL{"⚡ Rate limit<br/>token bucket · 30/min<br/>per function name"}
-    RL -- "saturated" --> RL1["Decorator sleeps<br/>until next token"]
-    RL1 --> RL
-    RL -- "pass" --> S{"Custom URL<br/>provided?"}
-    S -- "Yes" --> UF["URL fetcher<br/>rotating UA · 5 s timeout<br/>BS4 · 5 paras · 5000-char cap"]
-    S -- "No" --> PAR["⚡ Parallel fan-out<br/>ThreadPoolExecutor · 3 workers"]
-    PAR --> GS["Google CSE<br/>2 results · safeSearch: strict"]
-    PAR --> BS["Bing Web Search<br/>2 results · safeSearch: Strict"]
-    PAR --> YS["YouTube Data v3<br/>2 videos · safeSearch: strict"]
-    GS --> FE["🧹 Per-result content fetch<br/>rate-limited · try/except<br/>skip on fetch error"]
-    BS --> FE
-    YS --> VR["Video results<br/>(no content fetch)"]
-    FE --> MRG["Merge + URL dedup<br/>first occurrence wins"]
-    VR --> MRG
+    Q["User query"] --> AUTH{"Clerk JWT"}
+    AUTH -- "401" --> ERR["Unauthorized"]
+    AUTH -- "pass" --> RL{"DB rate limit"}
+    RL -- "429" --> RATE["Too Many Requests"]
+    RL -- "pass" --> S{"Custom URL?"}
+    S -- "Yes" --> CC{"content_cache hit?"}
+    CC -- "hit" --> RANK
+    CC -- "miss" --> UF["Fetch + BS4\n→ write to content_cache"]
+    S -- "No" --> PAR["asyncio gather"]
+    PAR --> ANK["Anakin Search\n→ Google CSE fallback"] & YT["YouTube Data v3"]
+    ANK & YT --> DA["Domain authority\nre-rank by curated scores"]
+    DA --> LR["LLM re-rank\nQwen3 scores 0-100\nper candidate"]
+    LR --> RANK["Top-N snippets\nURL dedup · 5 000-char cap"]
     UF --> CTX
-    MRG --> CTX["📝 Build LLM context<br/>SYSTEM_PROMPT + results<br/>+ last 3 session queries<br/>(MAX_PREVIOUS_QUERIES = 3)"]
-    CTX --> LLM["Cloudflare LLaMA<br/>3.1 70B (depth) / 3 8B (speed)"]
-    LLM --> CT["🔖 citation_tracker<br/>records source URLs<br/>for this session"]
-    CT --> ANS["Answer + citation chips<br/>rendered in UI"]
-    SESS["💬 chat_sessions<br/>10-min TTL · lazy GC"] -. "update on each req" .- CTX
+    RANK --> CTX["Build context\nYAML system prompt\n+ brand profile\n+ session history"]
+    CTX --> STREAM{"Streaming?"}
+    STREAM -- "Yes" --> SSE["/answer/{id}/stream\nSSE token chunks"]
+    STREAM -- "No" --> SYNC["/answer/{id}\norjson response"]
+    SSE & SYNC --> LLM["Cloudflare AI Workers\nuser preferred model"]
+    LLM --> SAVE["Persist Message + Citations\n→ next-steps (lazy)"]
+    SAVE --> ANS["Answer + citation chips"]
 ```
 
 ---
@@ -115,58 +158,86 @@ flowchart TD
 
 | Concern | How it's handled |
 | --- | --- |
-| **Two search providers, one answer** | Google and Bing queried in parallel via `ThreadPoolExecutor`; results merged and deduplicated by URL before ranking. |
-| **Dead links / flaky targets** | Per-fetch `try/except` with 5 s timeout — one dead page never poisons the whole result set. |
-| **Scraping etiquette** | `@rate_limit(calls=30, period=60)` decorator on every content fetch plus rotating User-Agent strings from a small pool. |
-| **Context length control** | Extracted page content capped at 5000 chars / 5 paragraphs; last 3 session queries threaded into the prompt (`MAX_PREVIOUS_QUERIES = 3`). |
-| **Server-side state** | In-memory `chat_sessions` dict keyed by `session_id`, with 10-minute TTL and lazy cleanup on each request. No external DB. |
-| **Secrets handling** | All API keys server-side; frontend only sees `VITE_API_HOST` and the Clerk publishable key. |
-| **Cold starts on Render** | Free-tier backend spins down after inactivity — first request after idle may take ~30 s. Health-check ping via Better Stack keeps it warm during demo windows. |
-| **Hallucination surface area** | The system prompt is instructed to answer *only* from the provided search snippets; citation tracker captures the URLs the answer was grounded in. |
+| **SSE streaming** | `/answer/{session_id}/stream` returns `text/event-stream`. A custom `GZipExceptStreaming` middleware wraps Starlette's GZip layer and bypasses it for paths ending in `/stream` — chunks are never buffered. |
+| **Anakin → Google CSE fallback** | Web search runs through Anakin Search when `ANAKIN_API_KEY` is set (single-call, content-included API). If Anakin fails or is unconfigured, the `FallbackProvider` transparently retries with Google CSE — no 500s, no code change needed to switch. Controlled by `WEB_SEARCH_PROVIDER` env var. |
+| **Two-stage search re-ranking** | Domain authority scores (100-point scale, 100+ curated domains in `config/domain_authority.yaml`) filter obvious SEO spam first; an LLM re-ranker (Qwen3 30B) scores the remaining candidates 0-100 before the answer model sees them. |
+| **Content cache** | Fetched URL content is stored in the `content_cache` table with a 24-hour TTL. Repeat queries about the same pages skip the network entirely. |
+| **Brand context injection** | Brand profile is fetched by project at prompt-build time and interpolated into the YAML system prompt — no fine-tuning, no prompt-engineering per user. |
+| **Encrypted OAuth tokens** | Meta and Slack tokens are Fernet-encrypted (`META_TOKEN_SECRET`) before writing to `provider_connections`. The DB never stores plaintext. |
+| **DB-backed rate limiting** | `rate_limits` table tracks sliding-window buckets keyed by `(identifier, type, endpoint, window_start)` — survives restarts, scales across multiple workers. |
+| **Periodic session cleanup** | An `asyncio` background task runs every `DB_CLEANUP_INTERVAL_SECONDS` (default 5 min) to delete expired sessions. |
+| **Presigned R2 uploads** | Creatives go from the browser directly to Cloudflare R2 via a presigned URL; the backend signs the URL and records metadata but never proxies the bytes. |
+| **orjson** | `default_response_class=ORJSONResponse` on the FastAPI app — 2-3× faster JSON serialization, zero route-level changes. |
+| **YAML-driven config** | Models, prompts, search engines, domain authority scores, and plays are all YAML files in `backend/config/` and `backend/plays/`. Change behavior without touching Python. |
 
 ---
 
 ## Tech stack
 
-| Layer           | Choice                                                    |
-| --------------- | --------------------------------------------------------- |
-| Frontend        | React 18, TypeScript, Tailwind CSS, Lucide icons           |
-| Auth            | Clerk                                                     |
-| Markdown        | `react-markdown`                                          |
-| Backend         | FastAPI, Pydantic, Uvicorn, Gunicorn                      |
-| HTML extraction | BeautifulSoup 4                                           |
-| Parallelism     | `concurrent.futures.ThreadPoolExecutor`                   |
-| LLM             | Cloudflare AI Workers — `@cf/meta/llama-3.1-70b-instruct` & 8B |
-| Search          | Google Custom Search · Bing Web Search v7                 |
-| Rate limiting   | Custom sliding-window decorator (30 calls / 60 s)         |
-| Deploy          | Netlify (frontend) · Render (backend)                     |
+| Layer | Choice |
+| --- | --- |
+| Frontend | React 18, TypeScript, Tailwind CSS, Lucide icons |
+| State / data fetching | React Query (`@tanstack/react-query`) |
+| Auth (client) | Clerk |
+| Markdown | `react-markdown` |
+| Backend | FastAPI, Pydantic v2, Uvicorn, Gunicorn, orjson |
+| Auth (server) | Clerk JWT verification |
+| ORM | SQLAlchemy 2 (async) + asyncpg |
+| Database | PostgreSQL |
+| HTML extraction | BeautifulSoup 4 |
+| LLM | Cloudflare AI Workers — 5 user-selectable models |
+| Search | Anakin Search (primary) · Google CSE (fallback) · YouTube Data v3 |
+| File storage | Cloudflare R2 (presigned upload) |
+| Rate limiting | DB-backed sliding-window (`rate_limits` table) |
+| Deploy | Netlify (frontend) · Render (backend) |
 
 ---
 
 ## Project layout
 
 ```
-MiniPerplexity/
+PaidPilot/
 ├── backend/
 │   ├── Procfile
 │   ├── render.yaml
 │   ├── gunicorn.conf.py
 │   ├── requirements.txt
-│   ├── pytest.ini
-│   ├── tests/
+│   ├── config/
+│   │   ├── models.yaml          # model catalog + defaults (swap models here)
+│   │   ├── prompts.yaml         # all system prompts (edit without code change)
+│   │   ├── search_engines.yaml  # Google / YouTube config + feature flags
+│   │   ├── domain_authority.yaml # curated authority scores for 100+ domains
+│   │   └── settings.yaml        # app-level settings
+│   ├── plays/                   # one YAML per play template
+│   │   ├── weekly_review.yaml
+│   │   ├── creative_brief.yaml
+│   │   └── ...
 │   └── app/
-│       ├── main.py                       # FastAPI entry, CORS, router mount
-│       ├── api/v1/query_handler.py       # /search, /chat, /session
-│       ├── core/                         # settings & config
-│       ├── constants/constants.py        # env-driven constants
+│       ├── main.py              # FastAPI entry · CORS · GZip · lifespan · routers
+│       ├── api/v1/
+│       │   ├── query_handler.py # /search /answer /answer/stream /sessions /me /models /plays
+│       │   ├── brand_profile.py # /brand-profile CRUD
+│       │   ├── integrations.py  # Meta OAuth · Slack webhook · ad account linking
+│       │   └── projects.py      # /projects + /campaigns CRUD
+│       ├── auth/
+│       │   ├── clerk.py         # Clerk JWT decode + verification
+│       │   └── dependencies.py  # get_current_user FastAPI dep
+│       ├── core/settings.py     # Pydantic settings + YAML config loader
+│       ├── db/
+│       │   ├── engine.py        # async SQLAlchemy engine + session factory
+│       │   ├── models.py        # all ORM models
+│       │   ├── repository.py    # async DB queries + session cleanup
+│       │   └── dependencies.py  # get_db FastAPI dep
+│       ├── plays/catalog.py     # in-process plays registry (loaded from YAML)
 │       ├── services/
-│       │   ├── search_service.py         # Google + Bing parallel search, URL fetch
-│       │   ├── language_model.py         # Cloudflare chat completion wrapper
-│       │   └── youtube_service.py
-│       ├── models/                       # Pydantic request/response schemas
+│       │   ├── search_service.py   # parallel search · domain re-rank · LLM re-rank
+│       │   ├── language_model.py   # Cloudflare completions + SSE streaming
+│       │   ├── meta_api.py         # Meta Graph API client + token encryption
+│       │   └── slack_webhook.py    # Slack webhook client + message builders
+│       ├── models/              # Pydantic request/response schemas
 │       └── utils/
-│           ├── rate_limter.py            # @rate_limit decorator
-│           └── citation_tracker.py       # tracks source URLs per session
+│           ├── rate_limter.py   # @rate_limit decorator
+│           └── citation_tracker.py
 │
 └── frontend/
     ├── package.json
@@ -175,13 +246,26 @@ MiniPerplexity/
     ├── netlify.toml
     └── src/
         ├── App.tsx
-        ├── main.tsx
-        ├── index.css
-        ├── background-animation.css
-        ├── components/                    # UI components
-        ├── services/                      # API client
-        ├── types/                         # TS types
-        └── utils/
+        ├── pages/
+        │   ├── ChatPage.tsx           # scoped investigation chat
+        │   ├── PlaysPage.tsx          # play catalog + run modal
+        │   ├── CalculatorsPage.tsx    # CAC · ROAS · sample size · blended efficiency
+        │   ├── StudioPage.tsx         # AI creative generation + batch history
+        │   ├── CreativesPage.tsx      # campaign asset library (R2-backed)
+        │   ├── CampaignHomePage.tsx
+        │   ├── ProjectsListPage.tsx / ProjectDetailPage.tsx
+        │   ├── IntegrationsPage.tsx   # Meta + Slack manage panels
+        │   ├── SettingsPage.tsx
+        │   ├── LandingPage.tsx
+        │   └── DocsPage.tsx
+        ├── components/
+        │   ├── calculators/           # calculator tiles + scenario compare
+        │   ├── landing/               # landing page sections
+        │   └── ...                    # AppLayout · Sidebar · CommandPalette · SlashMenu · ModelSelector
+        ├── services/
+        │   ├── api.ts                 # typed API client
+        │   └── queries.ts             # React Query hooks
+        └── types/                     # shared TS types
 ```
 
 ---
@@ -190,11 +274,12 @@ MiniPerplexity/
 
 ### Prerequisites
 - Python 3.8+
-- Node 16+ and npm
-- A Cloudflare AI Workers account (API key + account ID)
-- A Google API key with Custom Search enabled + a CSE `cx`
-- A Bing Search v7 API key
-- A Clerk project (publishable + secret keys)
+- Node 18+ and npm
+- PostgreSQL (local or connection string)
+- Cloudflare AI Workers account (API key + account ID)
+- Google API key with Custom Search enabled + a CSE `cx`
+- YouTube Data v3 API key
+- Clerk project (publishable + secret keys)
 
 ### 1. Backend
 
@@ -202,7 +287,7 @@ MiniPerplexity/
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env    # fill in your tokens (see below)
+cp .env.example .env    # fill in tokens (see below)
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -215,7 +300,7 @@ cp .env.example .env    # set VITE_API_HOST and VITE_CLERK_PUBLISHABLE_KEY
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) and start asking.
+Open [http://localhost:5173](http://localhost:5173).
 
 ---
 
@@ -223,47 +308,89 @@ Open [http://localhost:5173](http://localhost:5173) and start asking.
 
 ### Backend (`backend/.env`)
 
-| Variable                  | Required | Purpose                                             |
-| ------------------------- | :------: | --------------------------------------------------- |
-| `CLOUDFLARE_API_KEY`      |    ✅    | Cloudflare AI Workers auth token                    |
-| `CLOUDFLARE_ACCOUNT_ID`   |    ✅    | Cloudflare account ID                               |
-| `GOOGLE_API_KEY`          |    ✅    | Google Custom Search API key                        |
-| `GOOGLE_SEARCH_CX`        |    ✅    | Custom Search Engine ID                             |
-| `BING_API_KEY`            |    ✅    | Bing Web Search v7 key                              |
-| `CLERK_SECRET_KEY`        |          | Server-side Clerk verification                      |
-| `ALLOWED_ORIGINS`         |          | Comma-separated CORS origins                        |
+| Variable | Required | Purpose |
+| --- | :---: | --- |
+| `DATABASE_URL` | ✅ | PostgreSQL async connection string (`postgresql+asyncpg://...`) |
+| `CLOUDFLARE_API_KEY` | ✅ | Cloudflare AI Workers auth token |
+| `CLOUDFLARE_ACCOUNT_ID` | ✅ | Cloudflare account ID |
+| `ANAKIN_API_KEY` | | Anakin Search API key (primary web search provider) |
+| `ANAKIN_API_BASE` | | Anakin base URL (default: `https://api.anakin.io/v1`) |
+| `WEB_SEARCH_PROVIDER` | | `anakin`, `google`, or `anakin_then_google` (default: auto-detect from key presence) |
+| `GOOGLE_API_KEY` | | Google Custom Search API key (fallback when Anakin unavailable) |
+| `GOOGLE_SEARCH_CX` | | Custom Search Engine ID |
+| `YOUTUBE_API_KEY` | ✅ | YouTube Data v3 key |
+| `CLERK_SECRET_KEY` | ✅ | Server-side Clerk JWT verification |
+| `META_TOKEN_SECRET` | | Fernet key for encrypting Meta + Slack tokens |
+| `META_APP_ID` | | Meta app ID (integrations) |
+| `META_APP_SECRET` | | Meta app secret |
+| `META_OAUTH_REDIRECT_URI` | | OAuth callback URL |
+| `PUBLIC_APP_URL` | | Frontend URL used in Slack share links (default: `https://paidpilot.netlify.app`) |
+| `ALLOWED_ORIGINS` | | Comma-separated CORS origins |
+| `DB_CLEANUP_INTERVAL_SECONDS` | | Session cleanup cadence (default: 300) |
 
 ### Frontend (`frontend/.env`)
 
-| Variable                      | Required | Purpose                      |
-| ----------------------------- | :------: | ---------------------------- |
-| `VITE_API_HOST`               |    ✅    | Backend base URL             |
-| `VITE_CLERK_PUBLISHABLE_KEY`  |    ✅    | Clerk client publishable key |
+| Variable | Required | Purpose |
+| --- | :---: | --- |
+| `VITE_API_HOST` | ✅ | Backend base URL |
+| `VITE_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk client publishable key |
 
 ---
 
 ## API
 
 ```
-POST   /api/v1/search/{session_id}    → dual-provider search results
-POST   /api/v1/chat/{session_id}      → grounded chat completion
-DELETE /api/v1/session/{session_id}   → clear server-side session state
-GET    /api/v1/health                 → liveness probe
+# Search & chat
+POST   /api/v1/search/{session_id}              → parallel search + re-rank
+POST   /api/v1/answer/{session_id}              → grounded chat completion
+POST   /api/v1/answer/{session_id}/stream       → SSE streaming answer
+
+# Sessions
+GET    /api/v1/sessions                         → list user's sessions
+PATCH  /api/v1/session/{session_id}             → rename / archive
+GET    /api/v1/session/{session_id}/history     → full message history
+GET    /api/v1/session/{session_id}/export      → export as JSON
+DELETE /api/v1/session/{session_id}             → delete
+GET    /api/v1/search                           → search history
+
+# Messages
+POST   /api/v1/messages/{message_id}/next-steps → generate follow-up suggestions
+POST   /api/v1/messages/{message_id}/share-to-slack → share answer to Slack
+
+# User + models
+GET    /api/v1/me                               → current user profile
+PATCH  /api/v1/me/preferred-model              → update preferred LLM
+GET    /api/v1/models                           → list available models
+
+# Plays
+GET    /api/v1/plays                            → plays catalog
+GET    /api/v1/plays/{play_id}                  → single play detail
+GET    /api/v1/plays/history                    → plays run history
+
+# Brand & projects
+GET/POST/PATCH  /api/v1/brand-profile           → brand profile CRUD
+GET/POST        /api/v1/projects                → list + create projects
+GET/PATCH/DELETE /api/v1/projects/{id}          → project detail
+GET/POST        /api/v1/projects/{id}/campaigns → campaigns
+POST/DELETE     /api/v1/projects/{id}/ad-accounts → ad account links
+
+# Integrations — Meta
+GET    /api/v1/integrations/status              → provider connection status
+GET    /api/v1/integrations/meta/connect        → start OAuth (returns authorize_url)
+GET    /api/v1/integrations/meta/callback       → OAuth callback (unauthenticated)
+DELETE /api/v1/integrations/meta                → disconnect
+GET    /api/v1/integrations/meta/ad-accounts    → live ad account list
+
+# Integrations — Slack
+POST   /api/v1/integrations/slack/connect       → validate + persist webhook URL
+GET    /api/v1/integrations/slack               → connection status + masked URL
+DELETE /api/v1/integrations/slack               → disconnect
+POST   /api/v1/integrations/slack/test          → re-fire test message
+
+# Health
+GET    /health                                  → liveness probe
+GET    /health/db                               → readiness probe (DB ping)
 ```
-
-Sessions expire after 10 minutes of inactivity (`SESSION_TTL = timedelta(minutes=10)`); the last 3 queries per session are retained as conversational context (`MAX_PREVIOUS_QUERIES = 3`).
-
----
-
-## Roadmap
-
-- **Streaming responses** (SSE) so users see the first token in <1 s instead of waiting for the whole answer.
-- **Reciprocal-rank fusion** for Google + Bing merge (cleaner than dedupe-by-URL).
-- **Answer grounding check** — verify each claim in the answer actually appears in the retrieved snippets; report a hallucination rate metric in the README.
-- **Redis cache** — semantic + exact-match cache over recent queries to cut repeat-query LLM spend.
-- **Multi-model routing** — Groq for speed-sensitive queries, LLaMA 70B for deep ones.
-- **Eval harness** — golden-set of 30–50 questions with expected citations, run in CI.
-- **Load test** — publish k6/Locust results (p50 / p95 / p99, sustained RPS) in the README.
 
 ---
 
@@ -272,14 +399,13 @@ Sessions expire after 10 minutes of inactivity (`SESSION_TTL = timedelta(minutes
 - **Frontend → Netlify.** `netlify.toml` points to `frontend/` with `npm run build`.
 - **Backend → Render.** `render.yaml` declares a web service from `backend/` running `gunicorn` with a Uvicorn worker.
 
-Update `ALLOWED_ORIGINS` on Render to your Netlify domain before promoting.
+Set `DATABASE_URL`, `ALLOWED_ORIGINS`, and `PUBLIC_APP_URL` on Render before promoting to production.
 
 ---
 
 ## Credits
 
 Built by **[Paritosh Tripathi](https://paritoshdev.netlify.app/)**.
-Domain-specific fork/companion: [**MiniHarvey**](https://github.com/paritoshtripathi935/MiniHarvery) — the same shape, repurposed as an Indian-law research workbench.
 
 ## License
 
