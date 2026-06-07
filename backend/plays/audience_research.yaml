@@ -1,0 +1,29 @@
+id: audience_research
+title: "Audience research"
+category: Research
+description: "Psychographic + behavioural breakdown of a target audience."
+icon: Users
+
+inputs:
+  - key: audience
+    label: "Audience to research"
+    type: textarea
+    required: true
+    placeholder: "e.g. early-career data scientists at fintech companies in the US"
+  - key: depth
+    label: Depth
+    type: select
+    required: false
+    options: ["Quick scan", "Full breakdown"]
+
+instructions: |
+  Research the audience with citations. Cover demographics, psychographics,
+  watering-hole communities, jobs-to-be-done, objections, and buying triggers.
+  Cite sources for every numeric claim.
+
+output_format: |
+  ## Audience: {audience}
+
+  Five sections — Demographics · Psychographics · Watering holes · Jobs-to-be-done ·
+  Objections & triggers. Each ≤4 bullets. End with **Where to find them on paid:**
+  specific Meta interests / LinkedIn job titles / TikTok hashtags / subreddits.

@@ -1,0 +1,39 @@
+id: channel_plan
+title: "Channel plan"
+category: Planning
+description: "Budget split, KPIs, and creative count across channels for a campaign."
+icon: PieChart
+
+inputs:
+  - key: budget
+    label: "Total monthly budget (USD)"
+    type: number
+    required: true
+    placeholder: "e.g. 50000"
+  - key: objective
+    label: "Campaign objective"
+    type: select
+    required: true
+    options:
+      - Acquisition
+      - Retargeting
+      - "Brand awareness"
+      - "Lead generation"
+      - "App installs"
+  - key: horizon
+    label: Horizon
+    type: select
+    required: true
+    options: ["1 month", "1 quarter", "1 year"]
+
+instructions: |
+  Propose a channel mix using the user's active channels (or recommend a mix if none).
+  Be opinionated — pick 2–4 channels max, give a budget split with rationale, and
+  name the KPI that proves each channel is working.
+
+output_format: |
+  ## Channel plan — ${budget}/mo, {horizon}, {objective}
+
+  Markdown table: **Channel | % of budget | $ | KPI | Target | Creative count |
+  Why this slice**. Then a **Risks & watchouts** section with 3 bullets.
+  Close with **Re-plan trigger:** the metric that should make us redo this plan.

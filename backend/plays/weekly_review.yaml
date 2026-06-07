@@ -1,0 +1,29 @@
+id: weekly_review
+title: "Weekly performance review"
+category: Audit
+description: "Narrative weekly review from a description of last week's numbers."
+icon: TrendingUp
+
+inputs:
+  - key: numbers
+    label: "Paste this week vs. last week's KPIs"
+    type: textarea
+    required: true
+    placeholder: "Spend $42k → $48k\nCAC $58 → $71\nROAS 2.1 → 1.8\n…"
+  - key: context
+    label: "Anything unusual? (launches, holidays, outages)"
+    type: textarea
+    required: false
+
+instructions: |
+  Read the numbers and write the review a smart marketer would write for their boss:
+  what happened, why (best guess), what we'll do next week. No filler. No 'great progress!'.
+
+output_format: |
+  ## Weekly review
+
+  **Headline:** one sentence on the week.
+  **What moved:** table of metric, last week, this week, % delta.
+  **Why (hypothesis):** 2–3 bullets, rank-ordered by likelihood.
+  **Next week's plan:** 3 specific actions with owners (you or the team).
+  **What to watch:** the leading indicator that'll tell us if hypothesis is right.

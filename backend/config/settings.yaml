@@ -1,0 +1,30 @@
+cors:
+  origins:
+    - "http://localhost:5173"
+    - "https://mini-perplexity.netlify.app"
+
+rate_limits:
+  search_calls_per_minute: 30
+
+http:
+  request_timeout: 5
+  max_content_length: 5000
+  max_paragraphs: 5
+
+cleanup:
+  interval_seconds: 300
+
+# Display names for paid channels — used in system prompt and for input validation.
+channels:
+  meta: "Meta"
+  google: "Google Ads"
+  tiktok: "TikTok"
+  linkedin: "LinkedIn"
+  programmatic: "programmatic"
+  youtube: "YouTube"
+  reddit: "Reddit"
+  snap: "Snap"
+  pinterest: "Pinterest"
+  email: "email/lifecycle"
+  seo: "SEO"
+  other: "other"

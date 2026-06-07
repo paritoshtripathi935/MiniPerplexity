@@ -1,0 +1,34 @@
+models:
+  - id: "@cf/openai/gpt-oss-120b"
+    label: "GPT-OSS 120B"
+    description: "Best quality. Reasoning + agentic. Recommended default."
+    recommended: true
+
+  - id: "@cf/openai/gpt-oss-20b"
+    label: "GPT-OSS 20B"
+    description: "Faster GPT-OSS. Good middle ground for quick answers."
+
+  - id: "@cf/mistralai/mistral-small-3.1-24b-instruct"
+    label: "Mistral Small 3.1 24B"
+    description: "Fast, no chain-of-thought overhead. Vision-capable."
+
+  - id: "@cf/qwen/qwen3-30b-a3b-fp8"
+    label: "Qwen3 30B"
+    description: "Multilingual; strong on instruction-following."
+
+  - id: "@cf/qwen/qwq-32b"
+    label: "QwQ 32B (thinking)"
+    description: "Reasoning specialist. Slower; use for hard problems."
+
+# Slugs used for internal/auxiliary calls that are never user-visible.
+# Changing these here is the only deploy needed to swap a model.
+defaults:
+  chat: "@cf/openai/gpt-oss-120b"
+  rerank: "@cf/qwen/qwen3-30b-a3b-fp8"
+  next_steps: "@cf/meta/llama-3.2-3b-instruct"
+
+# Legacy slug kept for back-compat with messages persisted before migration.
+# Not in the catalog (not selectable by users) but still resolved by the API.
+legacy_slugs:
+  - "@cf/meta/llama-3.1-70b-instruct"
+  - "@cf/meta/llama-3.2-3b-instruct"

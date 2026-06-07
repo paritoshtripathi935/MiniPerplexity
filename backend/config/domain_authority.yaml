@@ -1,0 +1,78 @@
+defaults:
+  authority: 50            # score for unknown domains
+  floor: 30               # minimum score; we never push results below this
+  authoritative_threshold: 80  # score at which a source gets the "authoritative" badge
+
+# Hand-curated. Higher = more authoritative for marketing topics.
+# 100 = official platform docs (canonical truth)
+#  90 = trade press with editorial standards
+#  80 = analyst / research houses
+#  70 = respected practitioner blogs / agencies
+#  60 = communities with uneven quality (Reddit, Quora)
+scores:
+  # ----- Platform docs -----
+  business.facebook.com: 100
+  developers.facebook.com: 100
+  transparency.meta.com: 100
+  facebook.com: 90
+  ads.google.com: 100
+  support.google.com: 100
+  google.com: 85
+  developers.google.com: 100
+  transparencyreport.google.com: 100
+  ads.tiktok.com: 100
+  tiktok.com: 85
+  business.tiktok.com: 100
+  business.linkedin.com: 100
+  linkedin.com: 80
+  ads.x.com: 100
+  advertising.amazon.com: 100
+  marketing.snapchat.com: 100
+  business.pinterest.com: 100
+  ads.reddit.com: 100
+  developers.reddit.com: 100
+
+  # ----- Analyst & research -----
+  emarketer.com: 95
+  insiderintelligence.com: 95
+  statista.com: 90
+  forrester.com: 90
+  gartner.com: 90
+  pewresearch.org: 90
+  thinkwithgoogle.com: 95
+  comscore.com: 85
+
+  # ----- Trade press -----
+  adweek.com: 90
+  adage.com: 90
+  marketingweek.com: 88
+  campaignlive.com: 88
+  searchengineland.com: 90
+  searchenginejournal.com: 85
+  marketingland.com: 85
+  marketingdive.com: 88
+  digiday.com: 90
+  modernretail.co: 85
+  retaildive.com: 82
+  businessinsider.com: 80
+  techcrunch.com: 80
+
+  # ----- Practitioner blogs / agencies -----
+  wordstream.com: 80
+  adespresso.com: 80
+  neilpatel.com: 70
+  smartblogger.com: 65
+  clickz.com: 75
+  moz.com: 80
+  ahrefs.com: 80
+  semrush.com: 80
+  hubspot.com: 78
+  shopify.com: 78
+  klaviyo.com: 78
+  common-thread.com: 78
+  triplewhale.com: 75
+
+  # ----- Communities (lower confidence) -----
+  reddit.com: 60
+  quora.com: 55
+  stackexchange.com: 60

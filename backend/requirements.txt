@@ -32,3 +32,6 @@ boto3>=1.34
 # than the stdlib json module). Used as the default_response_class on
 # the FastAPI app.
 orjson>=3.9
+
+# Config — YAML files for model catalog, domain authority, search engines, plays.
+pyyaml>=6.0

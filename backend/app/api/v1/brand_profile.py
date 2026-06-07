@@ -1,13 +1,13 @@
-"""Per-user brand profile — the marketing context that personalises every chat."""
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
+from app.core.config import config as _cfg
 from app.db import get_db
 from app.db.models import BrandProfile, User
 from app.db.repository import (
@@ -18,13 +18,7 @@ from app.db.repository import (
 
 router = APIRouter()
 
-
-# Allowed values for primary_channels — kept loose so the frontend can evolve
-# without a backend change. The system prompt composer is forgiving of unknowns.
-SUPPORTED_CHANNELS = {
-    "meta", "google", "tiktok", "linkedin", "programmatic",
-    "youtube", "reddit", "snap", "pinterest", "email", "seo", "other",
-}
+SUPPORTED_CHANNELS: set[str] = set(_cfg.settings.channels.keys())
 
 
 class BrandProfileIn(BaseModel):
@@ -54,9 +48,6 @@ class BrandProfileOut(BaseModel):
 
 
 def _serialize(profile: Optional[BrandProfile], user_id) -> BrandProfileOut:
-    # Post-migration 008 the BrandProfile row no longer has user_id — it's
-    # keyed by project_id. We echo the caller's user_id back so the response
-    # shape stays compatible with the legacy frontend type (BrandProfile.user_id).
     if profile is None:
         return BrandProfileOut(user_id=str(user_id))
     return BrandProfileOut(
@@ -78,12 +69,6 @@ async def read_brand_profile(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the brand profile for this user's default project.
-
-    The richer per-project surface lives at `/projects/{id}/brand-profile`
-    (added in a follow-up PR). This endpoint is preserved so the existing
-    onboarding wizard + Settings page keep working through the H rollout.
-    """
     project_id = await get_default_project_id(db, user.id)
     profile = await get_brand_profile(db, project_id)
     return _serialize(profile, user.id)
@@ -95,8 +80,6 @@ async def write_brand_profile(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upsert the brand profile on the user's default project. Set
-    `mark_completed=true` from the final wizard step."""
     channels: Optional[list[str]] = None
     if payload.primary_channels is not None:
         channels = [c.strip().lower() for c in payload.primary_channels if c and c.strip()]

@@ -1,0 +1,37 @@
+id: ab_test_design
+title: "A/B test design"
+category: Planning
+description: "Hypothesis, variant spec, sample size, and decision rule."
+icon: Beaker
+
+inputs:
+  - key: thing_to_test
+    label: "What are you testing?"
+    type: textarea
+    required: true
+    placeholder: "e.g. lifestyle vs. product-hero in the hero shot of our Meta ads"
+  - key: current_metric
+    label: "Current baseline metric (CTR/CVR/CPA/etc.)"
+    type: text
+    required: true
+    placeholder: "e.g. CTR = 1.2%"
+  - key: mde
+    label: "Smallest meaningful change (MDE)"
+    type: text
+    required: true
+    placeholder: "e.g. 15% relative lift"
+
+instructions: |
+  Design a clean A/B test. Be explicit about the hypothesis, the single variable, the
+  exact variant spec, the sample size needed (compute it), and the kill/promote rule.
+
+output_format: |
+  ## A/B test plan
+
+  **Hypothesis:** If we [change], then [metric] will [direction] by [MDE], because [why].
+  **Single variable:** what's actually changing (everything else held).
+  **Control:** spec.
+  **Variant:** spec.
+  **Sample size:** N per arm with the assumed baseline + MDE + 80% power, α=0.05. Show the math.
+  **Estimated runtime:** based on typical impression rate for the channel.
+  **Decision rule:** when to call it (significance threshold + minimum runtime + spend cap).

@@ -1,0 +1,50 @@
+id: creative_brief
+title: "Creative brief"
+category: Creative
+description: "A production-ready brief for a creative team or freelancer."
+icon: FileText
+
+inputs:
+  - key: campaign_goal
+    label: "Campaign goal"
+    type: text
+    required: true
+    placeholder: "e.g. drive trial sign-ups for our SMB pricing tier"
+  - key: format
+    label: "Asset format"
+    type: select
+    required: true
+    options:
+      - "UGC video (15–30s)"
+      - "Static carousel"
+      - "Static single image"
+      - "Animated motion (15s)"
+      - "Long-form (60–90s)"
+  - key: kpi
+    label: "Primary KPI"
+    type: select
+    required: true
+    options: ["CTR", "CVR", "Hook-rate (3s view)", "Thumb-stop rate", "CPA"]
+  - key: constraints
+    label: "Constraints / must-include / must-avoid"
+    type: textarea
+    required: false
+    placeholder: "e.g. must say 'free 14-day trial', avoid testimonials"
+
+instructions: |
+  Write a complete creative brief using the provided campaign goal, asset format,
+  primary KPI, and constraints. Personalise to the user's brand profile if present.
+
+output_format: |
+  ## Creative brief
+
+  **Goal:** one sentence.
+  **Audience:** 2–3 sentences (use the user's ICP if known).
+  **Insight:** 1 sentence — the human truth this concept exploits.
+  **Big idea:** 1 sentence.
+  **Hook:** the literal first 3 seconds, scripted.
+  **Body:** what happens next, beat by beat.
+  **CTA:** the closing call-to-action.
+  **Mandatories:** bullet list.
+  **Pitfalls to avoid:** bullet list.
+  **Success criteria:** what must be true for this to be considered a win, by KPI.

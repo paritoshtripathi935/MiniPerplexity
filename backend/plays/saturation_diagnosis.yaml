@@ -1,0 +1,35 @@
+id: saturation_diagnosis
+title: "Saturation diagnosis"
+category: Audit
+description: "Is this campaign saturating? What do we do next?"
+icon: Activity
+
+inputs:
+  - key: campaign
+    label: "Campaign / channel"
+    type: text
+    required: true
+    placeholder: "e.g. Meta Advantage+ acquisition campaign"
+  - key: trend
+    label: "What's the trend?"
+    type: textarea
+    required: true
+    placeholder: "e.g. CAC up 30% over 4 weeks despite 2x more creative refresh"
+  - key: spend_change
+    label: "Recent spend change"
+    type: text
+    required: false
+    placeholder: "e.g. scaled from $1k → $4k/day over 30 days"
+
+instructions: |
+  Diagnose whether this is creative fatigue, audience saturation, frequency capping,
+  auction-side competition, or measurement noise. Be opinionated about which is most
+  likely given the symptoms.
+
+output_format: |
+  ## Saturation diagnosis
+
+  **Likely cause(s):** ranked, with confidence.
+  **Evidence to confirm:** what to look at in Ads Manager and how to read it.
+  **Counter-moves:** ranked by expected impact × effort.
+  **Stop-loss:** the metric & threshold that says 'pause and re-plan'.

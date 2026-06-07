@@ -1,0 +1,33 @@
+id: hook_ideation
+title: "Hook ideation"
+category: Creative
+description: "5 scroll-stopping hooks for a single product, varied by emotion."
+icon: Zap
+
+inputs:
+  - key: product
+    label: "Product or offer"
+    type: text
+    required: true
+    placeholder: "e.g. AI-powered resume reviewer for new grads"
+  - key: audience
+    label: "Audience (1 line)"
+    type: text
+    required: true
+    placeholder: "e.g. job-seeking computer-science seniors"
+  - key: channel
+    label: Channel
+    type: select
+    required: true
+    options: ["Meta Reels", "TikTok", "YouTube Shorts", "Meta Static", "Display"]
+
+instructions: |
+  Write 5 hooks (≤12 words each) for the product and audience the user provided,
+  tuned for the named channel. Vary the emotional register: 1 curiosity, 1 contrarian,
+  1 fear-of-missing-out, 1 social-proof, 1 transformational. After each hook, give a
+  one-line rationale.
+
+output_format: |
+  ## Hooks
+  Numbered list 1–5. For each: **Hook** in bold, then a single italic line below it
+  starting with `Why:`. No preamble, no closing summary.

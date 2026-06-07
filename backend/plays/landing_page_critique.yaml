@@ -1,0 +1,29 @@
+id: landing_page_critique
+title: "Landing page critique"
+category: Audit
+description: "Conversion-focused critique of a landing page URL."
+icon: Eye
+
+inputs:
+  - key: url
+    label: "Landing page URL"
+    type: text
+    required: true
+    placeholder: "https://…"
+  - key: goal
+    label: "Page goal"
+    type: select
+    required: true
+    options: ["Sign-up", "Demo request", "Purchase", "App install", "Lead form"]
+
+instructions: |
+  Audit the landing page (use the search results to actually fetch it) for
+  conversion-rate optimisation. Reference Meta/Google ad-policy compliance where relevant.
+
+output_format: |
+  ## Landing page audit
+
+  Sections: **Above the fold** · **Hero copy & CTA** · **Social proof** ·
+  **Form / friction** · **Mobile** · **Trust & compliance**. For each section: 1 thing
+  working, 1 thing broken, 1 specific change to test. End with a **Top 3 tests** list
+  ranked by expected impact × effort.

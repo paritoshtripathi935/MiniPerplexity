@@ -6,119 +6,57 @@ import logging
 import re
 import httpx
 import requests
-from pydantic import Field
+
+from app.core.config import config as _cfg
 
 logger = logging.getLogger(__name__)
 
-# Custom exceptions
+
 class CloudflareAPIError(Exception):
-    """Raised when Cloudflare API returns an error"""
     pass
 
 class ConfigurationError(Exception):
-    """Raised when there's an issue with configuration"""
     pass
 
-# Constants
 BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/"
-SYSTEM_PROMPT = "You are a helpful AI assistant. Use the following context to answer questions:\n\n{context}"
+SYSTEM_PROMPT: str = _cfg.prompts.search_context
 
-# Cloudflare Workers AI defaults `max_tokens` to 256 for chat models, which
-# truncates real marketing answers (a channel plan or weekly review easily
-# wants 800–2000 tokens). Lift the cap so the model can finish its thought.
 DEFAULT_MAX_TOKENS = 4096
-# Tighter cap for short structured calls (next-step suggestions, scoring).
 SHORT_CALL_MAX_TOKENS = 512
 
+_all_slugs = [m.id for m in _cfg.models.models] + _cfg.models.legacy_slugs
+CloudflareModel = Enum(  # type: ignore[misc]
+    "CloudflareModel",
+    {slug.split("/")[-1].upper().replace("-", "_"): slug for slug in _all_slugs},
+    type=str,
+)
 
-class CloudflareModel(str, Enum):
-    """Cloudflare Workers AI models we use.
-
-    All values are smoke-tested against the Cloudflare endpoint to confirm
-    the slug actually resolves before being added here. Llama 3.1 70B is on
-    Cloudflare's deprecation list — newer requests should not select it.
-    """
-    GPT_OSS_120B = "@cf/openai/gpt-oss-120b"
-    GPT_OSS_20B = "@cf/openai/gpt-oss-20b"
-    MISTRAL_SMALL_3_1_24B = "@cf/mistralai/mistral-small-3.1-24b-instruct"
-    QWEN3_30B = "@cf/qwen/qwen3-30b-a3b-fp8"
-    QWQ_32B = "@cf/qwen/qwq-32b"
-    LLAMA_3_2_3B = "@cf/meta/llama-3.2-3b-instruct"
-    # Kept for back-compat with messages persisted before the migration.
-    # Do not select for new turns — Cloudflare has deprecated it.
-    LLAMA_3_1_70B_LEGACY = "@cf/meta/llama-3.1-70b-instruct"
-
-    @classmethod
-    def list_models(cls) -> List[str]:
-        return [model.name for model in cls]
-
-
-# Default model when a user has no preference saved. Tuned for marketing
-# long-form answers — quality > speed. Users can pick alternatives in the UI.
-DEFAULT_CHAT_MODEL = CloudflareModel.GPT_OSS_120B
-# Auxiliary calls don't expose a UI — pick fast, structured-output friendly
-# models so re-ranking and follow-up generation don't dominate latency.
-DEFAULT_RERANK_MODEL = CloudflareModel.QWEN3_30B
-DEFAULT_NEXT_STEPS_MODEL = CloudflareModel.LLAMA_3_2_3B
+DEFAULT_CHAT_MODEL = CloudflareModel(_cfg.models.defaults.chat)
+DEFAULT_RERANK_MODEL = CloudflareModel(_cfg.models.defaults.rerank)
+DEFAULT_NEXT_STEPS_MODEL = CloudflareModel(_cfg.models.defaults.next_steps)
 
 
 @dataclass(frozen=True)
 class ChatModelOption:
-    """A model exposed in the UI selector. The slug is what gets persisted on
-    `users.preferred_chat_model` and sent to Cloudflare."""
-    id: str             # the @cf/... slug
-    label: str          # human-readable name shown in the dropdown
-    description: str    # one-line tradeoff hint
+    id: str
+    label: str
+    description: str
     recommended: bool = False
 
 
-# Curated set of models the UI is allowed to pick. Any slug not in this list
-# is rejected at the API layer — keeps users from sending arbitrary strings
-# to Cloudflare and surprises us with an unbounded model surface.
 CHAT_MODEL_CATALOG: List[ChatModelOption] = [
-    ChatModelOption(
-        id=CloudflareModel.GPT_OSS_120B.value,
-        label="GPT-OSS 120B",
-        description="Best quality. Reasoning + agentic. Recommended default.",
-        recommended=True,
-    ),
-    ChatModelOption(
-        id=CloudflareModel.GPT_OSS_20B.value,
-        label="GPT-OSS 20B",
-        description="Faster GPT-OSS. Good middle ground for quick answers.",
-    ),
-    ChatModelOption(
-        id=CloudflareModel.MISTRAL_SMALL_3_1_24B.value,
-        label="Mistral Small 3.1 24B",
-        description="Fast, no chain-of-thought overhead. Vision-capable.",
-    ),
-    ChatModelOption(
-        id=CloudflareModel.QWEN3_30B.value,
-        label="Qwen3 30B",
-        description="Multilingual; strong on instruction-following.",
-    ),
-    ChatModelOption(
-        id=CloudflareModel.QWQ_32B.value,
-        label="QwQ 32B (thinking)",
-        description="Reasoning specialist. Slower; use for hard problems.",
-    ),
+    ChatModelOption(id=m.id, label=m.label, description=m.description, recommended=m.recommended)
+    for m in _cfg.models.models
 ]
 
 _CHAT_MODEL_IDS = {opt.id for opt in CHAT_MODEL_CATALOG}
 
 
 def is_valid_chat_model(slug: Optional[str]) -> bool:
-    """Whitelist check before persisting a user's preferred_chat_model."""
     return isinstance(slug, str) and slug in _CHAT_MODEL_IDS
 
 
 def resolve_chat_model(slug: Optional[str]) -> CloudflareModel:
-    """Map a stored slug to a CloudflareModel enum, defaulting safely.
-
-    Used by /answer to materialise the user's saved preference. Unknown or
-    NULL slugs (legacy users, deprecated models) silently fall back to
-    DEFAULT_CHAT_MODEL — we never error a chat request on a stale preference.
-    """
     if slug:
         for m in CloudflareModel:
             if m.value == slug:
@@ -127,46 +65,16 @@ def resolve_chat_model(slug: Optional[str]) -> CloudflareModel:
 
 
 def _coerce_token(value) -> str:
-    """Coerce a delta value to its string form.
-
-    Cloudflare's qwq-32b endpoint (and possibly other reasoning models) emits
-    digit-only tokens as raw JSON numbers — e.g. `{"response": 5}` instead of
-    `{"response": "5"}` — when the tokenizer emits a numeric-only token. The
-    previous `isinstance(value, str)` guard treated those frames as empty and
-    silently dropped them, so any text containing a digit (`$50`, `2:1`,
-    `2026`, citation indices `[1]`) lost the digits during streaming. The
-    persisted answer ended up with bare punctuation and empty brackets.
-
-    Accept str, int, float, bool — anything trivially renderable as text.
-    `None` and dict/list still return "" so role-only / keep-alive frames
-    don't get stringified as `"None"`.
-    """
     if value is None:
         return ""
     if isinstance(value, str):
         return value
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        # bool is a subclass of int; we don't want True/False rendered as
-        # tokens, even though Cloudflare has never emitted bool tokens in
-        # the wild. The bool exclusion is belt-and-suspenders.
         return str(value)
     return ""
 
 
 def _extract_stream_delta(chunk: Dict) -> str:
-    """Pull the incremental text out of a single Cloudflare SSE chunk.
-
-    Streaming shapes mirror the non-streaming ones:
-      * Legacy (Llama, Mistral, qwq-32b): `{"response": <token>}` at the
-        top level. qwq-32b emits digit-only tokens as raw JSON numbers, so
-        we coerce via _coerce_token rather than guarding on `isinstance str`.
-      * OpenAI-compatible (gpt-oss, qwen3): `{"choices": [{"delta":
-        {"content": "tok"}}]}`. Some models also emit `reasoning_content`
-        on the delta; we discard it — the UI only renders the final answer.
-
-    Returns "" for chunks that carry no user-visible text (role-only deltas,
-    keepalives, finish markers).
-    """
     if not isinstance(chunk, dict):
         return ""
     if "response" in chunk:
@@ -180,21 +88,6 @@ def _extract_stream_delta(chunk: Dict) -> str:
 
 
 def _extract_response_text(payload: Dict) -> str:
-    """Pull the assistant's text out of a Cloudflare AI response.
-
-    Two response shapes are in the wild:
-
-      * Legacy (Llama 3.x, Mistral, qwq-32b): `{"result": {"response": ...}}`.
-        Digit-only outputs occasionally arrive as JSON numbers (see qwq
-        notes in `_coerce_token`); we coerce via the same helper.
-      * OpenAI-compatible (gpt-oss, qwen3): the chat-completion envelope
-        with `result.choices[0].message.content`. These models also carry
-        a `reasoning_content` field with the chain-of-thought, which we
-        deliberately discard — the UI only renders the final answer.
-
-    Returns "" on a missing/malformed payload rather than raising; callers
-    handle empties as a soft failure.
-    """
     if not isinstance(payload, dict):
         return ""
     result = payload.get("result")
@@ -210,15 +103,7 @@ def _extract_response_text(payload: Dict) -> str:
     return ""
 
 
-@dataclass
-class Message:
-    """Represents a chat message"""
-    role: str
-    content: str
-
-
 class CloudflareChat:
-    """CloudflareChat class to interact with Cloudflare's AI workers."""
 
     def __init__(
         self,
@@ -226,67 +111,39 @@ class CloudflareChat:
         account_id: str,
         model: CloudflareModel = DEFAULT_CHAT_MODEL,
     ) -> None:
-        """Initialize the CloudflareChat instance.
-        
-        Args:
-            api_key: Cloudflare API key
-            account_id: Cloudflare account ID
-            model: The model to use for generating answers
-
-        Raises:
-            ConfigurationError: If required parameters are missing or invalid
-        """
         if not api_key or not account_id:
             raise ConfigurationError("api_key and account_id must be specified")
-
         if not isinstance(model, CloudflareModel):
             raise ConfigurationError(
                 f"Invalid model specified. Choose from: {', '.join(CloudflareModel.list_models())}"
             )
-
         self.api_key = api_key
         self.account_id = account_id
         self.model = model
 
     @property
     def full_url(self) -> str:
-        """Returns the complete URL with the instance's default model."""
         return self._url_for(self.model)
 
     def _url_for(self, model: CloudflareModel) -> str:
         return f"{BASE_URL.format(account_id=self.account_id)}{model.value}"
 
     def _get_headers(self) -> Dict[str, str]:
-        """Returns the headers with the API key."""
         return {"Authorization": f"Bearer {self.api_key}"}
 
     def _format_context(self, search_results: List[Dict]) -> str:
-        """Format search results into a numbered context string.
-
-        Each source is prefixed with `[N]` so the model can cite it inline as
-        `[N]` (1-indexed). The frontend uses the same indices to render
-        anchored citation pills next to the source strip.
-        """
         parts: List[str] = []
-
         for idx, result in enumerate(search_results, start=1):
             title = (result.get("title") or "").strip()
             url = (result.get("url") or "").strip()
             content = (result.get("search_content") or result.get("snippet") or "").strip()
-
             header_bits: List[str] = [f"[{idx}]"]
             if title:
                 header_bits.append(title)
             if url:
                 header_bits.append(f"({url})")
             header = " ".join(header_bits)
-
-            if result.get("source") == "custom_url":
-                # Custom URL fetches don't have a separate title; keep the URL header.
-                parts.append(f"{header}\n{content}")
-            else:
-                parts.append(f"{header}\n{content}" if content else header)
-
+            parts.append(f"{header}\n{content}" if content else header)
         return "\n\n".join(parts)
 
     def _call_for_prompt(
@@ -295,52 +152,24 @@ class CloudflareChat:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         model: Optional[CloudflareModel] = None,
     ) -> Dict:
-        """Call the Cloudflare API with the messages list.
-
-        Cloudflare's chat API caps output at 256 tokens by default — too
-        short for real marketing answers. Pass a larger `max_tokens` for the
-        long-form path; short structured calls can pass SHORT_CALL_MAX_TOKENS.
-
-        `model` overrides the instance's default for this single call — used
-        when the user has selected a specific chat model in the UI, or when
-        an auxiliary call wants a smaller/faster model than the chat default.
-
-        Rotation: walks `text_credential_pool()` (primary text creds +
-        image-account fallback slots). On a 429 / auth quota error from
-        one account, logs and tries the next. Raises CloudflareAPIError
-        only when every slot returned a quota error or a non-quota
-        failure short-circuits the loop.
-        """
-        # Local import to avoid a startup-time circular: image_gen
-        # imports nothing from this module, but keeping the import
-        # local keeps the dependency direction obvious.
+        # Local import avoids startup-time circular dependency.
         from app.services.image_gen import is_quota_error, text_credential_pool
 
         chosen_model = model if model is not None else self.model
         pool = text_credential_pool(self.account_id, self.api_key)
         if not pool:
-            raise CloudflareAPIError(
-                "no cloudflare credentials configured for text generation"
-            )
+            raise CloudflareAPIError("no cloudflare credentials configured for text generation")
 
         body = {"messages": messages, "max_tokens": max_tokens}
         last_error: Optional[Exception] = None
 
         for slot_index, (account_id, api_key) in enumerate(pool, start=1):
-            url = (
-                BASE_URL.format(account_id=account_id) + chosen_model.value
-            )
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
+            url = BASE_URL.format(account_id=account_id) + chosen_model.value
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             try:
                 response = requests.post(url, headers=headers, json=body)
             except requests.exceptions.RequestException as e:
-                logger.warning(
-                    "chat slot %d/%d transport error: %s — trying next slot",
-                    slot_index, len(pool), e,
-                )
+                logger.warning("chat slot %d/%d transport error: %s — trying next slot", slot_index, len(pool), e)
                 last_error = CloudflareAPIError(f"API call failed: {e}")
                 continue
 
@@ -348,33 +177,47 @@ class CloudflareChat:
                 body_text = response.text or ""
                 if is_quota_error(response.status_code, body_text):
                     logger.warning(
-                        "chat slot %d/%d quota / auth (%s) — trying next "
-                        "slot. body=%s",
-                        slot_index, len(pool), response.status_code,
-                        body_text[:300],
+                        "chat slot %d/%d quota/auth (%s) — trying next slot. body=%s",
+                        slot_index, len(pool), response.status_code, body_text[:300],
                     )
-                    last_error = CloudflareAPIError(
-                        f"Cloudflare returned {response.status_code}: "
-                        f"{body_text[:300]}"
-                    )
+                    last_error = CloudflareAPIError(f"Cloudflare returned {response.status_code}: {body_text[:300]}")
                     continue
-                # Non-quota error — model unavailable, malformed prompt,
-                # etc. Short-circuit so the user gets the real message.
-                raise CloudflareAPIError(
-                    f"API call failed ({response.status_code}): "
-                    f"{body_text[:500]}"
-                )
+                raise CloudflareAPIError(f"API call failed ({response.status_code}): {body_text[:500]}")
 
             if slot_index > 1:
-                logger.info(
-                    "chat call succeeded on slot %d/%d (1..%d exhausted)",
-                    slot_index, len(pool), slot_index - 1,
-                )
+                logger.info("chat succeeded on slot %d/%d (%d exhausted)", slot_index, len(pool), slot_index - 1)
             return response.json()
 
-        raise last_error or CloudflareAPIError(
-            "all cloudflare text-credential slots exhausted"
-        )
+        raise last_error or CloudflareAPIError("all cloudflare text-credential slots exhausted")
+
+    def _build_answer_messages(
+        self,
+        search_results: List[Dict],
+        chat_history: Optional[List[Dict]],
+        query: Optional[str],
+        previous_queries: Optional[List[str]],
+        system_override: Optional[str],
+    ) -> List[Dict[str, str]]:
+        if system_override:
+            system_content = system_override
+            if search_results:
+                system_content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
+        elif search_results:
+            system_content = SYSTEM_PROMPT.format(context=self._format_context(search_results))
+        else:
+            system_content = _cfg.prompts.generic_assistant
+
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system_content}]
+        if chat_history:
+            messages.extend(chat_history)
+        if previous_queries:
+            query = (
+                f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
+                f"Current question: {query}"
+            )
+        if query:
+            messages.append({"role": "user", "content": query})
+        return messages
 
     def generate_answer(
         self,
@@ -385,94 +228,11 @@ class CloudflareChat:
         system_override: Optional[str] = None,
         model: Optional[CloudflareModel] = None,
     ) -> str:
-        """Generate an answer using context and chat history.
-
-        `model` overrides the instance default for this call — used when the
-        signed-in user has picked a specific chat model in the UI. When None,
-        falls back to the instance's configured model (DEFAULT_CHAT_MODEL by
-        default).
-        """
-
-        # Build message list
-        messages = []
-
-        if system_override:
-            content = system_override
-            if search_results:
-                content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
-            messages.append(Message(role="system", content=content))
-        elif search_results:
-            # Use context-aware system prompt if search results exist
-            messages.append(Message(
-                role="system",
-                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
-            ))
-        else:
-            # Use a basic system prompt for direct questions
-            messages.append(Message(
-                role="system",
-                content="You are a helpful AI assistant."
-            ))
-
-        if chat_history:
-            messages.extend([Message(**msg) for msg in chat_history])
-
-        # Format query with previous context if available
-        query_context = query
-        if previous_queries:
-            query_context = (
-                f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
-                f"Current question: {query}"
-            )
-
-        if query_context:
-            messages.append(Message(role="user", content=query_context))
-
-        # Convert messages to dict format for API
-        formatted_messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
-
-        response = self._call_for_prompt(formatted_messages, model=model)
+        formatted = self._build_answer_messages(
+            search_results, chat_history, query, previous_queries, system_override
+        )
+        response = self._call_for_prompt(formatted, model=model)
         return _extract_response_text(response)
-
-    def _build_answer_messages(
-        self,
-        search_results: List[Dict],
-        chat_history: Optional[List[Dict]],
-        query: Optional[str],
-        previous_queries: Optional[List[str]],
-        system_override: Optional[str],
-    ) -> List[Dict[str, str]]:
-        """Shared message-list builder for both the JSON and streaming paths."""
-        messages: List[Message] = []
-        if system_override:
-            content = system_override
-            if search_results:
-                content += "\n\n## Sources for this turn\n\n" + self._format_context(search_results)
-            messages.append(Message(role="system", content=content))
-        elif search_results:
-            messages.append(Message(
-                role="system",
-                content=SYSTEM_PROMPT.format(context=self._format_context(search_results))
-            ))
-        else:
-            messages.append(Message(role="system", content="You are a helpful AI assistant."))
-
-        if chat_history:
-            messages.extend([Message(**msg) for msg in chat_history])
-
-        query_context = query
-        if previous_queries:
-            query_context = (
-                f"Previous questions in this conversation: {' | '.join(previous_queries)}\n\n"
-                f"Current question: {query}"
-            )
-        if query_context:
-            messages.append(Message(role="user", content=query_context))
-
-        return [{"role": m.role, "content": m.content} for m in messages]
 
     async def stream_answer(
         self,
@@ -484,26 +244,6 @@ class CloudflareChat:
         model: Optional[CloudflareModel] = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> AsyncIterator[str]:
-        """Async generator that yields text deltas as Cloudflare emits them.
-
-        Cloudflare Workers AI streams SSE when the request body sets
-        `"stream": true`. Each `data:` line is a JSON object whose shape
-        matches the non-streaming response: legacy `{"response": "tok"}` or
-        OpenAI-shape `{"choices": [{"delta": {"content": "tok"}}]}`. Stream
-        terminates with `data: [DONE]`.
-
-        We deliberately consume the body with `httpx.AsyncClient` (rather
-        than `requests`) so the FastAPI event loop isn't blocked while the
-        model is generating — important when several users are streaming
-        simultaneously on a single worker.
-
-        Rotation: same pool as `_call_for_prompt` (primary text creds +
-        image-account fallback slots). Quota errors are detected on the
-        INITIAL response status before any tokens stream — we can't
-        recover mid-stream once tokens are flowing. Once a 200 is
-        returned and the SSE body starts, errors mid-stream abort the
-        turn the same way they did pre-rotation.
-        """
         from app.services.image_gen import is_quota_error, text_credential_pool
 
         formatted = self._build_answer_messages(
@@ -512,63 +252,35 @@ class CloudflareChat:
         chosen_model = model if model is not None else self.model
         pool = text_credential_pool(self.account_id, self.api_key)
         if not pool:
-            raise CloudflareAPIError(
-                "no cloudflare credentials configured for text streaming"
-            )
+            raise CloudflareAPIError("no cloudflare credentials configured for text streaming")
 
         payload = {"messages": formatted, "max_tokens": max_tokens, "stream": True}
-        # No artificial overall timeout — long answers can legitimately take
-        # >60s. The read timeout guards against a stalled connection between
-        # chunks instead.
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
-
         last_error: Optional[Exception] = None
+
         for slot_index, (account_id, api_key) in enumerate(pool, start=1):
             url = BASE_URL.format(account_id=account_id) + chosen_model.value
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
-                    async with client.stream(
-                        "POST", url, headers=headers, json=payload
-                    ) as response:
+                    async with client.stream("POST", url, headers=headers, json=payload) as response:
                         if response.status_code >= 400:
                             body = await response.aread()
                             body_text = body.decode("utf-8", errors="replace")[:500]
                             if is_quota_error(response.status_code, body_text):
                                 logger.warning(
-                                    "stream slot %d/%d quota / auth (%s) — "
-                                    "trying next slot. body=%s",
-                                    slot_index, len(pool),
-                                    response.status_code, body_text[:300],
+                                    "stream slot %d/%d quota/auth (%s) — trying next. body=%s",
+                                    slot_index, len(pool), response.status_code, body_text[:300],
                                 )
-                                last_error = CloudflareAPIError(
-                                    f"Streaming call failed "
-                                    f"({response.status_code}): {body_text}"
-                                )
+                                last_error = CloudflareAPIError(f"Streaming call failed ({response.status_code}): {body_text}")
                                 continue
-                            raise CloudflareAPIError(
-                                f"Streaming call failed "
-                                f"({response.status_code}): {body_text}"
-                            )
+                            raise CloudflareAPIError(f"Streaming call failed ({response.status_code}): {body_text}")
 
                         if slot_index > 1:
-                            logger.info(
-                                "stream succeeded on slot %d/%d "
-                                "(1..%d exhausted)",
-                                slot_index, len(pool), slot_index - 1,
-                            )
+                            logger.info("stream succeeded on slot %d/%d (%d exhausted)", slot_index, len(pool), slot_index - 1)
 
                         async for line in response.aiter_lines():
-                            if not line:
-                                continue
-                            # Cloudflare always prefixes payload lines with
-                            # `data: `. Other SSE fields (event:, id:) are
-                            # not emitted by their current implementation
-                            # but skip them defensively.
-                            if not line.startswith("data:"):
+                            if not line or not line.startswith("data:"):
                                 continue
                             data = line[5:].strip()
                             if not data:
@@ -578,72 +290,34 @@ class CloudflareChat:
                             try:
                                 chunk = json.loads(data)
                             except json.JSONDecodeError:
-                                # Malformed line — skip rather than abort
-                                # the whole turn. The model will still
-                                # produce subsequent well-formed chunks.
                                 continue
                             delta = _extract_stream_delta(chunk)
                             if delta:
                                 yield delta
-                        # Stream consumed cleanly without [DONE] — return
-                        # rather than fall through to the next slot.
                         return
             except httpx.HTTPError as e:
-                logger.warning(
-                    "stream slot %d/%d transport error: %s — trying next",
-                    slot_index, len(pool), e,
-                )
+                logger.warning("stream slot %d/%d transport error: %s — trying next", slot_index, len(pool), e)
                 last_error = CloudflareAPIError(f"Streaming transport error: {e}")
                 continue
 
-        raise last_error or CloudflareAPIError(
-            "all cloudflare text-credential slots exhausted"
-        )
+        raise last_error or CloudflareAPIError("all cloudflare text-credential slots exhausted")
 
     def score_search_results(self, query: str, results: List[Dict]) -> Dict[int, int]:
-        """Score search results 0–100 for relevance to the user's query.
-
-        Returns `{0_indexed_position: score}`. Empty dict on failure or empty
-        input — caller should fall back to static domain authority. Result
-        snippets are truncated and the candidate set is capped at 20 to keep
-        the prompt cheap; ranks for indices outside the cap are simply absent
-        and the caller can default-skip those.
-
-        Why an LLM call here: static domain authority captures "is this
-        domain trustworthy", but not "does this result answer THIS query".
-        The reranker layers query–result fit on top of the curated list.
-        """
         if not results:
             return {}
         capped = list(results)[:20]
-
         items_text = "\n".join(
             f"[{i + 1}] {(r.get('title') or '').strip()} — {(r.get('url') or '').strip()}\n"
             f"    {(r.get('snippet') or '').strip()[:200]}"
             for i, r in enumerate(capped)
         )
-
-        system_prompt = (
-            "You score search results for a paid-acquisition marketing copilot.\n\n"
-            "For each candidate, return a relevance score 0-100 where:\n"
-            "  90-100  Directly answers the query from a high-authority marketing source\n"
-            "          (platform docs, trade press, established marketing publications).\n"
-            "  70-89   Strong, on-topic content from a credible source.\n"
-            "  40-69   Tangentially related or from a less-trusted source.\n"
-            "  0-39    Off-topic, SEO spam, listicle, or untrusted blog.\n\n"
-            "Output exactly one line per candidate using `INDEX=SCORE` (e.g. `1=85`). "
-            "No commentary, no preamble, no trailing summary."
-        )
-        user_msg = (
-            f"Query: {query.strip()[:300]}\n\n"
-            f"Candidates:\n{items_text}\n\n"
-            "Now score each one."
-        )
         try:
             response = self._call_for_prompt(
                 [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg},
+                    {"role": "system", "content": _cfg.prompts.rerank_system},
+                    {"role": "user", "content": _cfg.prompts.rerank_user.format(
+                        query=query.strip()[:300], items=items_text
+                    )},
                 ],
                 max_tokens=SHORT_CALL_MAX_TOKENS,
                 model=DEFAULT_RERANK_MODEL,
@@ -652,55 +326,26 @@ class CloudflareChat:
         except CloudflareAPIError:
             return {}
 
-        # Tolerant parser — accepts `1=85`, `[1]=85`, `1: 85`, etc. Anything
-        # the LLM throws in that doesn't match is dropped silently.
         scores: Dict[int, int] = {}
         line_re = re.compile(r"\[?\s*(\d+)\s*\]?\s*[:=]\s*(\d+)")
         for line in (raw or "").splitlines():
             m = line_re.search(line)
             if not m:
                 continue
-            idx = int(m.group(1)) - 1
-            score = int(m.group(2))
+            idx, score = int(m.group(1)) - 1, int(m.group(2))
             if 0 <= idx < len(capped) and 0 <= score <= 100:
                 scores[idx] = score
         return scores
 
     def generate_next_steps(self, user_query: str, assistant_answer: str) -> List[str]:
-        """Generate up to 3 short follow-up questions a marketer might ask next.
-
-        Cheap, single-shot LLM call. Returns clean strings — no numbering, no
-        leading punctuation, no quotes. The caller persists these to the
-        message's `next_steps` JSONB column so re-renders are free.
-        """
-        # Truncate the assistant answer hard — past ~1.5k chars adds nothing
-        # to the suggestions and burns tokens. Same for the user query.
         ans = (assistant_answer or "").strip()[:1500]
         q = (user_query or "").strip()[:400]
-
-        system_prompt = (
-            "You are a paid-acquisition marketing copilot. Given a user's "
-            "question and your previous answer, suggest 3 short follow-up "
-            "questions the user is most likely to ask next.\n\n"
-            "Rules:\n"
-            "- Each question stands on its own (a stranger could read it cold).\n"
-            "- Each is under 90 characters.\n"
-            "- No preamble, no numbering, no quotes — return ONE question per line.\n"
-            "- Skip generic 'tell me more' filler; favour concrete next moves "
-            "(channels, KPIs, benchmarks, creative angles, time horizons)."
-        )
-        user_msg = (
-            f"User asked: {q}\n\n"
-            f"Your answer (truncated): {ans}\n\n"
-            "Now write the 3 follow-up questions, one per line."
-        )
-        formatted = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_msg},
-        ]
         try:
             response = self._call_for_prompt(
-                formatted,
+                [
+                    {"role": "system", "content": _cfg.prompts.next_steps},
+                    {"role": "user", "content": _cfg.prompts.next_steps_user.format(query=q, answer=ans)},
+                ],
                 max_tokens=SHORT_CALL_MAX_TOKENS,
                 model=DEFAULT_NEXT_STEPS_MODEL,
             )
@@ -708,7 +353,6 @@ class CloudflareChat:
         except CloudflareAPIError:
             return []
 
-        # Strip numbering, bullets, quotes, surrounding whitespace.
         cleaned: List[str] = []
         for line in (raw or "").splitlines():
             stripped = line.strip().lstrip("-*•0123456789.) \"'").strip().strip('"').strip()
@@ -716,165 +360,4 @@ class CloudflareChat:
                 cleaned.append(stripped)
             if len(cleaned) == 3:
                 break
-        return cleaned
-
-    def suggest_image_prompt(
-        self,
-        *,
-        brand_block: str,
-        campaign_block: str,
-        hint: Optional[str] = None,
-    ) -> str:
-        """Compose a creative-brief prompt for the studio image generator
-        from brand + campaign context.
-
-        Single-shot LLM call on the fast/cheap model — output is one
-        line of free-text that drops straight into the Studio prompt
-        textarea. The user can then edit it or hit generate as-is.
-
-        `brand_block` is the system-prompt brand snippet (company name,
-        ICP, channels, voice). `campaign_block` is the campaign objective
-        + date window. `hint` is whatever the user has already typed in
-        the Studio textarea — if present, the LLM refines toward it
-        instead of generating from scratch.
-        """
-        directive = (
-            "You are a senior performance-marketing creative director. Your job "
-            "is to write a single, vivid image-generation prompt that an AI "
-            "image model (Flux) can render straight into an ad creative.\n\n"
-            "Rules:\n"
-            "- Output ONLY the prompt text. No preamble, no headers, no "
-            "options A/B/C, no quotes around it.\n"
-            "- Under 60 words, single paragraph.\n"
-            "- Concrete visual nouns + scene + mood. Mention subject, "
-            "setting, lighting, framing. Avoid copywriting / headlines / "
-            "logos / text-on-image (image models render text poorly).\n"
-            "- Match the brand voice. Reference the campaign objective "
-            "if it's specific enough to influence the image.\n"
-            "- Photorealistic by default unless the brand voice implies "
-            "otherwise."
-        )
-        context_parts = [brand_block.strip(), campaign_block.strip()]
-        context_parts = [p for p in context_parts if p]
-        context = "\n\n".join(context_parts) or "no brand or campaign context available"
-
-        user_msg = f"BRAND + CAMPAIGN CONTEXT:\n{context}\n\n"
-        if hint and hint.strip():
-            user_msg += (
-                f"USER'S DRAFT (refine into a stronger image-gen prompt — "
-                f"keep the user's intent):\n{hint.strip()[:600]}\n\n"
-                "Write the refined prompt now."
-            )
-        else:
-            user_msg += (
-                "Write a single image-gen prompt for an ad creative aligned "
-                "with this brand + campaign. Output the prompt only."
-            )
-
-        formatted = [
-            {"role": "system", "content": directive},
-            {"role": "user", "content": user_msg},
-        ]
-        try:
-            response = self._call_for_prompt(
-                formatted,
-                max_tokens=SHORT_CALL_MAX_TOKENS,
-                model=DEFAULT_NEXT_STEPS_MODEL,
-            )
-            raw = _extract_response_text(response)
-        except CloudflareAPIError as e:
-            raise
-
-        # Clean up: strip leading/trailing whitespace + accidental
-        # markdown emphasis + surrounding quotes the model sometimes
-        # adds despite the explicit instruction.
-        cleaned = (raw or "").strip()
-        # Strip a leading "Prompt:" preamble if it slips through.
-        for prefix in ("Prompt:", "prompt:", "Image prompt:", "Image:"):
-            if cleaned.startswith(prefix):
-                cleaned = cleaned[len(prefix):].strip()
-        cleaned = cleaned.strip('"').strip("'").strip("*").strip("`").strip()
-        # Collapse newlines — image-gen prompts are one paragraph.
-        cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
-        return cleaned
-
-    def improve_question(
-        self,
-        *,
-        brand_block: str,
-        campaign_block: str,
-        draft: str,
-    ) -> str:
-        """Refine a user's investigation prompt using brand + campaign
-        context.
-
-        Differs from suggest_image_prompt (which writes a Flux-shaped
-        image-gen prompt) — this returns a *better question* for the
-        chat surface. Same fast/cheap model. Output is a single short
-        question the user can edit-and-send.
-
-        Rules baked into the directive:
-          - Stays a question, not an instruction or essay.
-          - Stays one or two sentences max; long prompts hurt LLM focus
-            on the answer side.
-          - Inherits the user's intent — we sharpen, not replace.
-          - Mentions specific channels / metrics / time horizons when
-            the draft implies them but doesn't name them, since those
-            anchor better answers (e.g. "Q4 ROAS" beats "performance").
-        """
-        if not draft or not draft.strip():
-            raise CloudflareAPIError("draft cannot be empty")
-
-        directive = (
-            "You are a senior performance-marketing copilot helping a "
-            "marketer write a sharper investigation question for an AI "
-            "assistant. The assistant will answer THEIR question — your "
-            "job is to refine THEIR question.\n\n"
-            "Rules:\n"
-            "- Output ONLY the refined question. No preamble, no header, "
-            "no quotes around it, no options A/B/C.\n"
-            "- Keep it ONE OR TWO sentences. Strict.\n"
-            "- It must remain a question (or a request) — not an "
-            "instruction list, not an essay, not a brief.\n"
-            "- Keep the user's intent. Don't replace their topic; "
-            "sharpen the framing.\n"
-            "- When the draft implies metrics (CAC, ROAS, CPP, CTR), "
-            "channels (Meta, Google, TikTok, Klaviyo), or a time horizon, "
-            "name them explicitly — concrete questions get better "
-            "answers than abstract ones.\n"
-            "- Match the brand voice if relevant; otherwise keep the "
-            "register operator-direct."
-        )
-        context_parts = [brand_block.strip(), campaign_block.strip()]
-        context_parts = [p for p in context_parts if p]
-        context = "\n\n".join(context_parts) or "no brand or campaign context available"
-
-        user_msg = (
-            f"BRAND + CAMPAIGN CONTEXT:\n{context}\n\n"
-            f"USER'S DRAFT QUESTION:\n{draft.strip()[:600]}\n\n"
-            "Write the refined question now. One or two sentences. "
-            "Output the question only."
-        )
-
-        formatted = [
-            {"role": "system", "content": directive},
-            {"role": "user", "content": user_msg},
-        ]
-        response = self._call_for_prompt(
-            formatted,
-            max_tokens=SHORT_CALL_MAX_TOKENS,
-            model=DEFAULT_NEXT_STEPS_MODEL,
-        )
-        raw = _extract_response_text(response)
-
-        cleaned = (raw or "").strip()
-        for prefix in (
-            "Refined question:", "refined question:",
-            "Question:", "question:",
-        ):
-            if cleaned.startswith(prefix):
-                cleaned = cleaned[len(prefix):].strip()
-        cleaned = cleaned.strip('"').strip("'").strip("*").strip("`").strip()
-        # Collapse newlines — single-line questions only.
-        cleaned = " ".join(part.strip() for part in cleaned.splitlines() if part.strip())
         return cleaned
