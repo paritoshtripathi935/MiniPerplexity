@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -26,7 +27,6 @@ CLEANUP_INTERVAL_SECONDS = config.settings.cleanup.interval_seconds
 
 
 async def _periodic_cleanup() -> None:
-    """Drop expired sessions every CLEANUP_INTERVAL_SECONDS."""
     while True:
         try:
             await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
@@ -43,7 +43,6 @@ async def _periodic_cleanup() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: ping DB so we fail fast on bad credentials.
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -64,13 +63,8 @@ async def lifespan(app: FastAPI):
         await dispose_engine()
 
 
-# Load settings
 settings = BackendBaseSettings()
 
-# Initialize FastAPI app with settings.
-# `default_response_class=ORJSONResponse` switches every JSON response
-# to orjson serialization — 2-3x faster than the stdlib json default,
-# with no API change at the route level (handlers still return dicts).
 app = FastAPI(
     lifespan=lifespan,
     default_response_class=ORJSONResponse,
@@ -79,16 +73,7 @@ app = FastAPI(
 
 
 class GZipExceptStreaming:
-    """GZipMiddleware wrapper that bypasses compression for SSE.
-
-    The native Starlette GZipMiddleware buffers the response body and
-    compresses it as a unit, which breaks `text/event-stream` responses
-    — every token-by-token chunk would be held back until the stream
-    completes. We can't tell the response Content-Type from the request
-    alone, but we know our single streaming endpoint by path
-    (`/answer/{session_id}/stream`). Bypass GZip for paths ending in
-    `/stream`; everything else goes through normal compression.
-    """
+    """GZipMiddleware that skips compression for SSE endpoints."""
 
     def __init__(self, app: ASGIApp, minimum_size: int = 1024) -> None:
         self.app = app
@@ -101,21 +86,18 @@ class GZipExceptStreaming:
         await self.gzip(scope, receive, send)
 
 
-# Response compression — typical JSON saves 70-80% over the wire.
-# minimum_size=1024 skips tiny responses (health checks, etc.) where
-# gzip overhead would dominate. SSE is bypassed via the wrapper above.
 app.add_middleware(GZipExceptStreaming, minimum_size=1024)
 
-# Set up CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.settings.cors.origins,
+    # Netlify per-deploy preview URLs can't be enumerated up front.
+    allow_origin_regex=r"https://[^/]+--(paidpilot|mini-perplexity)\.netlify\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routers
 app.include_router(router, prefix="/api/v1")
 app.include_router(brand_profile_router, prefix="/api/v1", tags=["BrandProfile"])
 app.include_router(plays_router, prefix="/api/v1", tags=["Plays"])
@@ -125,13 +107,11 @@ app.include_router(integrations_router, prefix="/api/v1", tags=["Integrations"])
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Liveness probe — does not hit the DB to stay cheap."""
     return {"status": "healthy"}
 
 
 @app.get("/health/db", tags=["Health"])
 async def health_check_db():
-    """Readiness probe — verifies DB round-trip."""
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     return {"status": "healthy", "database": "connected"}

@@ -37,10 +37,16 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import os
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
 from app.auth import get_current_user
 from app.constants.constants import META_OAUTH_REDIRECT_URI
 from app.db import get_db
-from app.db.models import User
+from app.db.models import Campaign, Message, Session, User
 from app.db.repository import (
     delete_provider_connection,
     get_provider_connection,
@@ -57,6 +63,14 @@ from app.services.meta_api import (
     is_configured,
     list_ad_accounts,
     token_expiry_from_now,
+)
+from app.services.slack_webhook import (
+    SlackWebhookError,
+    build_investigation_blocks,
+    build_test_message_blocks,
+    mask_webhook_url,
+    post_to_webhook,
+    validate_webhook_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,6 +123,7 @@ async def integrations_status(
     """Single source-of-truth the frontend hits on /settings/integrations
     mount to decide which provider cards to render in which state."""
     meta_conn = await get_provider_connection(db, user_id=user.id, provider="meta")
+    slack_conn = await get_provider_connection(db, user_id=user.id, provider="slack")
     return IntegrationsStatusOut(
         providers=[
             ProviderStatus(
@@ -122,6 +137,13 @@ async def integrations_status(
                 provider="google_ads",
                 available=False,
                 connected=False,
+            ),
+            # Slack is webhook-only — available on every deploy (no
+            # server-side secret needed), so `available` is just `True`.
+            ProviderStatus(
+                provider="slack",
+                available=True,
+                connected=slack_conn is not None,
             ),
         ]
     )
@@ -271,3 +293,232 @@ async def meta_ad_accounts(
             for a in accounts
         ]
     )
+
+
+# =========================================================================
+# Slack — incoming webhook flow (no OAuth, no app review)
+# =========================================================================
+
+class SlackConnectIn(BaseModel):
+    webhook_url: str
+
+
+class SlackStatusOut(BaseModel):
+    connected: bool
+    masked_url: Optional[str] = None
+    connected_at: Optional[datetime] = None
+
+
+class SlackShareIn(BaseModel):
+    # Optional — caller may override what we extract. Useful for "share
+    # with note" flows later; ignored for v1.
+    note: Optional[str] = None
+
+
+# Public app URL used to build the "open in PaidPilot" link in the
+# Slack message. Configurable per deploy (dev / staging / prod) — falls
+# back to the production Netlify domain so we always emit a working
+# link in the worst case.
+_PUBLIC_APP_URL = os.getenv(
+    "PUBLIC_APP_URL", "https://paidpilot.netlify.app"
+).rstrip("/")
+
+# We need to put SOMETHING in the NOT NULL provider_connections columns
+# the OAuth flow assumes are populated. For Slack we have no concept of
+# an external user id — use a constant placeholder. The token never
+# expires in the webhook flow but the column is NOT NULL, so we set it
+# 100 years out to match the "signed-in sessions never expire" convention.
+_SLACK_PLACEHOLDER_EXTERNAL_ID = "webhook"
+_SLACK_FAR_FUTURE = datetime(2125, 1, 1, tzinfo=timezone.utc)
+
+
+@router.post("/integrations/slack/connect", response_model=SlackStatusOut)
+async def slack_connect(
+    body: SlackConnectIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Validate + persist a Slack incoming webhook URL for the current user.
+
+    Flow:
+      1. structural url validation (https + hooks.slack.com host + 4-segment path)
+      2. real POST to the webhook (test message) — guarantees we never
+         persist a dead URL, and gives the user immediate "PaidPilot
+         is connected" feedback in their Slack channel.
+      3. encrypt + upsert. Re-running this endpoint replaces the prior
+         URL atomically; same row id stays so any future per-row state
+         (last_shared_at, etc.) survives a reconnect.
+
+    Any failure short-circuits with 400 + the slack error message —
+    Slack returns useful strings (`no_service`, `channel_is_archived`)
+    and we want them to land in the UI verbatim.
+    """
+    url = (body.webhook_url or "").strip()
+    try:
+        validate_webhook_url(url)
+    except SlackWebhookError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        await post_to_webhook(url, {"blocks": build_test_message_blocks()})
+    except SlackWebhookError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    ciphertext = encrypt_token(url)
+    conn = await upsert_provider_connection(
+        db,
+        user_id=user.id,
+        provider="slack",
+        external_user_id=_SLACK_PLACEHOLDER_EXTERNAL_ID,
+        access_token_ciphertext=ciphertext,
+        token_expires_at=_SLACK_FAR_FUTURE,
+        scopes=[],
+    )
+    await db.commit()
+    return SlackStatusOut(
+        connected=True,
+        masked_url=mask_webhook_url(url),
+        connected_at=conn.connected_at,
+    )
+
+
+@router.delete("/integrations/slack", status_code=204)
+async def slack_disconnect(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Drop the user's stored Slack webhook. Idempotent — returns 204
+    whether or not a row existed; the UI flips back to the not-connected
+    state either way."""
+    await delete_provider_connection(db, user_id=user.id, provider="slack")
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/integrations/slack", response_model=SlackStatusOut)
+async def slack_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Detail view used by the connected-state UI: returns the masked
+    URL + when the connection was made. The bare connected boolean
+    is on /integrations/status too — this endpoint exists so the
+    manage panel can show "https://hooks.slack.com/services/T../B../•••"
+    without a separate fetch."""
+    conn = await get_provider_connection(db, user_id=user.id, provider="slack")
+    if conn is None:
+        return SlackStatusOut(connected=False)
+    url = decrypt_token(conn.access_token_ciphertext)
+    return SlackStatusOut(
+        connected=True,
+        masked_url=mask_webhook_url(url),
+        connected_at=conn.connected_at,
+    )
+
+
+@router.post("/integrations/slack/test", status_code=204)
+async def slack_test(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Re-fire the same "PaidPilot is connected" message that connect()
+    sent, for an already-stored webhook. Used by the manage panel's
+    "send test message" button to verify the channel is still live
+    after the user has connected (e.g. they renamed the channel and
+    want to check the webhook still works)."""
+    conn = await get_provider_connection(db, user_id=user.id, provider="slack")
+    if conn is None:
+        raise HTTPException(status_code=404, detail="slack not connected")
+    url = decrypt_token(conn.access_token_ciphertext)
+    try:
+        await post_to_webhook(url, {"blocks": build_test_message_blocks()})
+    except SlackWebhookError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(status_code=204)
+
+
+@router.post("/messages/{message_id}/share-to-slack", status_code=204)
+async def share_message_to_slack(
+    message_id: str,
+    body: SlackShareIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Post a finished assistant turn to the user's Slack webhook.
+
+    Authorization: only the user that owns the session can share its
+    messages — we walk message → session → user_id and 404 (not 403)
+    on mismatch to avoid leaking "this message exists" information.
+
+    Context assembled into the Slack block:
+      - session title (or "untitled investigation")
+      - first ~320 chars of the assistant message content (citation
+        markers `[N]` left in — they read naturally in Slack)
+      - citation count (from the persisted citations table)
+      - active campaign name (chip in the context line)
+      - deep link back to the scoped investigation URL so a Slack
+        viewer can click through to the source
+    """
+    conn = await get_provider_connection(db, user_id=user.id, provider="slack")
+    if conn is None:
+        raise HTTPException(
+            status_code=400,
+            detail="slack not connected — open /settings/integrations to add a webhook",
+        )
+
+    # Fetch the message with its session (for owner + URL) and citation
+    # rows (for count). Single query, two selectinload edges.
+    try:
+        message_uuid = uuid.UUID(message_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="message not found")
+
+    result = await db.execute(
+        select(Message)
+        .where(Message.id == message_uuid)
+        .options(
+            selectinload(Message.session).selectinload(Session.campaign),
+            selectinload(Message.citations),
+        )
+    )
+    msg: Optional[Message] = result.scalar_one_or_none()
+    if msg is None or msg.session is None or msg.session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="message not found")
+    if msg.role.value != "assistant":
+        raise HTTPException(
+            status_code=400,
+            detail="only assistant turns can be shared",
+        )
+
+    session: Session = msg.session
+    campaign: Optional[Campaign] = getattr(session, "campaign", None)
+
+    title = (session.title or "untitled investigation").strip()
+    excerpt = (msg.content or "").strip()
+    citation_count = len(msg.citations or [])
+
+    session_url: Optional[str] = None
+    if session.project_id and session.campaign_id:
+        session_url = (
+            f"{_PUBLIC_APP_URL}/projects/{session.project_id}"
+            f"/c/{session.campaign_id}/investigations/{session.id}"
+        )
+
+    blocks = build_investigation_blocks(
+        title=title,
+        excerpt=excerpt,
+        citation_count=citation_count,
+        session_url=session_url,
+        campaign_name=campaign.name if campaign else None,
+    )
+
+    webhook_url = decrypt_token(conn.access_token_ciphertext)
+    try:
+        await post_to_webhook(webhook_url, {"blocks": blocks})
+    except SlackWebhookError as e:
+        # Surface the slack-side error to the UI so the user knows the
+        # url is dead (channel deleted, etc.). They can fix it via the
+        # manage panel without us having to spelunk logs.
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return Response(status_code=204)

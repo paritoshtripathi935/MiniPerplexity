@@ -33,6 +33,7 @@ import {
   uploadCreative,
   type Creative,
 } from '../services/api';
+import { downloadFile } from '../utils/download';
 
 interface Props {
   darkMode: boolean;
@@ -126,7 +127,9 @@ export function CreativesPage(_props: Props) {
         c.id,
         getToken,
       );
-      window.open(download_url, '_blank', 'noopener,noreferrer');
+      // Force a real download — UploadThing serves assets inline so a
+      // raw window.open() opens them as a tab. See utils/download.
+      await downloadFile(download_url, c.filename);
     } catch (e: any) {
       setErr(e?.message ?? 'download failed');
     }

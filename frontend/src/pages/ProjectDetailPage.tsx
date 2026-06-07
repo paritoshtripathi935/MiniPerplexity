@@ -19,11 +19,11 @@ import {
   Save,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { PageHeader } from '../components/AppLayout';
 import { Button } from '../components/ui/Button';
 import {
   projectColor,
   projectStrip,
-  projectTint,
   useSwapActiveContext,
 } from '../components/ActiveCampaign';
 import { CampaignDrawer } from '../components/CampaignDrawer';
@@ -50,12 +50,6 @@ interface Props {
 }
 
 type Tab = 'campaigns' | 'brand-profile';
-
-function projectInitial(name: string): string {
-  const t = name.trim();
-  if (!t) return '•';
-  return t[0]!.toUpperCase();
-}
 
 /* -------------------------------------------------------------------- */
 /* Page                                                                  */
@@ -112,7 +106,7 @@ export function ProjectDetailPage(_props: Props) {
 }
 
 /* -------------------------------------------------------------------- */
-/* Identity header — initial tile + accent strip + overflow menu         */
+/* Identity header — PageHeader pattern with project-color whisper dot   */
 /* -------------------------------------------------------------------- */
 
 function ProjectIdentityHeader({
@@ -132,10 +126,7 @@ function ProjectIdentityHeader({
   const [err, setErr] = useState<string | null>(null);
 
   const color = projectColor(project.id);
-  const strip = projectStrip(color.dot);
-  const tint = projectTint(color.dot);
 
-  // Keep local name in sync if the project rename happens elsewhere.
   useEffect(() => setName(project.name), [project.name, project.id]);
 
   const liveCount = (campaigns || []).filter(c => !c.archived_at).length;
@@ -174,91 +165,63 @@ function ProjectIdentityHeader({
     }
   }
 
+  // Compose title — either the static h1 or the inline rename input.
+  // Both keep PageHeader's display-h1 typography so the header height
+  // stays stable across the flip.
+  const titleNode = editingName ? (
+    <input
+      autoFocus
+      type="text"
+      value={name}
+      onChange={e => setName(e.target.value)}
+      onBlur={saveName}
+      onKeyDown={e => {
+        if (e.key === 'Enter') saveName();
+        if (e.key === 'Escape') {
+          setName(project.name);
+          setEditingName(false);
+        }
+      }}
+      maxLength={120}
+      className="font-display text-h1 bg-surface-sunken/60 rounded-md px-2 -mx-2 py-0 outline-none w-full max-w-md lowercase"
+    />
+  ) : (
+    <span className="inline-flex items-center gap-2.5">
+      <span
+        aria-hidden
+        className={clsx('w-2 h-2 rounded-full shrink-0', color.dot)}
+        title="project color"
+      />
+      <span className="truncate">{project.name}</span>
+    </span>
+  );
+
   return (
-    <div className="mb-8">
-      <div
-        className={clsx(
-          'relative overflow-hidden rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur',
-          'pl-6 pr-4 py-5 sm:pl-7',
-        )}
-      >
-        {/* Project-colored left accent strip */}
-        <span
-          aria-hidden
-          className={clsx('absolute left-0 top-0 bottom-0 w-1', strip)}
-        />
-
-        <div className="flex items-start gap-5">
-          {/* Brand-initial tile */}
-          <div
-            className={clsx(
-              'shrink-0 grid place-items-center rounded-xl ring-1',
-              'w-14 h-14 sm:w-16 sm:h-16',
-              tint,
-              color.ring,
-            )}
-          >
-            <span
-              className={clsx(
-                'font-display text-h1 font-semibold leading-none',
-                color.text,
-              )}
-            >
-              {projectInitial(project.name)}
-            </span>
-          </div>
-
-          {/* Title + meta */}
-          <div className="min-w-0 flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1.5">
-              project
-            </p>
-            {editingName ? (
-              <input
-                autoFocus
-                type="text"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                onBlur={saveName}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') saveName();
-                  if (e.key === 'Escape') {
-                    setName(project.name);
-                    setEditingName(false);
-                  }
-                }}
-                maxLength={120}
-                className="font-display text-h1 bg-surface-sunken/60 rounded-md px-3 py-1 outline-none w-full max-w-md"
-              />
-            ) : (
-              <h1 className="font-display text-h1 text-fg leading-tight truncate">
-                {project.name}
-              </h1>
-            )}
-            <p className="text-body-sm text-fg-muted mt-1.5 inline-flex items-center gap-1.5">
-              <span>{liveCount} live campaign{liveCount === 1 ? '' : 's'}</span>
-              <span className="text-fg-subtle">·</span>
-              <Link to="/projects" className="hover:text-fg transition-colors">
-                all projects
-              </Link>
-            </p>
-          </div>
-
-          {/* Overflow menu */}
-          <div className="shrink-0">
-            <OverflowMenu
-              onRename={() => setEditingName(true)}
-              onArchive={handleArchive}
-              archiving={archiving}
-            />
-          </div>
-        </div>
-      </div>
-
+    <>
+      <PageHeader
+        eyebrow="project"
+        title={titleNode}
+        subtitle={
+          <span className="inline-flex items-center gap-1.5">
+            <span>{liveCount} live campaign{liveCount === 1 ? '' : 's'}</span>
+            <span className="text-fg-subtle">·</span>
+            <Link to="/projects" className="hover:text-fg transition-colors">
+              all projects
+            </Link>
+          </span>
+        }
+        actions={
+          <OverflowMenu
+            onRename={() => setEditingName(true)}
+            onArchive={handleArchive}
+            archiving={archiving}
+          />
+        }
+      />
       {err && (
-        <div className="mt-3 text-rose-400 text-body-sm">{err}</div>
+        <div className="-mt-4 mb-6 text-rose-400 text-body-sm">{err}</div>
       )}
-    </div>
+    </>
   );
 }
 

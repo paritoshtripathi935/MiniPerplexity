@@ -1,6 +1,32 @@
 // Add API host from environment variable
 const API_HOST = import.meta.env.VITE_API_HOST || 'http://127.0.0.1:8000';
 
+import { notifyUnauthorized } from './authEvents';
+
+/** Called from every fetch wrapper after a non-OK response. Fires the
+ *  global "auth failed" event only when:
+ *    - response.status === 401, AND
+ *    - the request actually carried an Authorization header
+ *      (anonymous endpoints can legitimately 401 without meaning
+ *      the user's session is dead).
+ *  Anything else is a no-op — the caller still throws. */
+function maybeNotifyUnauthorized(response: Response, headers: HeadersInit | undefined): void {
+  if (response.status !== 401) return;
+  // Detect whether we attached Authorization. `headers` may be plain
+  // object, Headers instance, or undefined.
+  let hadAuth = false;
+  if (headers) {
+    if (headers instanceof Headers) {
+      hadAuth = headers.has('Authorization');
+    } else if (Array.isArray(headers)) {
+      hadAuth = headers.some(([k]) => k.toLowerCase() === 'authorization');
+    } else {
+      hadAuth = Object.keys(headers).some(k => k.toLowerCase() === 'authorization');
+    }
+  }
+  if (hadAuth) notifyUnauthorized();
+}
+
 /**
  * `getToken` matches the signature returned by Clerk's `useAuth()` hook
  * (`@clerk/clerk-react`). When provided, every request gets an
@@ -391,10 +417,12 @@ export type BrandProfileUpdate = Partial<Omit<BrandProfile, 'user_id' | 'onboard
 };
 
 export async function getBrandProfile(getToken: GetToken): Promise<BrandProfile> {
-  const response = await fetch(`${API_HOST}/api/v1/brand-profile`, {
-    headers: { ...(await authHeaders(getToken)) },
-  });
-  if (!response.ok) throw new Error(`Failed to load brand profile: ${response.status}`);
+  const headers = { ...(await authHeaders(getToken)) };
+  const response = await fetch(`${API_HOST}/api/v1/brand-profile`, { headers });
+  if (!response.ok) {
+    maybeNotifyUnauthorized(response, headers);
+    throw new Error(`Failed to load brand profile: ${response.status}`);
+  }
   return await response.json();
 }
 
@@ -402,12 +430,16 @@ export async function putBrandProfile(
   payload: BrandProfileUpdate,
   getToken: GetToken
 ): Promise<BrandProfile> {
+  const headers = { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) };
   const response = await fetch(`${API_HOST}/api/v1/brand-profile`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    headers,
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error(`Failed to save brand profile: ${response.status}`);
+  if (!response.ok) {
+    maybeNotifyUnauthorized(response, headers);
+    throw new Error(`Failed to save brand profile: ${response.status}`);
+  }
   return await response.json();
 }
 
@@ -498,15 +530,14 @@ async function jsonRequest<T>(
   init: RequestInit,
   getToken: GetToken,
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers || {}),
-      ...(await authHeaders(getToken)),
-    },
-  });
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(init.headers || {}),
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
+    maybeNotifyUnauthorized(response, headers);
     let detail: string | undefined;
     try {
       const body = await response.json();
@@ -686,7 +717,7 @@ export async function putProjectBrandProfile(
 // ---------- Integrations: Meta (STATUS A5) --------------------------------
 
 export interface ProviderStatus {
-  provider: 'meta' | 'google_ads';
+  provider: 'meta' | 'google_ads' | 'slack';
   /** True iff the deploy has the env credentials needed to run OAuth. */
   available: boolean;
   /** True iff this user has a row in `provider_connections` for this provider. */
@@ -838,8 +869,189 @@ export interface Creative {
   mime_type: string;
   size_bytes: number;
   provider: string;
+  /** Storage-backend key. Exposed so the studio timeline can de-dupe
+   *  active-batch preview tiles against historic Creative rows. */
+  storage_key: string;
   uploaded_at: string;
   uploaded_by: string | null;
+  /** AI-generation provenance — populated on rows produced by /studio,
+   *  NULL on user uploads. Lets the library render a "generated" badge
+   *  and the studio surface re-show the prompt that produced an asset. */
+  prompt?: string | null;
+  ai_model?: string | null;
+}
+
+/** Request shape for POST /creatives/generate. Aspect-ratio is a
+ *  prompt-level hint on Cloudflare's hosted Flux (native ~1024×1024
+ *  output); final crop happens in the user's design tool. */
+export interface StudioGenerateRequest {
+  prompt: string;
+  aspect_ratio?: '1:1' | '9:16' | '1.91:1' | '4:5';
+  style?: 'photo' | 'illustration' | 'minimal' | '3d';
+  variants?: number;
+  /** When true, server loads the campaign's brand profile and appends
+   *  a distilled context phrase (company name, voice, campaign
+   *  objective) to the Flux prompt. */
+  bake_context?: boolean;
+}
+
+/** An un-persisted generation. Lives in storage but has no DB row
+ *  until the user clicks save. Echoed back unmodified on save so the
+ *  backend doesn't have to re-derive metadata. */
+export interface StudioPreview {
+  storage_key: string;
+  download_url: string;
+  mime_type: string;
+  size_bytes: number;
+  filename: string;
+  prompt: string;
+  ai_model: string;
+}
+
+export interface StudioGenerateResponse {
+  previews: StudioPreview[];
+  /** The fully-composed prompt that was sent to Flux. Surfaced so the
+   *  UI can show "this is what we sent" and the user can debug
+   *  surprises without guessing at the modifiers. */
+  composed_prompt: string;
+  /** True when bake_context was both requested and honored (a request
+   *  with bake_context=true but no brand profile returns false here). */
+  context_baked: boolean;
+}
+
+export async function saveStudioPreviews(
+  projectId: string,
+  campaignId: string,
+  items: StudioPreview[],
+  getToken: GetToken,
+): Promise<{ creatives: Creative[] }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/save-from-studio`,
+    { method: 'POST', headers, body: JSON.stringify({ items }) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Save failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+/** Best-effort delete of unsaved Studio previews from storage. The UI
+ *  can fire-and-forget — a 4xx/5xx just leaves an orphan that a future
+ *  cron will sweep. */
+export async function discardStudioPreviews(
+  projectId: string,
+  campaignId: string,
+  storageKeys: string[],
+  getToken: GetToken,
+): Promise<void> {
+  if (storageKeys.length === 0) return;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/discard-studio`,
+    { method: 'POST', headers, body: JSON.stringify({ storage_keys: storageKeys }) },
+  );
+}
+
+/** Refine the user's chat-composer draft using brand + campaign
+ *  context. Backend returns a one-or-two-sentence sharpened question;
+ *  the UI replaces the textarea contents with it. */
+export async function improveInvestigationPrompt(
+  projectId: string,
+  campaignId: string,
+  draft: string,
+  getToken: GetToken,
+): Promise<{ question: string }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/questions/improve`,
+    { method: 'POST', headers, body: JSON.stringify({ draft }) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Improve failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+/** Ask the backend for a Studio prompt drafted from the campaign's
+ *  brand profile + objective + date window. Optional `hint` is the
+ *  text the user has already typed (refined toward) — empty hint
+ *  drafts from context alone. */
+export async function suggestStudioPrompt(
+  projectId: string,
+  campaignId: string,
+  hint: string | null | undefined,
+  getToken: GetToken,
+): Promise<{ prompt: string }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/suggest-prompt`,
+    { method: 'POST', headers, body: JSON.stringify({ hint: hint ?? null }) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Suggest prompt failed: ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function generateCreatives(
+  projectId: string,
+  campaignId: string,
+  payload: StudioGenerateRequest,
+  getToken: GetToken,
+): Promise<StudioGenerateResponse> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/projects/${encodeURIComponent(projectId)}/campaigns/${encodeURIComponent(campaignId)}/creatives/generate`,
+    { method: 'POST', headers, body: JSON.stringify(payload) },
+  );
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Generate failed: ${response.status}`);
+  }
+  return await response.json();
 }
 
 export interface CreativeUploadAuth {
@@ -1011,5 +1223,94 @@ export async function uploadCreative(
     },
     getToken,
   );
+}
+
+// ---------- Slack incoming-webhook integration --------------------------
+
+export interface SlackStatus {
+  connected: boolean;
+  /** Display-safe URL with the secret token elided. Only present when
+   *  `connected: true`. */
+  masked_url?: string;
+  connected_at?: string;
+}
+
+export async function getSlackStatus(getToken: GetToken): Promise<SlackStatus> {
+  return jsonRequest<SlackStatus>(
+    `${API_HOST}/api/v1/integrations/slack`,
+    { method: 'GET' },
+    getToken,
+  );
+}
+
+export async function connectSlack(
+  webhookUrl: string,
+  getToken: GetToken,
+): Promise<SlackStatus> {
+  return jsonRequest<SlackStatus>(
+    `${API_HOST}/api/v1/integrations/slack/connect`,
+    { method: 'POST', body: JSON.stringify({ webhook_url: webhookUrl }) },
+    getToken,
+  );
+}
+
+export async function disconnectSlack(getToken: GetToken): Promise<void> {
+  const response = await fetch(`${API_HOST}/api/v1/integrations/slack`, {
+    method: 'DELETE',
+    headers: { ...(await authHeaders(getToken)) },
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to disconnect Slack: ${response.status}`);
+  }
+}
+
+/** Re-fire the connect-time test message — used by the manage panel's
+ *  "send test" button. 204 on success, 4xx surfaces a Slack error. */
+export async function sendSlackTest(getToken: GetToken): Promise<void> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/integrations/slack/test`,
+    { method: 'POST', headers },
+  );
+  if (!response.ok && response.status !== 204) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Slack test failed: ${response.status}`);
+  }
+}
+
+/** Post a finished assistant turn to the user's Slack webhook. Backend
+ *  builds the block-kit payload from the message + its session +
+ *  campaign context — frontend only supplies the message id. */
+export async function shareMessageToSlack(
+  messageId: string,
+  getToken: GetToken,
+): Promise<void> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders(getToken)),
+  };
+  const response = await fetch(
+    `${API_HOST}/api/v1/messages/${encodeURIComponent(messageId)}/share-to-slack`,
+    { method: 'POST', headers, body: JSON.stringify({}) },
+  );
+  if (!response.ok && response.status !== 204) {
+    let detail: string | undefined;
+    try {
+      const body = await response.json();
+      detail = typeof body?.detail === 'string' ? body.detail : undefined;
+    } catch {
+      /* noop */
+    }
+    throw new Error(detail || `Share to Slack failed: ${response.status}`);
+  }
 }
 

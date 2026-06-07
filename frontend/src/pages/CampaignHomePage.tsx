@@ -22,6 +22,7 @@ import {
   PlayCircle,
   Plus,
   Search,
+  Wand2,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { v4 as uuidv4 } from 'uuid';
@@ -136,9 +137,10 @@ export function CampaignHomePage(_props: Props) {
         onAfterArchive={() => navigate(`/projects/${project.id}`)}
       />
 
-      {/* 4-up tile grid — investigations leads with the gradient CTA;
-          plays / calc / creatives are whole-card secondary links. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+      {/* 5-up tile grid — investigations leads with the gradient CTA;
+          plays / calc / studio / creatives are whole-card secondary
+          links. On smaller screens this stacks to 2 / 1 columns. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
         <InvestigationsTile
           liveSessionCount={liveSessionCount}
           onNew={() => navigate(`${toolBase}/investigations/${uuidv4()}`)}
@@ -160,6 +162,12 @@ export function CampaignHomePage(_props: Props) {
           icon={<Calculator className="w-4 h-4" />}
           title="calculators"
           subtitle="CAC payback, ROAS, A/B, mix"
+        />
+        <SecondaryTile
+          to={`${toolBase}/studio`}
+          icon={<Wand2 className="w-4 h-4" />}
+          title="studio"
+          subtitle="generate ad creatives"
         />
         <SecondaryTile
           to={`${toolBase}/creatives`}

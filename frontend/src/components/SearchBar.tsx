@@ -8,8 +8,9 @@ import React, {
   useState,
   forwardRef,
 } from 'react';
-import { ArrowUp, Link as LinkIcon, Sparkles, X } from 'lucide-react';
+import { ArrowUp, Link as LinkIcon, Loader2, Sparkles, X } from 'lucide-react';
 import clsx from 'clsx';
+import { ErrorBanner } from './ErrorBanner';
 import { SlashMenu } from './SlashMenu';
 import type { Play } from '../services/api';
 import { getDomain, isValidUrl } from '../utils/url';
@@ -27,6 +28,11 @@ interface Props {
   activePlay?: Play | null;
   /** Fired when the user dismisses the active-play chip. */
   onClearActivePlay?: () => void;
+  /** When provided, an "improve" button appears in the bottom toolbar
+   *  while the textarea has content. Click → caller refines the draft
+   *  via brand + campaign context and returns the sharpened version;
+   *  the composer replaces its content with the returned string. */
+  onImprovePrompt?: (draft: string) => Promise<string>;
 }
 
 /** Imperative API for prefilling the composer from starter prompts. */
@@ -54,13 +60,45 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
     onPlaySelect,
     activePlay,
     onClearActivePlay,
+    onImprovePrompt,
   },
   ref
 ) {
   const [query, setQuery] = useState('');
   const [customUrl, setCustomUrl] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [improving, setImproving] = useState(false);
+  const [improveErr, setImproveErr] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /** Hand the current draft to the parent's improver, replace the
+   *  textarea content with the returned refinement. Disabled while
+   *  in flight or while the regular send is loading. Errors are
+   *  shown as a small inline hint under the toolbar — non-blocking. */
+  const handleImprove = useCallback(async () => {
+    if (!onImprovePrompt || improving || loading) return;
+    const draft = query.trim();
+    if (draft.length < 4) return;
+    setImproving(true);
+    setImproveErr(null);
+    try {
+      const refined = await onImprovePrompt(draft);
+      if (refined && refined.trim()) {
+        setQuery(refined);
+        // Give the textarea focus + put the caret at the end so the
+        // user can immediately tweak without re-clicking.
+        const ta = textareaRef.current;
+        if (ta) {
+          ta.focus();
+          ta.setSelectionRange(refined.length, refined.length);
+        }
+      }
+    } catch (e: any) {
+      setImproveErr(e?.message ?? 'improve failed');
+    } finally {
+      setImproving(false);
+    }
+  }, [onImprovePrompt, improving, loading, query]);
 
   const hasUrl = !!customUrl.trim();
   // Slash-menu mode is on whenever the textarea content (trimmed of leading
@@ -150,9 +188,9 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
     <div className="space-y-2">
       <div
         className={clsx(
-          'group/composer relative flex flex-col rounded-xl border bg-surface',
-          'border-border focus-within:border-border-strong focus-within:shadow-card',
-          'transition-colors duration-150'
+          'group/composer relative flex flex-col rounded-xl border bg-surface-raised/40 backdrop-blur',
+          'border-border/60 focus-within:border-brand/40 focus-within:shadow-[0_0_24px_rgba(124,92,255,0.15)]',
+          'transition-all duration-150 shadow-2xl'
         )}
       >
         {slashMode && (
@@ -165,7 +203,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
         )}
 
         {showChipRow && (
-          <div className="px-3 pt-3 flex flex-wrap gap-1.5">
+          <div className="px-5 pt-4 flex flex-wrap gap-1.5">
             {activePlay && (
               <Chip
                 tone="brand"
@@ -198,27 +236,27 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
           placeholder={placeholder}
           disabled={loading}
           className={clsx(
-            'block w-full resize-none bg-transparent outline-none px-4 pt-3 pb-2',
-            'text-body-base leading-[1.5] placeholder:text-fg-subtle',
+            'block w-full resize-none bg-transparent outline-none px-5 pt-4 pb-2',
+            'text-body-lg leading-relaxed placeholder:text-fg-subtle',
             'disabled:opacity-60'
           )}
         />
 
-        <div className="flex items-center justify-between px-2 pb-2 pt-0.5">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setShowUrlInput(s => !s)}
               className={clsx(
-                'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-body-md',
+                'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-body-sm border',
                 'transition-colors duration-150',
                 hasUrl || showUrlInput
-                  ? 'bg-brand-subtle text-brand'
-                  : 'text-fg-subtle hover:text-fg hover:bg-surface-sunken'
+                  ? 'border-brand/40 bg-brand/15 text-brand'
+                  : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40'
               )}
               aria-pressed={showUrlInput}
             >
-              <LinkIcon className="w-3 h-3" />
+              <LinkIcon className="w-3.5 h-3.5" />
               {hasUrl ? 'Edit URL' : showUrlInput ? 'URL editor open' : 'Add URL'}
             </button>
             {!hasUrl && !showUrlInput && (
@@ -226,10 +264,42 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
                 or paste one
               </span>
             )}
+
+            {/* Improve-prompt button — only visible when the textarea
+                has 4+ chars of draft text AND the parent provided an
+                onImprovePrompt handler (which it does on /investigations
+                routes scoped to a campaign). Brand-tinted to mirror
+                Studio's "suggest from campaign" affordance. */}
+            {onImprovePrompt && query.trim().length >= 4 && (
+              <button
+                type="button"
+                onClick={handleImprove}
+                disabled={improving || loading}
+                title="rewrite this prompt using brand + campaign context"
+                className={clsx(
+                  'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-body-sm border',
+                  'transition-colors duration-150',
+                  'border-brand/40 bg-brand/15 text-brand',
+                  'hover:bg-brand/25 disabled:opacity-50 disabled:cursor-not-allowed',
+                )}
+              >
+                {improving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>improving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>improve</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-wider text-fg-subtle tabular-nums">
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline font-mono text-[11px] uppercase tracking-wider text-fg-subtle tabular-nums">
               {sendKey} ↵ to send
             </span>
             <button
@@ -238,20 +308,23 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
               disabled={loading || !query.trim()}
               aria-label="Send"
               className={clsx(
-                'grid place-items-center w-7 h-7 rounded-md transition-all duration-150',
+                'inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-body-sm font-medium transition-all duration-150',
                 'disabled:opacity-40 disabled:pointer-events-none',
                 query.trim()
-                  ? 'bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white shadow-[0_0_16px_rgba(124,92,255,0.35)] hover:shadow-[0_0_22px_rgba(124,92,255,0.55)]'
+                  ? 'bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] text-white shadow-[0_0_18px_rgba(124,92,255,0.3)] hover:shadow-[0_0_24px_rgba(124,92,255,0.45)]'
                   : 'bg-surface-sunken text-fg-subtle'
               )}
             >
               {loading ? (
                 <span
-                  className="w-3 h-3 rounded-full border-2 border-current border-r-transparent animate-spin"
+                  className="w-3.5 h-3.5 rounded-full border-2 border-current border-r-transparent animate-spin"
                   aria-hidden
                 />
               ) : (
-                <ArrowUp className="w-3.5 h-3.5" strokeWidth={2.5} />
+                <>
+                  send
+                  <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
+                </>
               )}
             </button>
           </div>
@@ -276,6 +349,10 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      )}
+
+      {improveErr && (
+        <ErrorBanner error={improveErr} onDismiss={() => setImproveErr(null)} />
       )}
     </div>
   );

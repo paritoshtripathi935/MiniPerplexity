@@ -2,11 +2,15 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Optional, List, Dict
 from enum import Enum
 import json
+import logging
 import re
 import httpx
 import requests
 
 from app.core.config import config as _cfg
+
+logger = logging.getLogger(__name__)
+
 
 class CloudflareAPIError(Exception):
     pass
@@ -148,17 +152,43 @@ class CloudflareChat:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         model: Optional[CloudflareModel] = None,
     ) -> Dict:
-        url = self._url_for(model) if model is not None else self.full_url
-        try:
-            response = requests.post(
-                url,
-                headers=self._get_headers(),
-                json={"messages": messages, "max_tokens": max_tokens},
-            )
-            response.raise_for_status()
+        # Local import avoids startup-time circular dependency.
+        from app.services.image_gen import is_quota_error, text_credential_pool
+
+        chosen_model = model if model is not None else self.model
+        pool = text_credential_pool(self.account_id, self.api_key)
+        if not pool:
+            raise CloudflareAPIError("no cloudflare credentials configured for text generation")
+
+        body = {"messages": messages, "max_tokens": max_tokens}
+        last_error: Optional[Exception] = None
+
+        for slot_index, (account_id, api_key) in enumerate(pool, start=1):
+            url = BASE_URL.format(account_id=account_id) + chosen_model.value
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            try:
+                response = requests.post(url, headers=headers, json=body)
+            except requests.exceptions.RequestException as e:
+                logger.warning("chat slot %d/%d transport error: %s — trying next slot", slot_index, len(pool), e)
+                last_error = CloudflareAPIError(f"API call failed: {e}")
+                continue
+
+            if response.status_code >= 400:
+                body_text = response.text or ""
+                if is_quota_error(response.status_code, body_text):
+                    logger.warning(
+                        "chat slot %d/%d quota/auth (%s) — trying next slot. body=%s",
+                        slot_index, len(pool), response.status_code, body_text[:300],
+                    )
+                    last_error = CloudflareAPIError(f"Cloudflare returned {response.status_code}: {body_text[:300]}")
+                    continue
+                raise CloudflareAPIError(f"API call failed ({response.status_code}): {body_text[:500]}")
+
+            if slot_index > 1:
+                logger.info("chat succeeded on slot %d/%d (%d exhausted)", slot_index, len(pool), slot_index - 1)
             return response.json()
-        except requests.exceptions.RequestException as e:
-            raise CloudflareAPIError(f"API call failed: {str(e)}")
+
+        raise last_error or CloudflareAPIError("all cloudflare text-credential slots exhausted")
 
     def _build_answer_messages(
         self,
@@ -214,36 +244,63 @@ class CloudflareChat:
         model: Optional[CloudflareModel] = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> AsyncIterator[str]:
+        from app.services.image_gen import is_quota_error, text_credential_pool
+
         formatted = self._build_answer_messages(
             search_results, chat_history, query, previous_queries, system_override
         )
-        url = self._url_for(model) if model is not None else self.full_url
+        chosen_model = model if model is not None else self.model
+        pool = text_credential_pool(self.account_id, self.api_key)
+        if not pool:
+            raise CloudflareAPIError("no cloudflare credentials configured for text streaming")
+
         payload = {"messages": formatted, "max_tokens": max_tokens, "stream": True}
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "POST", url, headers=self._get_headers(), json=payload
-            ) as response:
-                if response.status_code >= 400:
-                    body = await response.aread()
-                    raise CloudflareAPIError(
-                        f"Streaming call failed ({response.status_code}): {body.decode('utf-8', errors='replace')[:500]}"
-                    )
-                async for line in response.aiter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if not data or data == "[DONE]":
-                        if data == "[DONE]":
-                            return
-                        continue
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    delta = _extract_stream_delta(chunk)
-                    if delta:
-                        yield delta
+        last_error: Optional[Exception] = None
+
+        for slot_index, (account_id, api_key) in enumerate(pool, start=1):
+            url = BASE_URL.format(account_id=account_id) + chosen_model.value
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    async with client.stream("POST", url, headers=headers, json=payload) as response:
+                        if response.status_code >= 400:
+                            body = await response.aread()
+                            body_text = body.decode("utf-8", errors="replace")[:500]
+                            if is_quota_error(response.status_code, body_text):
+                                logger.warning(
+                                    "stream slot %d/%d quota/auth (%s) — trying next. body=%s",
+                                    slot_index, len(pool), response.status_code, body_text[:300],
+                                )
+                                last_error = CloudflareAPIError(f"Streaming call failed ({response.status_code}): {body_text}")
+                                continue
+                            raise CloudflareAPIError(f"Streaming call failed ({response.status_code}): {body_text}")
+
+                        if slot_index > 1:
+                            logger.info("stream succeeded on slot %d/%d (%d exhausted)", slot_index, len(pool), slot_index - 1)
+
+                        async for line in response.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if not data:
+                                continue
+                            if data == "[DONE]":
+                                return
+                            try:
+                                chunk = json.loads(data)
+                            except json.JSONDecodeError:
+                                continue
+                            delta = _extract_stream_delta(chunk)
+                            if delta:
+                                yield delta
+                        return
+            except httpx.HTTPError as e:
+                logger.warning("stream slot %d/%d transport error: %s — trying next", slot_index, len(pool), e)
+                last_error = CloudflareAPIError(f"Streaming transport error: {e}")
+                continue
+
+        raise last_error or CloudflareAPIError("all cloudflare text-credential slots exhausted")
 
     def score_search_results(self, query: str, results: List[Dict]) -> Dict[int, int]:
         if not results:

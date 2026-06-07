@@ -11,14 +11,16 @@ import { PlayRunModal } from '../components/PlayRunModal';
 import { VideosDrawer, collectVideos } from '../components/VideosDrawer';
 import { collectCitations, useCitationDrawer } from '../components/CitationDrawer';
 import { ChatEmptyState } from '../components/ChatEmptyState';
+import { ErrorBanner } from '../components/ErrorBanner';
 import { ModelSelector } from '../components/ModelSelector';
 import {
-  getNextSteps, performSearch, getSessionHistory, streamAnswer,
+  getNextSteps, improveInvestigationPrompt, performSearch, getSessionHistory, streamAnswer,
   type Play, type StreamDoneEvent,
 } from '../services/api';
 import {
   useBrandProfile,
   useCacheActions,
+  useIntegrationsStatus,
   useMe,
   usePlays,
 } from '../services/queries';
@@ -75,6 +77,10 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
   // Cached cross-page queries. Cache hits render synchronously on revisit.
   const { data: profile } = useBrandProfile(getToken, !!isSignedIn);
   const { data: me, mutate: mutateMe } = useMe(getToken, !!isSignedIn);
+  const { data: integrationsStatus } = useIntegrationsStatus(getToken, !!isSignedIn);
+  const slackConnected = !!integrationsStatus?.providers.find(
+    p => p.provider === 'slack' && p.connected,
+  );
   const { data: plays = [] } = usePlays();
   const { invalidateSessions } = useCacheActions();
   /** Slash-selected play queued for the run modal. */
@@ -631,6 +637,8 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
                     key={message.id}
                     message={message}
                     darkMode={darkMode}
+                    activeModelId={me?.preferred_chat_model ?? undefined}
+                    slackConnected={slackConnected}
                     onRegenerate={
                       message.originatingQuery && message.originatingSearchResults?.length
                         ? handleRegenerate
@@ -643,8 +651,11 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               </div>
             )}
             {error && (
-              <div className="mt-6 p-4 rounded-md bg-danger-subtle text-danger text-body-sm">
-                {error}
+              <div className="mt-6">
+                <ErrorBanner
+                  error={error}
+                  onDismiss={() => setError(null)}
+                />
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -661,6 +672,23 @@ export function ChatPage({ darkMode, pending, clearPending }: Props) {
               onPlaySelect={p => setSlashPlay(p)}
               activePlay={activePlay}
               onClearActivePlay={() => setActivePlay(null)}
+              // Improve-prompt only available when we have a real
+              // campaign scope. Without it the backend has nothing to
+              // ground the rewrite against, so we don't even show the
+              // button (SearchBar checks for the callback).
+              onImprovePrompt={
+                projectId && campaignId
+                  ? async draft => {
+                      const { question } = await improveInvestigationPrompt(
+                        projectId,
+                        campaignId,
+                        draft,
+                        getToken,
+                      );
+                      return question;
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>
