@@ -39,3 +39,6 @@ frontend/.env
 
 # Claude Code workspace (worktrees, transient state)
 .claude/
+
+# Docs kept local only
+docs/
