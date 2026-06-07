@@ -1,7 +1,26 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { PlayCircle, ArrowRight } from 'lucide-react';
+import { PlayCircle, ArrowRight, X } from 'lucide-react';
+
+const DEMO_SRC = '/demo.mp4';
+const DEMO_POSTER = '/demo-poster.jpg';
 
 export function LandingHero() {
+  const [showDemo, setShowDemo] = useState(false);
+
+  // close on Escape + lock background scroll while open
+  useEffect(() => {
+    if (!showDemo) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setShowDemo(false);
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [showDemo]);
+
   return (
     <section className="relative pt-40 pb-24 overflow-hidden">
       <div
@@ -38,6 +57,7 @@ export function LandingHero() {
           </Link>
           <button
             type="button"
+            onClick={() => setShowDemo(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-border/60 px-7 py-3.5 text-[15px] font-semibold text-fg hover:border-border-strong/60 hover:bg-surface-raised/40 transition-colors"
           >
             <PlayCircle className="w-4 h-4 text-fg-muted" />
@@ -64,6 +84,34 @@ export function LandingHero() {
           <HeroProductMock />
         </div>
       </div>
+
+      {showDemo && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Product demo"
+          onClick={() => setShowDemo(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-8"
+        >
+          <button
+            type="button"
+            onClick={() => setShowDemo(false)}
+            aria-label="Close"
+            className="absolute top-5 right-5 inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/5 text-white/80 hover:bg-white/10 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <video
+            src={DEMO_SRC}
+            poster={DEMO_POSTER}
+            controls
+            autoPlay
+            playsInline
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-5xl rounded-2xl border border-white/10 shadow-[0_40px_120px_rgba(0,0,0,0.7)]"
+          />
+        </div>
+      )}
     </section>
   );
 }

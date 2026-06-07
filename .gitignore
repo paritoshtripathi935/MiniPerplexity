@@ -42,3 +42,6 @@ frontend/.env
 
 # Docs kept local only
 docs/
+demo/
+.agents/
+skills-lock.json
