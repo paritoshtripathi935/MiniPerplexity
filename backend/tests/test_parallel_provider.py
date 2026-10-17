@@ -3,6 +3,7 @@
 import asyncio
 import importlib
 import json
+import time
 from unittest.mock import Mock
 
 import httpx
@@ -21,7 +22,9 @@ def mcp_server(monkeypatch):
     importlib.import_module("mcp.client.streamable_http")
     original_client = httpx.AsyncClient
 
-    def install(payload=None, *, text_only=False, sse=False, failure=None):
+    def install(
+        payload=None, *, text_only=False, sse=False, failure=None, slow_close=False
+    ):
         requests = []
         clients = []
         started = asyncio.Event()
@@ -41,6 +44,10 @@ def mcp_server(monkeypatch):
 
         async def handle(request):
             requests.append(request)
+            if request.method == "DELETE":
+                if slow_close:
+                    await asyncio.sleep(0.6)
+                return httpx.Response(200)
             if request.method != "POST":
                 return httpx.Response(405)
             message = json.loads(request.content)
@@ -79,13 +86,16 @@ def mcp_server(monkeypatch):
             else:
                 pytest.fail(f"Unexpected MCP method: {method}")
             response = {"jsonrpc": "2.0", "id": message["id"], "result": result}
+            headers = (
+                {"Mcp-Session-Id": "fixture-session"} if method == "initialize" else {}
+            )
             if sse:
                 return httpx.Response(
                     200,
                     text="event: message\ndata: " + json.dumps(response) + "\n\n",
-                    headers={"Content-Type": "text/event-stream"},
+                    headers={"Content-Type": "text/event-stream", **headers},
                 )
-            return httpx.Response(200, json=response)
+            return httpx.Response(200, json=response, headers=headers)
 
         def client_factory(**kwargs):
             client = original_client(transport=httpx.MockTransport(handle), **kwargs)
@@ -233,14 +243,33 @@ def test_failures_degrade_and_close_connections(mcp_server, failure):
 @pytest.mark.asyncio
 async def test_cancellation_propagates_and_closes_connections(mcp_server):
     """Cancellation is preserved while the SDK cleans up its background tasks."""
-    _, clients, started = mcp_server(failure="wait")
+    _, clients, started = mcp_server(failure="wait", slow_close=True)
     task = asyncio.create_task(
         parallel.ParallelProvider(timeout_s=3)._bounded_search("query")
     )
     await asyncio.wait_for(started.wait(), timeout=2)
+    cancelled_at = time.monotonic()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+    assert time.monotonic() - cancelled_at < 0.4
+    assert clients and all(c.is_closed for c in clients)
+
+
+@pytest.mark.parametrize("failure", [None, "wait"])
+def test_deadline_includes_slow_session_cleanup(mcp_server, failure):
+    """A session-bearing server cannot extend the deadline during DELETE."""
+    requests, clients, _ = mcp_server(failure=failure, slow_close=True)
+    started = time.monotonic()
+    assert parallel.ParallelProvider(timeout_s=0.06).search("query") == []
+    # Cleanup alone would take 0.6s without cancellation of SDK finally blocks.
+    assert time.monotonic() - started < 0.4
+    calls = [
+        r
+        for r in requests
+        if r.method == "POST" and json.loads(r.content)["method"] == "tools/call"
+    ]
+    assert calls and calls[0].headers["mcp-session-id"] == "fixture-session"
     assert clients and all(c.is_closed for c in clients)
 
 

@@ -11,6 +11,7 @@ from typing import Any, List
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+import anyio
 import httpx
 
 from app.models.search_model import SearchResult
@@ -129,7 +130,19 @@ class ParallelProvider(SearchProvider):
 
     async def _bounded_search(self, query: str) -> List[SearchResult]:
         """Bound initialization, tool execution and connection cleanup together."""
-        return await asyncio.wait_for(self._search(query), timeout=self.timeout_s)
+        results: List[SearchResult] = []
+
+        async def run_search() -> None:
+            """Keep SDK cleanup inside the task group's cancellation scope."""
+            nonlocal results
+            results = await self._search(query)
+
+        # Level cancellation also interrupts awaits started in SDK finally blocks.
+        # A task group propagates caller cancellation to that same scope.
+        with anyio.fail_after(self.timeout_s):
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(run_search)
+        return results
 
     def search(self, query: str) -> List[SearchResult]:
         """Run in the synchronous search worker; degrade gracefully on failure."""
