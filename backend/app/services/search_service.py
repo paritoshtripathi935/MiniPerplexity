@@ -238,11 +238,23 @@ def search_youtube(query: str) -> List[SearchResult]:
     except Exception as e:
         raise YouTubeAPIError(f"YouTube search failed: {str(e)}")
 
+def search_parallel(query: str) -> List[SearchResult]:
+    """Run the opt-in Parallel engine with its YAML result cap and deadline."""
+    from .search_providers.parallel import ParallelProvider
+
+    engine = _cfg.search.get("parallel")
+    return ParallelProvider(
+        results_per_query=engine.max_results if engine else 10,
+        timeout_s=engine.timeout if engine else 20,
+    ).search(query)
+
+
 # Registry maps engine id → callable. Add a new engine here after wiring it in
 # config/search_engines.yaml with enabled: true.
 _ENGINE_REGISTRY: Dict[str, callable] = {
     "google": search_google,
     "youtube": search_youtube,
+    "parallel": search_parallel,
 }
 
 

@@ -58,6 +58,7 @@ def get_provider(override: Optional[str] = None) -> SearchProvider:
       - "google" | "cse"       — Google CSE only (existing path)
       - "anakin_then_google"   — Anakin → fall through to Google
       - "fallback"             — alias for "anakin_then_google"
+      - "parallel"             — keyless Parallel Search MCP
     """
     raw = override if override is not None else os.getenv("WEB_SEARCH_PROVIDER")
     if not raw:
@@ -69,6 +70,10 @@ def get_provider(override: Optional[str] = None) -> SearchProvider:
         return GoogleCSEProvider()
     if choice == "anakin":
         return AnakinProvider()
+    if choice == "parallel":
+        from .parallel import ParallelProvider
+
+        return ParallelProvider()
     if choice in ("anakin_then_google", "fallback"):
         return FallbackProvider(
             providers=[AnakinProvider(), GoogleCSEProvider()],
