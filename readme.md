@@ -315,7 +315,7 @@ Open [http://localhost:5173](http://localhost:5173).
 | `CLOUDFLARE_ACCOUNT_ID` | ✅ | Cloudflare account ID |
 | `ANAKIN_API_KEY` | | Anakin Search API key (primary web search provider) |
 | `ANAKIN_API_BASE` | | Anakin base URL (default: `https://api.anakin.io/v1`) |
-| `WEB_SEARCH_PROVIDER` | | `anakin`, `google`, or `anakin_then_google` (default: auto-detect from key presence) |
+| `WEB_SEARCH_PROVIDER` | | Provider registry / eval selection: `anakin`, `google`, `anakin_then_google`, or `parallel` (default: auto-detect from key presence). Live search engines are selected in `backend/config/search_engines.yaml`. |
 | `GOOGLE_API_KEY` | | Google Custom Search API key (fallback when Anakin unavailable) |
 | `GOOGLE_SEARCH_CX` | | Custom Search Engine ID |
 | `YOUTUBE_API_KEY` | ✅ | YouTube Data v3 key |
@@ -327,6 +327,48 @@ Open [http://localhost:5173](http://localhost:5173).
 | `PUBLIC_APP_URL` | | Frontend URL used in Slack share links (default: `https://paidpilot.netlify.app`) |
 | `ALLOWED_ORIGINS` | | Comma-separated CORS origins |
 | `DB_CLEANUP_INTERVAL_SECONDS` | | Session cleanup cadence (default: 300) |
+
+### Optional Parallel web search
+
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) provides
+free web search with source excerpts, using Fast mode without an account or API
+key. It is intended for exploration and light use, with anonymous rate limits.
+
+Use Python 3.10+ and install the backend dependencies as usual:
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python scripts/eval_search_providers.py \
+  --providers parallel \
+  --queries "Meta Ads learning phase budget changes" \
+  --out /tmp/parallel-search-eval.json
+```
+
+The report includes source URLs, titles, and excerpt samples. This command only
+runs web search; it does not call an answer model or require database credentials.
+
+To include Parallel sources in live investigations, edit the existing `parallel`
+entry in `backend/config/search_engines.yaml` and restart the backend:
+
+```yaml
+  - id: parallel
+    enabled: true
+    max_results: 10
+    timeout: 20
+```
+
+Parallel is disabled by default. Google and YouTube keep their existing settings;
+leave them enabled to combine their results with Parallel, or disable Google if
+you want Parallel as your only web engine. `max_results` caps returned sources
+locally and `timeout` bounds the whole MCP search in seconds. Excerpts populate
+`search_content` for the existing ranking and citation flow. Failed or timed-out
+Parallel requests return no sources, allowing other enabled engines to continue.
+This integration calls `web_search` only and does not fetch full pages. Other app
+features still need their usual credentials. `WEB_SEARCH_PROVIDER=parallel`
+selects the provider registry entry; the live endpoint uses the YAML settings.
 
 ### Frontend (`frontend/.env`)
 

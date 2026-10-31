@@ -11,7 +11,13 @@ engines:
     overfetch: 15         # candidates fetched from search.list before Shorts filter
     shorts_min_seconds: 70  # videos shorter than this are dropped as Shorts
 
-  # Future providers — flip enabled: true and add to REGISTRY in search/__init__.py
+  # Optional keyless web search. Enable alongside or instead of Google.
+  - id: parallel
+    enabled: false
+    max_results: 10
+    timeout: 20
+
+  # Future providers — flip enabled: true and add to _ENGINE_REGISTRY in search_service.py
   # - id: tavily
   #   enabled: false
   #   max_results: 10
