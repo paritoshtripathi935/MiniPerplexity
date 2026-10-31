@@ -15,7 +15,7 @@ export function LandingFeatures() {
     <section id="features" className="py-24 sm:py-32">
       <div className="max-w-[1200px] mx-auto px-5 sm:px-6">
         <div className="max-w-2xl mb-14">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
             the product
           </p>
           <h2 className="font-display text-[36px] sm:text-[44px] leading-[1.1] tracking-[-0.02em] font-semibold text-fg">
@@ -100,7 +100,7 @@ function BentoCard({
       className={`group relative overflow-hidden rounded-2xl border border-border/60 bg-surface-raised/40 p-6 sm:p-7 transition-all hover:border-brand/40 hover:bg-surface-raised/60 flex flex-col ${className}`}
     >
       <div className="mb-5">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-brand/80 mb-2">
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary mb-2">
           {eyebrow}
         </p>
         <h3 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tight text-fg leading-tight">
@@ -116,7 +116,7 @@ function BentoCard({
 function HeroChatMock() {
   return (
     <div className="h-full flex flex-col gap-3">
-      <div className="flex items-center justify-between rounded-lg border border-border/40 bg-surface/60 px-3 py-2 font-mono text-[10px] text-fg-subtle">
+      <div className="flex items-center justify-between rounded-lg border border-border/40 bg-surface/60 px-3 py-2 font-mono text-[11px] text-fg-subtle">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           brand context: <span className="text-fg">lumen skincare</span>
@@ -148,7 +148,7 @@ function HeroChatMock() {
             <Sup n={3} />.
           </p>
           <p className="border-l-2 border-brand/40 pl-3 text-fg-muted">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-brand/80 block mb-1">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-primary block mb-1">
               applied to your brand
             </span>
             your target cac of <span className="text-fg font-medium">{'<$55'}</span> sits in the top quartile — comfortable for premium skincare, but tight against the post-iOS17 median.
@@ -167,18 +167,18 @@ function HeroChatMock() {
             className="rounded-md border border-brand/30 bg-brand/5 p-2.5 hover:border-brand/60 transition-colors"
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-[10px] text-brand">
+              <span className="font-mono text-[11px] text-primary">
                 [{c.n}] {c.src}
               </span>
               <ArrowUpRight className="w-3 h-3 text-brand/70" />
             </div>
-            <p className="font-mono text-[10px] text-fg-muted italic truncate">"{c.q}"</p>
+            <p className="font-mono text-[11px] text-fg-muted italic truncate">"{c.q}"</p>
           </div>
         ))}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle shrink-0">
+        <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle shrink-0">
           follow up
         </span>
         <div className="flex flex-wrap gap-1.5">
@@ -190,7 +190,7 @@ function HeroChatMock() {
             <button
               key={t}
               type="button"
-              className="inline-flex items-center rounded-full border border-border/60 bg-surface/40 hover:border-brand/40 hover:bg-brand/5 px-3 py-1 font-mono text-[10px] text-fg-muted hover:text-fg transition-colors"
+              className="inline-flex items-center rounded-full border border-border/60 bg-surface/40 hover:border-brand/40 hover:bg-brand/5 px-3 py-1 font-mono text-[11px] text-fg-muted hover:text-fg transition-colors"
             >
               {t}
             </button>
@@ -199,7 +199,7 @@ function HeroChatMock() {
       </div>
 
       <div className="flex items-center justify-between rounded-lg border border-border/40 bg-surface/40 px-3 py-2">
-        <div className="flex items-center gap-2 font-mono text-[10px] text-fg-subtle">
+        <div className="flex items-center gap-2 font-mono text-[11px] text-fg-subtle">
           <Download className="w-3 h-3" />
           export
         </div>
@@ -207,7 +207,7 @@ function HeroChatMock() {
           {['notion', 'slack', '.pdf', 'brief.md'].map(x => (
             <span
               key={x}
-              className="inline-flex items-center rounded border border-border/60 bg-surface-raised/40 px-1.5 py-0.5 font-mono text-[10px] text-fg-muted"
+              className="inline-flex items-center rounded border border-border/60 bg-surface-raised/40 px-1.5 py-0.5 font-mono text-[11px] text-fg-muted"
             >
               {x}
             </span>
@@ -220,7 +220,7 @@ function HeroChatMock() {
 
 function Sup({ n }: { n: number }) {
   return (
-    <sup className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded text-[9px] font-mono text-brand bg-brand/10 align-super">
+    <sup className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded text-[11px] font-mono text-primary bg-brand/10 align-super">
       {n}
     </sup>
   );
@@ -237,7 +237,7 @@ function BrandProfileMock() {
           <div className="font-display text-[14px] font-semibold text-fg leading-tight">
             lumen skincare
           </div>
-          <div className="font-mono text-[10px] text-fg-subtle">dtc · premium · skincare</div>
+          <div className="font-mono text-[11px] text-fg-subtle">dtc · premium · skincare</div>
         </div>
       </div>
 
@@ -245,7 +245,7 @@ function BrandProfileMock() {
         {['editorial', 'science-led', 'premium', 'gen-z+millennial'].map(t => (
           <span
             key={t}
-            className="inline-flex items-center rounded-md border border-border/60 bg-surface-raised/60 px-2 py-0.5 font-mono text-[10px] text-fg-muted"
+            className="inline-flex items-center rounded-md border border-border/60 bg-surface-raised/60 px-2 py-0.5 font-mono text-[11px] text-fg-muted"
           >
             {t}
           </span>
@@ -259,7 +259,7 @@ function BrandProfileMock() {
           ['margin', '42%'],
         ].map(([k, v]) => (
           <div key={k}>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-fg-subtle">{k}</div>
+            <div className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">{k}</div>
             <div className="font-display text-[14px] font-semibold text-fg">{v}</div>
           </div>
         ))}
@@ -267,7 +267,7 @@ function BrandProfileMock() {
 
       <div className="flex items-center gap-2 pt-2 border-t border-border/40">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="font-mono text-[10px] text-fg-subtle">applied to every answer</span>
+        <span className="font-mono text-[11px] text-fg-subtle">applied to every answer</span>
       </div>
     </div>
   );
@@ -278,14 +278,14 @@ function CalcSparklineMock() {
     <div className="rounded-xl border border-border/40 bg-surface/60 p-4 space-y-3">
       <div className="flex items-end justify-between">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+          <div className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
             cac payback
           </div>
           <div className="font-display text-[28px] font-semibold leading-none text-fg mt-1">
             4.2 mo
           </div>
         </div>
-        <div className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] text-emerald-400">
+        <div className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 font-mono text-[11px] text-emerald-400">
           on track
         </div>
       </div>
@@ -316,7 +316,7 @@ function CalcSparklineMock() {
           ['ltv', '$214'],
         ].map(([k, v]) => (
           <div key={k}>
-            <div className="font-mono text-[9px] uppercase tracking-wider text-fg-subtle">{k}</div>
+            <div className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">{k}</div>
             <div className="font-display text-[13px] font-semibold text-fg">{v}</div>
           </div>
         ))}
@@ -352,7 +352,7 @@ function PlaysIconGridMock() {
             <div className="flex items-start gap-2.5">
               <span
                 className={`grid place-items-center w-7 h-7 rounded-md shrink-0 ${
-                  isBrand ? 'bg-brand/20 text-brand' : 'bg-surface-raised/80 text-fg-muted'
+                  isBrand ? 'bg-brand/20 text-primary' : 'bg-surface-raised/80 text-fg-muted'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -361,7 +361,7 @@ function PlaysIconGridMock() {
                 <div className="font-display text-[12px] font-semibold text-fg leading-tight truncate">
                   {p.name}
                 </div>
-                <div className="font-mono text-[9px] text-fg-subtle mt-1 uppercase tracking-wider truncate">
+                <div className="font-mono text-[11px] text-fg-subtle mt-1 uppercase tracking-wider truncate">
                   {p.tag}
                 </div>
               </div>

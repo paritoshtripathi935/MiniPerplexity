@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Link as RouterLink, Navigate, Route, Routes, useParams } from 'react-router-dom';
-import { SignedIn, SignedOut, useAuth, useClerk } from '@clerk/clerk-react';
+import { ClerkLoading, SignedIn, SignedOut, useAuth, useClerk } from '@clerk/clerk-react';
 import LoginPage from './components/LoginPage';
 import { AppLayout } from './components/AppLayout';
 import { useActiveCampaign } from './components/ActiveCampaign';
@@ -418,6 +418,12 @@ function App() {
 
   return (
     <BrowserRouter>
+      {/* SignedIn/SignedOut render nothing until Clerk loads; avoid a blank screen */}
+      <ClerkLoading>
+        <div role="status" className="min-h-screen grid place-items-center text-[14px] text-fg-muted">
+          Loading PaidPilot…
+        </div>
+      </ClerkLoading>
       <SignedOut>
         <Routes>
           <Route path="/" element={<LandingPage />} />

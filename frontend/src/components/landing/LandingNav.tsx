@@ -38,7 +38,7 @@ export function LandingNav() {
               <Link
                 key={link.label}
                 to={link.href}
-                className="text-[14px] text-fg-muted hover:text-fg transition-colors"
+                className="py-2 text-[14px] text-fg-muted hover:text-fg transition-colors"
               >
                 {link.label}
               </Link>
@@ -46,7 +46,7 @@ export function LandingNav() {
               <a
                 key={link.label}
                 href={link.href}
-                className="text-[14px] text-fg-muted hover:text-fg transition-colors"
+                className="py-2 text-[14px] text-fg-muted hover:text-fg transition-colors"
               >
                 {link.label}
               </a>
@@ -57,7 +57,7 @@ export function LandingNav() {
         <div className="flex items-center gap-3">
           <Link
             to="/sign-in"
-            className="hidden sm:inline-block text-[14px] text-fg-muted hover:text-fg transition-colors"
+            className="inline-block py-2 text-[14px] text-fg-muted hover:text-fg transition-colors"
           >
             Sign in
           </Link>

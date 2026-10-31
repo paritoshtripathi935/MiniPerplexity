@@ -34,7 +34,7 @@ export function LandingHero() {
       />
       <div className="max-w-[1200px] mx-auto px-5 sm:px-6 text-center">
         <div className="inline-flex items-center rounded-full border border-brand/40 bg-brand/5 px-3.5 py-1.5 mb-8">
-          <span className="font-mono text-[12px] text-brand">
+          <span className="font-mono text-[12px] text-primary">
             now in open beta — free forever for solo marketers
           </span>
         </div>
@@ -165,7 +165,7 @@ function HeroProductMock() {
               {['eMarketer · Q1 2026', 'Adweek benchmarks', 'Meta industry report'].map(s => (
                 <span
                   key={s}
-                  className="inline-flex items-center rounded-md border border-brand/40 bg-brand/5 px-2 py-0.5 font-mono text-[10px] text-brand"
+                  className="inline-flex items-center rounded-md border border-brand/40 bg-brand/5 px-2 py-0.5 font-mono text-[11px] text-primary"
                 >
                   {s}
                 </span>
@@ -187,7 +187,7 @@ function HeroProductMock() {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border/40 bg-surface/60 px-3 py-2">
-      <div className="font-mono text-[10px] text-fg-subtle uppercase tracking-wider">{label}</div>
+      <div className="font-mono text-[11px] text-fg-subtle uppercase tracking-wider">{label}</div>
       <div className="font-display text-[18px] font-semibold text-fg">{value}</div>
     </div>
   );

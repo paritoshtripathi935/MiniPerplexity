@@ -44,7 +44,7 @@ function DeepRow({
   return (
     <div className={`flex flex-col ${reverse ? 'md:flex-row-reverse' : 'md:flex-row'} items-center gap-12 lg:gap-20`}>
       <div className="flex-1">
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
           {eyebrow}
         </p>
         <h3 className="font-display text-[32px] sm:text-[40px] leading-[1.1] tracking-[-0.02em] font-semibold text-fg mb-4">
@@ -68,8 +68,8 @@ function CitationDrawerMock() {
       ].map(c => (
         <div key={c.src} className="rounded-lg border border-border/40 bg-surface/60 p-3 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] text-brand">{c.src}</span>
-            <span className="font-mono text-[10px] text-fg-subtle">open ↗</span>
+            <span className="font-mono text-[11px] text-primary">{c.src}</span>
+            <span className="font-mono text-[11px] text-fg-subtle">open ↗</span>
           </div>
           <p className="text-[13px] text-fg-muted italic">{c.quote}</p>
         </div>
@@ -99,7 +99,7 @@ function PlaysGridMock() {
           }`}
         >
           <div className="font-display text-[13px] font-semibold text-fg leading-tight">{p.name}</div>
-          <div className="font-mono text-[10px] text-fg-subtle mt-1.5 uppercase tracking-wider">{p.tag}</div>
+          <div className="font-mono text-[11px] text-fg-subtle mt-1.5 uppercase tracking-wider">{p.tag}</div>
         </div>
       ))}
     </div>
@@ -114,7 +114,7 @@ function CalculatorChartMock() {
           <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-subtle">cac payback</div>
           <div className="font-display text-[32px] font-semibold text-fg leading-none mt-1">4.2 mo</div>
         </div>
-        <div className="font-mono text-[11px] text-brand">on track</div>
+        <div className="font-mono text-[11px] text-primary">on track</div>
       </div>
 
       <div className="h-32 relative">
@@ -145,7 +145,7 @@ function CalculatorChartMock() {
           ['target', '<6 mo'],
         ].map(([k, v]) => (
           <div key={k}>
-            <div className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">{k}</div>
+            <div className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">{k}</div>
             <div className="font-display text-[16px] font-semibold text-fg">{v}</div>
           </div>
         ))}

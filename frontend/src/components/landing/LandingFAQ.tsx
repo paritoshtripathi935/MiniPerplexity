@@ -32,7 +32,7 @@ export function LandingFAQ() {
     <section className="py-24 sm:py-32 border-t border-border/40">
       <div className="max-w-[820px] mx-auto px-5 sm:px-6">
         <div className="text-center mb-12">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
             faq
           </p>
           <h2 className="font-display text-[36px] sm:text-[44px] leading-[1.1] tracking-[-0.02em] font-semibold text-fg">

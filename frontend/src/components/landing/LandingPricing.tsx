@@ -15,7 +15,7 @@ export function LandingPricing() {
     <section id="pricing" className="py-24 sm:py-32 border-t border-border/40">
       <div className="max-w-[1200px] mx-auto px-5 sm:px-6">
         <div className="text-center max-w-2xl mx-auto mb-12">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
             pricing
           </p>
           <h2 className="font-display text-[36px] sm:text-[44px] leading-[1.1] tracking-[-0.02em] font-semibold text-fg">
@@ -45,7 +45,7 @@ export function LandingPricing() {
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
               <div>
                 <div className="inline-flex items-center rounded-full border border-brand/40 bg-brand/5 px-2.5 py-1 mb-3">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-brand">
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-primary">
                     open beta
                   </span>
                 </div>
@@ -65,7 +65,7 @@ export function LandingPricing() {
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mb-8">
               {INCLUDED.map(f => (
                 <li key={f} className="flex items-start gap-2 text-[14px] text-fg-muted">
-                  <Check className="w-4 h-4 text-brand shrink-0 mt-0.5" />
+                  <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                   <span>{f}</span>
                 </li>
               ))}
