@@ -385,7 +385,7 @@ function InvestigationsTile({
   return (
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 p-4 flex flex-col h-full">
       <div className="flex items-start justify-between gap-2 mb-3">
-        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-brand">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-primary">
           <Search className="w-4 h-4" />
         </span>
         {liveSessionCount > 0 && (
@@ -553,7 +553,7 @@ function SessionRow({
 function EmptyInvestigations({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 px-8 py-12 text-center">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
         investigations
       </p>
       <h3 className="font-display text-h2 text-fg mb-2">
@@ -661,7 +661,7 @@ function NotFound({
   return (
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 p-8 text-center">
       <p className="text-fg-muted mb-3">{message}</p>
-      <Link to={backTo} className="text-brand hover:underline text-body-sm">
+      <Link to={backTo} className="text-primary hover:underline text-body-sm">
         {backLabel}
       </Link>
     </div>

@@ -1,7 +1,7 @@
 const STEPS = [
   {
     n: 1,
-    title: 'tell paidpilot about your brand',
+    title: 'tell PaidPilot about your brand',
     body: '90 seconds. icp, voice, current campaigns, P&L targets. you can paste from a doc.',
     mock: BrandStepMock,
   },
@@ -36,7 +36,7 @@ export function LandingHowItWorks() {
           {STEPS.map(({ n, title, body, mock: Mock }) => (
             <div key={n} className="rounded-2xl border border-border/60 bg-surface-raised/40 p-6">
               <div className="flex items-center gap-3 mb-4">
-                <span className="grid place-items-center w-8 h-8 rounded-full border border-brand/60 text-primary font-mono text-[13px] font-semibold">
+                <span className="grid place-items-center w-8 h-8 rounded-full border border-brand/60 text-primary font-mono text-[14px] font-semibold">
                   {n}
                 </span>
                 <h3 className="font-display text-[18px] font-semibold tracking-tight text-fg">

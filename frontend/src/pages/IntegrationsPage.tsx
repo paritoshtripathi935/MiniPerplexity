@@ -308,7 +308,7 @@ export function IntegrationsPage(_props: Props) {
             return (
               <section key={cat}>
                 <div className="flex items-baseline gap-3 mb-3">
-                  <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+                  <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">
                     {heading.title}
                   </h2>
                   <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
@@ -490,7 +490,7 @@ function StatusTag({ state }: { state: StatusTagState }) {
   }
   if (state === 'live') {
     return (
-      <span className="inline-flex items-center px-2 h-6 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] uppercase tracking-wider text-brand">
+      <span className="inline-flex items-center px-2 h-6 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] uppercase tracking-wider text-primary">
         live
       </span>
     );
@@ -598,7 +598,7 @@ function CardAction({
   return (
     <a
       href={`mailto:hello@paidpilot.app?subject=${subject}&body=${body}`}
-      className="inline-flex items-center gap-1 text-body-sm text-fg-muted hover:text-brand transition-colors"
+      className="inline-flex items-center gap-1 text-body-sm text-fg-muted hover:text-primary transition-colors"
     >
       <Bell className="w-3 h-3" />
       notify me
@@ -771,7 +771,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
 
           {accounts && available.length > 0 && (
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
                 available accounts
               </p>
               <ul className="space-y-1.5">
@@ -795,7 +795,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
                       type="button"
                       onClick={() => handleLink(a.external_account_id)}
                       disabled={busy === a.external_account_id}
-                      className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-brand/30 bg-brand/5 text-brand text-body-sm font-medium hover:bg-brand/15 disabled:opacity-40"
+                      className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-brand/30 bg-brand/5 text-primary text-body-sm font-medium hover:bg-brand/15 disabled:opacity-40"
                     >
                       <Plus className="w-3 h-3" />
                       link
@@ -852,7 +852,7 @@ function SlackConnectForm({
           href="https://api.slack.com/messaging/webhooks"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-brand hover:underline"
+          className="text-primary hover:underline"
         >
           create an incoming webhook →
         </a>

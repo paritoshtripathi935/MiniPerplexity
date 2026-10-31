@@ -20,7 +20,7 @@ export function PresetBar() {
             title={p.description}
             className={`h-7 px-2.5 text-[11px] rounded-md border transition-colors ${
               active
-                ? 'border-brand text-brand bg-brand-subtle font-medium'
+                ? 'border-brand text-primary bg-brand-subtle font-medium'
                 : 'border-border text-fg-muted hover:text-fg hover:border-border-strong'
             }`}
           >

@@ -27,7 +27,7 @@ export function LandingNav() {
           <span className="grid place-items-center w-8 h-8 rounded-lg bg-brand text-brand-fg">
             <Logo className="w-4 h-4" />
           </span>
-          <span className="font-display text-[17px] font-semibold tracking-tight text-fg">
+          <span className="font-display text-[18px] font-semibold tracking-tight text-fg">
             PaidPilot
           </span>
         </Link>

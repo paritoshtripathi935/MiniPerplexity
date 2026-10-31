@@ -256,7 +256,7 @@ function buildSections(): Section[] {
             <li>
               <strong className="text-fg">inline citations</strong> — every
               factual claim gets a <Chip>[N]</Chip> pill linking to its source
-              (more in the <a href="#citations" className="text-brand hover:underline">citations</a> section)
+              (more in the <a href="#citations" className="text-primary hover:underline">citations</a> section)
             </li>
             <li>
               <strong className="text-fg">next-step chips</strong> — three
@@ -766,7 +766,7 @@ function buildSections(): Section[] {
               model
             </strong>{' '}
             — covered in the{' '}
-            <a href="#models" className="text-brand hover:underline">
+            <a href="#models" className="text-primary hover:underline">
               model selection
             </a>{' '}
             section. change here or from the dropdown in any investigation
@@ -816,7 +816,7 @@ function buildSections(): Section[] {
           alternatively, email{' '}
           <a
             href="mailto:hello@paidpilot.app"
-            className="text-brand hover:underline"
+            className="text-primary hover:underline"
           >
             hello@paidpilot.app
           </a>{' '}
@@ -867,7 +867,7 @@ export function DocsPage(_props: Props) {
     <div className="max-w-[800px] mx-auto px-5 sm:px-6 -mt-4 sm:-mt-6">
       {/* Hero */}
       <header className="text-center mb-32 pt-8">
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-3">
           official walkthrough
         </p>
         <h1 className="font-display text-5xl text-fg mb-4 lowercase">
@@ -916,7 +916,7 @@ export function DocsPage(_props: Props) {
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="text-brand hover:underline"
+              className="text-primary hover:underline"
             >
               clear search
             </button>
@@ -954,7 +954,7 @@ function SectionBlock({
   return (
     <section id={section.id} className="scroll-mt-24">
       <div className="text-center mb-8">
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-brand/80">
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-primary/80">
           step {String(step).padStart(2, '0')} of {String(total).padStart(2, '0')}
         </p>
         <h2 className="font-display text-4xl text-fg mt-2 lowercase">
@@ -1087,10 +1087,10 @@ function ModelShowcase() {
           default
         </span>
         <div className="mb-3">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-brand/80 mb-1">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-primary/80 mb-1">
             {featured.pretty}
           </p>
-          <span className="inline-flex items-center px-2 h-5 rounded-full border border-brand/30 bg-brand/10 font-mono text-[10px] uppercase tracking-wider text-brand">
+          <span className="inline-flex items-center px-2 h-5 rounded-full border border-brand/30 bg-brand/10 font-mono text-[10px] uppercase tracking-wider text-primary">
             {featured.characteristic}
           </span>
         </div>
@@ -1156,7 +1156,7 @@ function FinalCTA() {
   return (
     <section className="w-full text-center">
       <div className="rounded-2xl border border-brand/30 bg-brand/5 px-6 py-10 sm:px-12 sm:py-12">
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-brand/80 mb-2">
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-primary/80 mb-2">
           ready to start?
         </p>
         <h3 className="font-display text-3xl text-fg mb-3 lowercase">
@@ -1259,7 +1259,7 @@ function FloatingGuideNav({ sections }: { sections: Section[] }) {
               if (items.length === 0) return null;
               return (
                 <div key={group}>
-                  <p className="font-mono text-[10px] uppercase tracking-wider text-brand/80 px-1 mb-1">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-primary/80 px-1 mb-1">
                     {GROUP_LABEL[group]}
                   </p>
                   <ul>
@@ -1328,7 +1328,7 @@ function Ol({ children }: { children: ReactNode }) {
 
 function Chip({ children }: { children: ReactNode }) {
   return (
-    <code className="font-mono text-brand bg-brand/5 border border-brand/20 px-1 rounded text-[12px] inline-block leading-snug">
+    <code className="font-mono text-primary bg-brand/5 border border-brand/20 px-1 rounded text-[12px] inline-block leading-snug">
       {children}
     </code>
   );
@@ -1346,7 +1346,7 @@ function DocLink({ to, children }: { to: string; children: ReactNode }) {
   return (
     <Link
       to={to}
-      className="text-brand hover:underline font-mono text-[13px] bg-brand/5 border border-brand/15 px-1.5 py-0.5 rounded"
+      className="text-primary hover:underline font-mono text-[13px] bg-brand/5 border border-brand/15 px-1.5 py-0.5 rounded"
     >
       {children}
     </Link>
@@ -1362,7 +1362,7 @@ function Callout({
 }) {
   return (
     <div className="rounded-xl border border-brand/20 bg-brand/5 px-4 py-3 flex items-start gap-2.5 text-body-sm text-fg-muted leading-relaxed">
-      <span className="text-brand mt-0.5">{icon}</span>
+      <span className="text-primary mt-0.5">{icon}</span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

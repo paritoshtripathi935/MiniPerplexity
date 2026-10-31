@@ -52,7 +52,7 @@ export function CalculatorsPage({}: Props) {
     <PresetProvider>
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
             calculators
           </p>
           <h1 className="font-display text-h1 text-fg">{activeDef.label.toLowerCase()}.</h1>

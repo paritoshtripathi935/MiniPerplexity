@@ -47,10 +47,10 @@ function DeepRow({
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary mb-3">
           {eyebrow}
         </p>
-        <h3 className="font-display text-[32px] sm:text-[40px] leading-[1.1] tracking-[-0.02em] font-semibold text-fg mb-4">
+        <h3 className="font-display text-[36px] sm:text-[44px] leading-[1.1] tracking-[-0.02em] font-semibold text-fg mb-4">
           {headline}
         </h3>
-        <p className="text-[17px] leading-[1.6] text-fg-muted max-w-md">{body}</p>
+        <p className="text-[18px] leading-[1.6] text-fg-muted max-w-md">{body}</p>
       </div>
       <div className="flex-1 w-full">{mock}</div>
     </div>
@@ -71,7 +71,7 @@ function CitationDrawerMock() {
             <span className="font-mono text-[11px] text-primary">{c.src}</span>
             <span className="font-mono text-[11px] text-fg-subtle">open ↗</span>
           </div>
-          <p className="text-[13px] text-fg-muted italic">{c.quote}</p>
+          <p className="text-[14px] text-fg-muted italic">{c.quote}</p>
         </div>
       ))}
     </div>
@@ -98,7 +98,7 @@ function PlaysGridMock() {
               : 'border-border/40 bg-surface/40 hover:border-border-strong/40'
           }`}
         >
-          <div className="font-display text-[13px] font-semibold text-fg leading-tight">{p.name}</div>
+          <div className="font-display text-[14px] font-semibold text-fg leading-tight">{p.name}</div>
           <div className="font-mono text-[11px] text-fg-subtle mt-1.5 uppercase tracking-wider">{p.tag}</div>
         </div>
       ))}
@@ -112,7 +112,7 @@ function CalculatorChartMock() {
       <div className="flex items-center justify-between">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-subtle">cac payback</div>
-          <div className="font-display text-[32px] font-semibold text-fg leading-none mt-1">4.2 mo</div>
+          <div className="font-display text-[36px] font-semibold text-fg leading-none mt-1">4.2 mo</div>
         </div>
         <div className="font-mono text-[11px] text-primary">on track</div>
       </div>

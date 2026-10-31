@@ -60,7 +60,7 @@ export function VideosDrawer({ open, onClose, messages }: Props) {
       >
         <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border/60">
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1.5 inline-flex items-center gap-2">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1.5 inline-flex items-center gap-2">
               <Youtube className="w-3.5 h-3.5" />
               videos
               <span className="text-fg-subtle">· {videos.length}</span>

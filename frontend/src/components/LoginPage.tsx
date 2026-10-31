@@ -54,7 +54,7 @@ function PitchColumn() {
 
       <div className="space-y-10 max-w-xl">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-3">
             an operating system for growth teams
           </p>
           <h2 className="font-display text-[40px] xl:text-[48px] leading-[1.05] tracking-[-0.025em] font-semibold">
@@ -104,7 +104,7 @@ function PitchProductMock() {
           brand context: <span className="text-fg">lumen skincare</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Quote className="w-3 h-3 text-brand/70" />
+          <Quote className="w-3 h-3 text-primary/70" />
           3 cited
         </div>
       </div>
@@ -136,10 +136,10 @@ function PitchProductMock() {
               key={c.n}
               className="rounded-md border border-brand/30 bg-brand/5 px-2 py-1 flex items-center justify-between"
             >
-              <span className="font-mono text-[10px] text-brand">
+              <span className="font-mono text-[10px] text-primary">
                 [{c.n}] {c.src}
               </span>
-              <ArrowUpRight className="w-2.5 h-2.5 text-brand/70" />
+              <ArrowUpRight className="w-2.5 h-2.5 text-primary/70" />
             </div>
           ))}
         </div>
@@ -150,7 +150,7 @@ function PitchProductMock() {
 
 function Sup({ n }: { n: number }) {
   return (
-    <sup className="ml-0.5 inline-flex items-center justify-center min-w-[12px] h-[12px] px-1 rounded text-[8px] font-mono text-brand bg-brand/10 align-super">
+    <sup className="ml-0.5 inline-flex items-center justify-center min-w-[12px] h-[12px] px-1 rounded text-[8px] font-mono text-primary bg-brand/10 align-super">
       {n}
     </sup>
   );

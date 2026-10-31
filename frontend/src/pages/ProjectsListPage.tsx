@@ -406,7 +406,7 @@ function FilteredEmpty({
         <button
           type="button"
           onClick={onReset}
-          className="text-brand text-body-sm hover:underline"
+          className="text-primary text-body-sm hover:underline"
         >
           clear all filters
         </button>

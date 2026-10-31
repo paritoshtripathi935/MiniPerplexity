@@ -453,7 +453,7 @@ function StickyComposer({
             char counter + kbd hint on the right. */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">
               brief
             </span>
             <button
@@ -465,7 +465,7 @@ function StickyComposer({
                   ? 'refine your draft using brand + campaign context'
                   : 'draft a prompt from this campaign'
               }
-              className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-brand/30 bg-brand/5 text-brand text-[11px] font-medium hover:bg-brand/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-brand/30 bg-brand/5 text-primary text-[11px] font-medium hover:bg-brand/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {suggesting ? (
                 <>
@@ -577,7 +577,7 @@ function StickyComposer({
               }
               className={clsx(
                 'inline-flex items-center gap-2 h-9 px-2 rounded-md transition-colors disabled:opacity-50',
-                bakeContext ? 'text-brand' : 'text-fg-subtle hover:text-fg',
+                bakeContext ? 'text-primary' : 'text-fg-subtle hover:text-fg',
               )}
             >
               {/* Switch glyph */}
@@ -741,7 +741,7 @@ function TimelineRow({
         <p
           className={clsx(
             'font-mono text-[11px] uppercase tracking-[0.18em]',
-            isLive ? 'text-brand' : 'text-fg-subtle',
+            isLive ? 'text-primary' : 'text-fg-subtle',
           )}
         >
           {timestamp}
@@ -751,7 +751,7 @@ function TimelineRow({
         </p>
         <div className="mt-3 space-y-1.5">
           {baked && (
-            <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded border border-brand/30 bg-brand/5 font-mono text-[9px] uppercase tracking-wider text-brand">
+            <span className="inline-flex items-center gap-1 px-1.5 h-5 rounded border border-brand/30 bg-brand/5 font-mono text-[9px] uppercase tracking-wider text-primary">
               <Target className="w-2.5 h-2.5" />
               context baked
             </span>
@@ -768,7 +768,7 @@ function TimelineRow({
           <button
             type="button"
             onClick={onReuse}
-            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-brand hover:underline"
+            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-primary hover:underline"
           >
             <Repeat className="w-2.5 h-2.5" />
             re-run

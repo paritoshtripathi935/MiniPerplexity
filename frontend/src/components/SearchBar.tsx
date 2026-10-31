@@ -251,7 +251,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
                 'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-body-sm border',
                 'transition-colors duration-150',
                 hasUrl || showUrlInput
-                  ? 'border-brand/40 bg-brand/15 text-brand'
+                  ? 'border-brand/40 bg-brand/15 text-primary'
                   : 'border-border/60 text-fg-muted hover:text-fg hover:bg-surface-sunken/40'
               )}
               aria-pressed={showUrlInput}
@@ -279,7 +279,7 @@ export const SearchBar = forwardRef<ComposerHandle, Props>(function SearchBar(
                 className={clsx(
                   'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-body-sm border',
                   'transition-colors duration-150',
-                  'border-brand/40 bg-brand/15 text-brand',
+                  'border-brand/40 bg-brand/15 text-primary',
                   'hover:bg-brand/25 disabled:opacity-50 disabled:cursor-not-allowed',
                 )}
               >
@@ -373,7 +373,7 @@ interface ChipProps {
 function Chip({ tone, icon, label, title, onClear, clearLabel }: ChipProps) {
   const palette =
     tone === 'brand'
-      ? 'bg-brand-subtle text-brand hover:bg-brand-subtle/80'
+      ? 'bg-brand-subtle text-primary hover:bg-brand-subtle/80'
       : 'bg-surface-sunken text-fg border border-border hover:border-border-strong';
   const clearHover =
     tone === 'brand' ? 'hover:bg-brand/10' : 'hover:bg-fg/10';

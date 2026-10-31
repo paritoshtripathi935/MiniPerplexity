@@ -183,7 +183,7 @@ export function PageHeader({
     <div className="mb-8 flex items-start justify-between gap-4">
       <div>
         {eyebrow && (
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
             {eyebrow}
           </p>
         )}

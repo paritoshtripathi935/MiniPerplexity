@@ -49,7 +49,7 @@ export function LandingPricing() {
                     open beta
                   </span>
                 </div>
-                <div className="font-display text-[20px] font-semibold text-fg">
+                <div className="font-display text-[22px] font-semibold text-fg">
                   PaidPilot, on us.
                 </div>
                 <p className="text-fg-muted text-[14px] mt-1.5">
@@ -73,7 +73,7 @@ export function LandingPricing() {
 
             <Link
               to="/sign-in"
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_0_32px_rgba(124,92,255,0.35)] hover:shadow-[0_0_40px_rgba(124,92,255,0.5)] transition-shadow"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] px-7 py-3.5 text-[16px] font-semibold text-white shadow-[0_0_32px_rgba(124,92,255,0.35)] hover:shadow-[0_0_40px_rgba(124,92,255,0.5)] transition-shadow"
             >
               claim your free workspace
               <ArrowRight className="w-4 h-4" />

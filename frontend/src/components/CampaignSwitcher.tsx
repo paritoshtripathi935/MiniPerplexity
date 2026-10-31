@@ -170,7 +170,7 @@ function SwitcherBody({ onClose }: { onClose: () => void }) {
                 <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', color.dot)} />
                 <span className="text-fg font-medium truncate flex-1">{p.name}</span>
                 {isActive && (
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand/80">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary/80">
                     current
                   </span>
                 )}

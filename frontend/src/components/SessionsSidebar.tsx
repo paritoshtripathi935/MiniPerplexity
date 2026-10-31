@@ -217,7 +217,7 @@ export function SessionsSidebar({
 
           {searchResults !== null ? (
             <div>
-              <div className="px-2 pb-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+              <div className="px-2 pb-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">
                 {searching ? 'searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'}`}
               </div>
               {searchResults.map(hit => (

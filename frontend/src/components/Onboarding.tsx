@@ -263,9 +263,9 @@ export function Onboarding({ onComplete }: Props) {
             ))}
           </div>
 
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2 text-center">
             {step === 0
-              ? 'welcome to paidpilot · step 1 of 3'
+              ? 'welcome to PaidPilot · step 1 of 3'
               : `step ${step + 1} of 3`}
           </p>
 
@@ -402,10 +402,10 @@ function Step2({
     <>
       <h2 className="font-display text-h1 font-semibold tracking-tight mb-2 mt-2">
         tell us a bit about{' '}
-        <span className="text-brand">{projectName || 'your brand'}</span>.
+        <span className="text-primary">{projectName || 'your brand'}</span>.
       </h2>
       <p className="text-body-base text-fg-muted mb-6 leading-relaxed">
-        this grounds every answer paidpilot gives you.
+        this grounds every answer PaidPilot gives you.
       </p>
       <BrandProfileFormFields value={value} onChange={onChange} />
     </>
@@ -550,7 +550,7 @@ function ChoiceCard({
         <span
           className={clsx(
             'grid place-items-center w-7 h-7 rounded-lg',
-            selected ? 'bg-brand/15 text-brand' : 'bg-surface-sunken/40 text-fg-subtle',
+            selected ? 'bg-brand/15 text-primary' : 'bg-surface-sunken/40 text-fg-subtle',
           )}
         >
           {icon}
@@ -561,7 +561,7 @@ function ChoiceCard({
           {title}
         </span>
         {selected && (
-          <span className="ml-auto grid place-items-center w-4 h-4 rounded-full bg-brand/15 text-brand">
+          <span className="ml-auto grid place-items-center w-4 h-4 rounded-full bg-brand/15 text-primary">
             <Check className="w-3 h-3" />
           </span>
         )}

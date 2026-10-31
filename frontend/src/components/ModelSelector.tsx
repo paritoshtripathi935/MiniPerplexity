@@ -132,14 +132,14 @@ export function ModelSelector({ value, onChange }: Props) {
               >
                 <div className="grid place-items-center w-4 h-4 mt-0.5 shrink-0">
                   {selected ? (
-                    <Check className="w-3.5 h-3.5 text-brand" strokeWidth={2.5} />
+                    <Check className="w-3.5 h-3.5 text-primary" strokeWidth={2.5} />
                   ) : null}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-body-sm font-medium truncate">{m.label}</span>
                     {m.recommended && (
-                      <span className="inline-flex items-center gap-0.5 text-[9.5px] uppercase tracking-[0.06em] font-semibold text-brand shrink-0">
+                      <span className="inline-flex items-center gap-0.5 text-[9.5px] uppercase tracking-[0.06em] font-semibold text-primary shrink-0">
                         <Sparkles className="w-2.5 h-2.5" strokeWidth={2.5} />
                         Recommended
                       </span>

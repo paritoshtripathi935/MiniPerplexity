@@ -103,7 +103,7 @@ function BentoCard({
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary mb-2">
           {eyebrow}
         </p>
-        <h3 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tight text-fg leading-tight">
+        <h3 className="font-display text-[22px] sm:text-[22px] font-semibold tracking-tight text-fg leading-tight">
           {title}
         </h3>
         <p className="mt-2 text-fg-muted text-[14px] leading-relaxed max-w-md">{blurb}</p>
@@ -122,7 +122,7 @@ function HeroChatMock() {
           brand context: <span className="text-fg">lumen skincare</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Quote className="w-3 h-3 text-brand/70" />
+          <Quote className="w-3 h-3 text-primary/70" />
           <span>3 sources cited</span>
         </div>
       </div>
@@ -135,7 +135,7 @@ function HeroChatMock() {
           </div>
         </div>
 
-        <div className="flex-1 pl-10 space-y-2.5 text-[13px] leading-relaxed text-fg-muted">
+        <div className="flex-1 pl-10 space-y-2.5 text-[14px] leading-relaxed text-fg-muted">
           <p>
             median cac sits at <span className="text-fg font-medium">$47</span>
             <Sup n={1} /> across reporting dtc skincare brands, with the p90 at{' '}
@@ -170,7 +170,7 @@ function HeroChatMock() {
               <span className="font-mono text-[11px] text-primary">
                 [{c.n}] {c.src}
               </span>
-              <ArrowUpRight className="w-3 h-3 text-brand/70" />
+              <ArrowUpRight className="w-3 h-3 text-primary/70" />
             </div>
             <p className="font-mono text-[11px] text-fg-muted italic truncate">"{c.q}"</p>
           </div>
@@ -317,7 +317,7 @@ function CalcSparklineMock() {
         ].map(([k, v]) => (
           <div key={k}>
             <div className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">{k}</div>
-            <div className="font-display text-[13px] font-semibold text-fg">{v}</div>
+            <div className="font-display text-[14px] font-semibold text-fg">{v}</div>
           </div>
         ))}
       </div>

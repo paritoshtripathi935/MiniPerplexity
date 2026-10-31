@@ -50,7 +50,7 @@ export function LandingHero() {
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
             to="/sign-in"
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_0_32px_rgba(124,92,255,0.35)] hover:shadow-[0_0_40px_rgba(124,92,255,0.5)] transition-shadow"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-[#3B82F6] px-7 py-3.5 text-[16px] font-semibold text-white shadow-[0_0_32px_rgba(124,92,255,0.35)] hover:shadow-[0_0_40px_rgba(124,92,255,0.5)] transition-shadow"
           >
             start free — no card required
             <ArrowRight className="w-4 h-4" />
@@ -58,7 +58,7 @@ export function LandingHero() {
           <button
             type="button"
             onClick={() => setShowDemo(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-border/60 px-7 py-3.5 text-[15px] font-semibold text-fg hover:border-border-strong/60 hover:bg-surface-raised/40 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl border border-border/60 px-7 py-3.5 text-[16px] font-semibold text-fg hover:border-border-strong/60 hover:bg-surface-raised/40 transition-colors"
           >
             <PlayCircle className="w-4 h-4 text-fg-muted" />
             see it in 60 seconds
@@ -150,7 +150,7 @@ function HeroProductMock() {
         <div className="p-6 space-y-4 text-left">
           <div className="flex items-start gap-3">
             <div className="w-7 h-7 rounded-full bg-surface-raised border border-border/40 shrink-0" />
-            <div className="font-display text-[15px] text-fg">
+            <div className="font-display text-[16px] text-fg">
               what's the median CAC for DTC skincare brands in 2026?
             </div>
           </div>

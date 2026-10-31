@@ -42,7 +42,7 @@ export function ScenariosPanel({ calcId, onLoad }: Props) {
   return (
     <section>
       <header className="flex items-center justify-between mb-3">
-        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">
           saved scenarios
         </h2>
         {sorted.length >= 2 && (
@@ -52,7 +52,7 @@ export function ScenariosPanel({ calcId, onLoad }: Props) {
             className={clsx(
               'inline-flex items-center gap-1.5 h-7 px-2.5 text-body-sm rounded-md border transition-colors',
               compareOpen
-                ? 'border-brand/40 text-brand bg-brand/10'
+                ? 'border-brand/40 text-primary bg-brand/10'
                 : 'border-border/60 text-fg-muted hover:text-fg hover:border-border-strong',
             )}
           >

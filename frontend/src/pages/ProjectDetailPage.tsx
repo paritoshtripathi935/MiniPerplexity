@@ -82,7 +82,7 @@ export function ProjectDetailPage(_props: Props) {
         <p className="text-fg-muted">project not found</p>
         <Link
           to="/projects"
-          className="inline-block mt-3 text-brand hover:underline text-body-sm"
+          className="inline-block mt-3 text-primary hover:underline text-body-sm"
         >
           back to projects
         </Link>
@@ -608,7 +608,7 @@ function ArchivedCampaignRow({
 function EmptyCampaigns({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 px-8 py-12 text-center">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
         campaigns
       </p>
       <h3 className="font-display text-h2 text-fg mb-2">no campaigns yet</h3>
@@ -799,7 +799,7 @@ function BrandProfileTab({ project }: { project: ProjectSummary }) {
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1">
             edit
           </p>
           <h3 className="font-display text-h2 text-fg">brand profile</h3>
@@ -852,7 +852,7 @@ function BrandProfileSnapshot({
     <div className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-6 max-w-3xl">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1">
             grounded in
           </p>
           <h3 className="font-display text-h2 text-fg">brand profile</h3>

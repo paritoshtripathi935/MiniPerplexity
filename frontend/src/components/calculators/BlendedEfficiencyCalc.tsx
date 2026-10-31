@@ -220,7 +220,7 @@ export function BlendedEfficiencyCalc({ registerLoadHandler }: CalcProps = {}) {
         ))}
         <button
           onClick={addRow}
-          className="text-body-md text-brand hover:underline mt-1"
+          className="text-body-md text-primary hover:underline mt-1"
         >
           + Add channel
         </button>

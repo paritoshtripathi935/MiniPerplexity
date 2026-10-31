@@ -76,7 +76,7 @@ export function ChatEmptyState({
 
   return (
     <div className="mt-16 sm:mt-24 animate-fade-in">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-3">
         new investigation
       </p>
       <h2 className="font-display text-h1 sm:text-[28px] font-semibold tracking-tight text-fg">
@@ -95,7 +95,7 @@ export function ChatEmptyState({
             onClick={() => onPick(s.prompt)}
             className="group text-left rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur hover:border-brand/40 hover:bg-surface-raised/60 transition-colors duration-150 p-4 focus-visible:outline-none focus-visible:shadow-focus"
           >
-            <div className="font-mono text-[10px] uppercase tracking-wider text-brand/80 mb-1.5">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-primary/80 mb-1.5">
               {s.tag.toLowerCase()}
             </div>
             <div className="text-body-sm text-fg leading-snug">{s.prompt}</div>
@@ -108,7 +108,7 @@ export function ChatEmptyState({
           role="status"
           className="mt-6 flex items-start gap-3 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2.5"
         >
-          <span className="grid place-items-center w-6 h-6 rounded-md bg-brand/15 text-brand shrink-0 mt-0.5">
+          <span className="grid place-items-center w-6 h-6 rounded-md bg-brand/15 text-primary shrink-0 mt-0.5">
             <Lightbulb className="w-3.5 h-3.5" />
           </span>
           <p className="flex-1 text-body-sm text-fg-muted leading-snug">

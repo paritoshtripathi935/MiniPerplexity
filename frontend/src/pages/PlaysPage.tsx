@@ -104,7 +104,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
 
       {recentPlays.length > 0 && (
         <section className="mb-8">
-          <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3 flex items-center gap-1.5">
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-3 flex items-center gap-1.5">
             <History className="w-3 h-3" aria-hidden />
             recently used
           </h2>
@@ -128,7 +128,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
       )}
 
       <header className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">all plays</h2>
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">all plays</h2>
         {filterActive && (
           <button
             type="button"
@@ -136,7 +136,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
               setFilter('All');
               setSearch('');
             }}
-            className="text-body-sm text-brand hover:underline"
+            className="text-body-sm text-primary hover:underline"
           >
             clear filter
           </button>
@@ -182,7 +182,7 @@ export function PlaysPage({ onPrepareRun }: Props) {
               setFilter('All');
               setSearch('');
             }}
-            className="text-brand hover:underline"
+            className="text-primary hover:underline"
           >
             show all
           </button>
@@ -250,7 +250,7 @@ function PlayRow({
       onClick={onClick}
       className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-surface-raised/60 transition-colors focus-visible:outline-none focus-visible:shadow-focus"
     >
-      <span className="grid place-items-center w-7 h-7 rounded-md bg-brand/10 text-brand shrink-0 mt-0.5">
+      <span className="grid place-items-center w-7 h-7 rounded-md bg-brand/10 text-primary shrink-0 mt-0.5">
         <Icon className="w-3.5 h-3.5" strokeWidth={2} />
       </span>
       <span className="flex-1 min-w-0">

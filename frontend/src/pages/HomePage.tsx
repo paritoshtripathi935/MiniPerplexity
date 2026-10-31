@@ -186,7 +186,7 @@ export function HomePage({}: Props) {
                 ) : (
                   <Link
                     to={toolHref(`/investigations/${newChatId}`)}
-                    className="text-body-sm text-brand hover:underline"
+                    className="text-body-sm text-primary hover:underline"
                   >
                     start one →
                   </Link>
@@ -202,7 +202,7 @@ export function HomePage({}: Props) {
                 scenarios.total === 0 ? (
                   <span className="text-body-sm text-fg-muted">
                     <span className="text-fg-subtle/60">→</span>{' '}
-                    <Link to={toolHref('/calc')} className="text-brand hover:underline">
+                    <Link to={toolHref('/calc')} className="text-primary hover:underline">
                       no scenarios saved yet
                     </Link>
                   </span>
@@ -245,7 +245,7 @@ export function HomePage({}: Props) {
                 icon={<Settings className="w-4 h-4" />}
                 label={`brand profile · ${brandSetupPct}% complete`}
                 trailing={
-                  <Link to="/settings" className="text-body-sm text-brand hover:underline">
+                  <Link to="/settings" className="text-body-sm text-primary hover:underline">
                     finish setup →
                   </Link>
                 }
@@ -360,7 +360,7 @@ export function HomePage({}: Props) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+    <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-3">
       {children}
     </h2>
   );

@@ -46,7 +46,7 @@ export function LandingFAQ() {
               key={item.q}
               className="group rounded-xl border border-border/60 bg-surface-raised/40 open:bg-surface-raised/60 open:border-brand/30 transition-colors"
             >
-              <summary className="flex items-center justify-between cursor-pointer list-none p-5 text-[15px] font-medium text-fg">
+              <summary className="flex items-center justify-between cursor-pointer list-none p-5 text-[16px] font-medium text-fg">
                 <span>{item.q}</span>
                 <ChevronDown className="w-4 h-4 text-fg-muted transition-transform group-open:rotate-180" />
               </summary>

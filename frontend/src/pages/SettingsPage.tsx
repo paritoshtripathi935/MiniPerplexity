@@ -93,7 +93,7 @@ function YouCard({
     <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-6">
       <header className="flex items-center justify-between mb-5">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1">
             you
           </p>
           <h2 className="font-display font-semibold text-h2 text-fg">
@@ -186,7 +186,7 @@ function ChatModelCard({
     <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-6">
       <header className="flex items-center justify-between mb-5">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1">
             engine
           </p>
           <h2 className="font-display font-semibold text-h2 text-fg">
@@ -236,7 +236,7 @@ function ChatModelCard({
                       {m.label}
                     </span>
                     {m.recommended && (
-                      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-brand/80">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary/80">
                         recommended
                       </span>
                     )}
@@ -246,7 +246,7 @@ function ChatModelCard({
                       </span>
                     )}
                     {isCurrent && (
-                      <span className="ml-auto grid place-items-center w-4 h-4 rounded-full bg-brand/15 text-brand">
+                      <span className="ml-auto grid place-items-center w-4 h-4 rounded-full bg-brand/15 text-primary">
                         <Check className="w-3 h-3" />
                       </span>
                     )}
@@ -275,7 +275,7 @@ function AppearanceCard({ darkMode }: { darkMode: boolean }) {
   return (
     <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-6">
       <header className="mb-3">
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1">
           appearance
         </p>
         <h2 className="font-display font-semibold text-h2 text-fg">theme.</h2>
@@ -312,7 +312,7 @@ function BrandContextEntry() {
       className="block rounded-2xl border border-brand/30 bg-brand/5 hover:bg-brand/10 transition-colors p-5"
     >
       <div className="flex items-start gap-3">
-        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-brand shrink-0">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-primary shrink-0">
           <FolderKanban className="w-4 h-4" />
         </span>
         <div className="min-w-0">
@@ -336,7 +336,7 @@ function IntegrationsEntry() {
       className="block rounded-2xl border border-border/60 bg-surface-raised/40 hover:bg-surface-raised/60 transition-colors p-5"
     >
       <div className="flex items-start gap-3">
-        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-brand shrink-0">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-brand/15 text-primary shrink-0">
           <Plug className="w-4 h-4" />
         </span>
         <div className="min-w-0">
@@ -356,7 +356,7 @@ function IntegrationsEntry() {
 function AboutCard() {
   return (
     <section className="rounded-2xl border border-border/60 bg-surface-raised/40 backdrop-blur p-5">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-3">
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-3">
         what's here
       </p>
       <ul className="text-body-sm text-fg-muted space-y-2.5 leading-relaxed">

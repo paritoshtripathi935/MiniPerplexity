@@ -51,14 +51,14 @@ export function LandingFooter() {
                 PaidPilot
               </span>
             </div>
-            <p className="text-[13px] text-fg-muted max-w-xs leading-relaxed">
+            <p className="text-[14px] text-fg-muted max-w-xs leading-relaxed">
               an ai co-pilot for in-house performance marketers. cited answers, ready plays, calculators that fit your p&amp;l.
             </p>
           </div>
 
           {COLUMNS.map(col => (
             <div key={col.heading}>
-              <h4 className="font-display text-[13px] font-semibold text-fg mb-4">{col.heading}</h4>
+              <h4 className="font-display text-[14px] font-semibold text-fg mb-4">{col.heading}</h4>
               <ul className="space-y-2.5">
                 {col.links.map(link => (
                   <li key={link.label}>
@@ -97,7 +97,7 @@ function FooterLink({
   kind: LinkKind;
 }) {
   const className =
-    'text-[13px] text-fg-muted hover:text-fg transition-colors';
+    'text-[14px] text-fg-muted hover:text-fg transition-colors';
   if (kind === 'route') {
     return (
       <Link to={href} className={className}>

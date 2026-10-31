@@ -151,7 +151,7 @@ export function CreativesPage(_props: Props) {
           <span className="inline-flex items-center gap-1.5">
             <Link
               to={`/projects/${projectId}/c/${campaignId}`}
-              className="text-brand/80 hover:text-brand inline-flex items-center gap-1"
+              className="text-primary/80 hover:text-primary inline-flex items-center gap-1"
             >
               <ChevronLeft className="w-3 h-3" />
               back to campaign
@@ -266,7 +266,7 @@ function UploadZone({
           : 'border-border/60 bg-surface-raised/40 hover:border-brand/40 hover:bg-surface-raised/60',
       )}
     >
-      <span className="grid place-items-center w-12 h-12 mx-auto rounded-xl bg-brand/15 text-brand mb-3">
+      <span className="grid place-items-center w-12 h-12 mx-auto rounded-xl bg-brand/15 text-primary mb-3">
         <Upload className="w-5 h-5" />
       </span>
       <p className="text-body-base text-fg">
@@ -520,7 +520,7 @@ function PreviewDrawer({
       >
         <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border/60">
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1.5">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1.5">
               creative · {creative.mime_type.split('/')[1]}
             </p>
             <h2 className="text-h2 font-display font-semibold text-fg leading-snug truncate">

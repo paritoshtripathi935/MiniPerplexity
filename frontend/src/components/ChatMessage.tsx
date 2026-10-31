@@ -284,7 +284,7 @@ function AssistantTurn({
   return (
     <div className="group">
       <div className="flex items-center gap-2 mb-2">
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">
           PaidPilot
         </span>
         {(isSearching || isStreaming) && <SearchingDot label={isSearching ? 'searching' : 'writing'} />}
@@ -303,7 +303,7 @@ function AssistantTurn({
           prose-h1:text-[20px] prose-h1:mt-0 prose-h2:text-[16px] prose-h3:text-body-base
           prose-p:leading-[1.7] prose-p:text-body-base prose-p:text-fg
           prose-strong:text-fg prose-strong:font-semibold
-          prose-a:text-brand prose-a:no-underline hover:prose-a:underline
+          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
           prose-code:bg-surface-sunken prose-code:text-fg prose-code:px-1 prose-code:py-0.5
           prose-code:rounded prose-code:text-[0.85em] prose-code:font-mono
           prose-code:before:content-none prose-code:after:content-none
@@ -470,8 +470,8 @@ function ThinkingDisclosure({
       className="mb-4 rounded-2xl border border-border/60 bg-surface-sunken/40 backdrop-blur"
     >
       <summary className="cursor-pointer select-none flex items-center gap-2 px-3 py-2 text-fg-muted hover:text-fg transition-colors list-none [&::-webkit-details-marker]:hidden">
-        <Brain className="w-3.5 h-3.5 text-brand/70 shrink-0" />
-        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80">
+        <Brain className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80">
           thinking
         </span>
         {isStreaming && (
@@ -498,7 +498,7 @@ function ThinkingDisclosure({
 function SearchingPanel({ urls }: { urls: string[] }) {
   return (
     <div className="mb-4 p-3 rounded-2xl bg-surface-raised/40 border border-border/60 backdrop-blur">
-      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
         reading sources
       </div>
       <ul className="space-y-1.5 max-h-40 overflow-y-auto">
@@ -548,7 +548,7 @@ function CitationPill({
       type="button"
       onClick={() => open(results!, n - 1)}
       title={result.title || result.source}
-      className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-brand hover:border-brand/60 hover:bg-brand/15 focus-visible:shadow-focus transition-colors relative -top-[2px]"
+      className="inline-flex items-baseline mx-0.5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-primary hover:border-brand/60 hover:bg-brand/15 focus-visible:shadow-focus transition-colors relative -top-[2px]"
     >
       {n}
     </button>
@@ -709,7 +709,7 @@ function NextStepChips({
   if (!loading && (!items || items.length === 0)) return null;
   return (
     <div className="mt-4 pt-3 border-t border-border/60">
-      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
         next steps
       </div>
       <div className="flex flex-col gap-1.5">
@@ -721,7 +721,7 @@ function NextStepChips({
                 onClick={() => onSubmit(text)}
                 className="text-left inline-flex items-start gap-1.5 px-3 py-2 rounded-md text-body-sm text-fg-muted bg-surface-raised/40 hover:bg-brand/10 hover:text-fg border border-border/40 hover:border-brand/40 transition-colors"
               >
-                <span className="text-brand/70">→</span>
+                <span className="text-primary/70">→</span>
                 <span className="leading-snug">{text}</span>
               </button>
             ))}

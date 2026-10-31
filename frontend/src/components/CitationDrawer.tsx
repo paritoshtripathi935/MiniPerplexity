@@ -132,8 +132,8 @@ export function CitationDrawer() {
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border/60">
           <div className="min-w-0 flex-1">
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-1.5 inline-flex items-center gap-2">
-              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-brand">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-1.5 inline-flex items-center gap-2">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md border border-brand/30 bg-brand/5 font-mono text-[10px] tabular-nums text-primary">
                 {citationNumber}
               </span>
               citation
@@ -176,7 +176,7 @@ export function CitationDrawer() {
 
         {/* Body — the quoted paragraph */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-brand/80 mb-2">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/80 mb-2">
             quoted excerpt
           </p>
           {result.snippet ? (
@@ -191,7 +191,7 @@ export function CitationDrawer() {
           )}
           <p className="mt-4 text-body-sm text-fg-subtle">
             this is the snippet the model was conditioned on when it cited{' '}
-            <span className="font-mono text-brand">[{citationNumber}]</span>.
+            <span className="font-mono text-primary">[{citationNumber}]</span>.
             open the source to read the full page.
           </p>
         </div>
